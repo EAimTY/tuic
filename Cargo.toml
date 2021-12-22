@@ -1,0 +1,10 @@
+[package]
+name = "tuicsocks"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+futures-util = "0.3"
+quinn = "0.8"
+rustls = { version = "0.20", features = ["quic"], default-features = false }
+tokio = { version = "1.15", features = ["macros", "rt-multi-thread"] }
