@@ -40,8 +40,8 @@ impl<'cfg> ConfigBuilder<'cfg> {
         }
 
         let config = match (matches.opt_present("c"), matches.opt_present("s")) {
-            (false, true) => Config::Client(ClientConfig),
-            (true, false) => Config::Server(ServerConfig),
+            (true, false) => Config::Client(ClientConfig),
+            (false, true) => Config::Server(ServerConfig),
             _ => bail!("Running mode unspecified"),
         };
 
