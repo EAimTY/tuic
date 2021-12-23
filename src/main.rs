@@ -35,25 +35,25 @@ async fn main() {
     let (cert, private_key) = load_cert();
     let (server_config, client_config) = load_cert_config(cert, private_key);
 
-    let (_, incoming) = Endpoint::server(server_config, ([0, 0, 0, 0], 5000).into()).unwrap();
+    let (_, incoming) = Endpoint::server(server_config, ([127, 0, 0, 1], 5000).into()).unwrap();
 
     tokio::spawn(handle_server(incoming));
 
     let client = {
-        let mut endpoint = Endpoint::client(([0, 0, 0, 0], 5001).into()).unwrap();
+        let mut endpoint = Endpoint::client(([127, 0, 0, 1], 5001).into()).unwrap();
         endpoint.set_default_client_config(client_config);
         endpoint
     };
 
-    handle_client(client, ([0, 0, 0, 0], 5000).into(), "localhost").await;
+    handle_client(client, ([127, 0, 0, 1], 5000).into(), "localhost").await;
 }
 
-const CERT_DEV: &[u8] = include_bytes!("../cert.der");
-const PRIVATE_KEY_DEV: &[u8] = include_bytes!("../private_key.der");
+const CERT: &[u8] = include_bytes!("../cert.der");
+const KEY: &[u8] = include_bytes!("../key.der");
 
 fn load_cert() -> (Certificate, PrivateKey) {
-    let cert = Certificate(CERT_DEV.to_vec());
-    let private_key = PrivateKey(PRIVATE_KEY_DEV.to_vec());
+    let cert = Certificate(CERT.to_vec());
+    let private_key = PrivateKey(KEY.to_vec());
 
     (cert, private_key)
 }
