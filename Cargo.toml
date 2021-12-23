@@ -4,7 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+anyhow = "1.0"
 futures-util = { version = "0.3", default-features = false }
+getopts = "0.2"
 quinn = "0.8"
-rustls = { version = "0.20", features = ["dangerous_configuration", "quic"], default-features = false }
+rustls = { version = "0.20", features = ["quic"], default-features = false }
 tokio = { version = "1.15", features = ["macros", "rt-multi-thread"] }
