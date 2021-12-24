@@ -1,10 +1,13 @@
-use crate::{certificate, config::ClientConfig};
-use anyhow::Result;
+use crate::{
+    certificate::{self, CertificateError},
+    config::ClientConfig,
+};
 use quinn::{ClientConfig as QuinnClientConfig, Endpoint};
 use rustls::RootCertStore;
-use std::net::SocketAddr;
+use std::{io, net::SocketAddr};
+use thiserror::Error;
 
-pub async fn start(_config: ClientConfig) -> Result<()> {
+pub async fn start(_config: ClientConfig) -> Result<(), ClientError> {
     let client_config = load_client_config()?;
 
     let mut client = Endpoint::client(([127, 0, 0, 1], 5001).into())?;
@@ -30,13 +33,27 @@ async fn handle_client(client: Endpoint, server_addr: SocketAddr, server_name: &
     println!("msg was sent!");
 }
 
-fn load_client_config() -> Result<QuinnClientConfig> {
+fn load_client_config() -> Result<QuinnClientConfig, ClientConfigError> {
     let cert = certificate::load_cert()?;
 
     let mut root_cert_store = RootCertStore::empty();
-    root_cert_store.add(&cert)?;
+    root_cert_store.add(&cert).unwrap();
 
     let client_config = QuinnClientConfig::with_root_certificates(root_cert_store);
 
     Ok(client_config)
+}
+
+#[derive(Debug, Error)]
+pub enum ClientError {
+    #[error(transparent)]
+    ClientConfig(#[from] ClientConfigError),
+    #[error("Failed to create the client endpoint")]
+    Endpoint(#[from] io::Error),
+}
+
+#[derive(Debug, Error)]
+pub enum ClientConfigError {
+    #[error(transparent)]
+    Certificate(#[from] CertificateError),
 }

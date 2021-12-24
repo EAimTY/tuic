@@ -1,5 +1,5 @@
-use anyhow::{bail, Result};
 use getopts::Options;
+use thiserror::Error;
 
 pub struct ConfigBuilder<'cfg> {
     opts: Options,
@@ -26,23 +26,23 @@ impl<'cfg> ConfigBuilder<'cfg> {
         ))
     }
 
-    pub fn parse(&mut self, args: &'cfg [String]) -> Result<Config> {
+    pub fn parse(&mut self, args: &'cfg [String]) -> Result<Config, ConfigError> {
         self.program = Some(&args[0]);
 
         let matches = self.opts.parse(&args[1..])?;
 
         if !matches.free.is_empty() {
-            bail!("unexpected arguments: {}", matches.free.join(", "));
+            return Err(ConfigError::UnexpectedArgument(matches.free.join(", ")));
         }
 
         if matches.opt_present("h") {
-            bail!("");
+            return Err(ConfigError::Help);
         }
 
         let config = match (matches.opt_present("c"), matches.opt_present("s")) {
             (true, false) => Config::Client(ClientConfig),
             (false, true) => Config::Server(ServerConfig),
-            _ => bail!("Running mode unspecified"),
+            _ => return Err(ConfigError::RunningModeUnspecified),
         };
 
         Ok(config)
@@ -56,3 +56,15 @@ pub enum Config {
 
 pub struct ClientConfig;
 pub struct ServerConfig;
+
+#[derive(Debug, Error)]
+pub enum ConfigError {
+    #[error(transparent)]
+    FailedToParseConfig(#[from] getopts::Fail),
+    #[error("Unexpected urgument: `{0}`")]
+    UnexpectedArgument(String),
+    #[error("Running mode unspecified")]
+    RunningModeUnspecified,
+    #[error("")]
+    Help,
+}
