@@ -1,3 +1,5 @@
+//! A socks5 implementation from [shadowsocks-rust](https://github.com/shadowsocks/shadowsocks-rust/blob/master/crates/shadowsocks/src/relay/socks5.rs)
+
 #![allow(unused)]
 
 use std::{

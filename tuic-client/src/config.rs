@@ -9,8 +9,6 @@ pub struct ConfigBuilder<'cfg> {
 impl<'cfg> ConfigBuilder<'cfg> {
     pub fn new() -> Self {
         let mut opts = Options::new();
-        opts.optflag("c", "client", "Run tuicsocks in the client mode");
-        opts.optflag("s", "server", "Run tuicsocks in the server mode");
         opts.optflag("h", "help", "Print this help menu");
 
         Self {
@@ -22,7 +20,7 @@ impl<'cfg> ConfigBuilder<'cfg> {
     pub fn get_usage(&self) -> String {
         self.opts.usage(&format!(
             "Usage: {} [options]",
-            self.program.unwrap_or("tuicsocks")
+            self.program.unwrap_or("tuic-client")
         ))
     }
 
@@ -39,23 +37,13 @@ impl<'cfg> ConfigBuilder<'cfg> {
             return Err(ConfigError::Help);
         }
 
-        let config = match (matches.opt_present("c"), matches.opt_present("s")) {
-            (true, false) => Config::Client(ClientConfig),
-            (false, true) => Config::Server(ServerConfig),
-            _ => return Err(ConfigError::RunningModeUnspecified),
-        };
+        let config = Config;
 
         Ok(config)
     }
 }
 
-pub enum Config {
-    Client(ClientConfig),
-    Server(ServerConfig),
-}
-
-pub struct ClientConfig;
-pub struct ServerConfig;
+pub struct Config;
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
@@ -63,8 +51,6 @@ pub enum ConfigError {
     FailedToParseConfig(#[from] getopts::Fail),
     #[error("Unexpected urgument: `{0}`")]
     UnexpectedArgument(String),
-    #[error("Running mode unspecified")]
-    RunningModeUnspecified,
     #[error("")]
     Help,
 }

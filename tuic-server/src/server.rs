@@ -1,13 +1,13 @@
 use crate::{
     certificate::{self, CertificateError, PrivateKeyError},
-    config::ServerConfig,
+    Config,
 };
 use futures_util::StreamExt;
 use quinn::{ConnectionError, Endpoint, Incoming, ServerConfig as QuinnServerConfig};
 use std::io;
 use thiserror::Error;
 
-pub async fn start(_config: ServerConfig) -> Result<(), ServerError> {
+pub async fn start(_config: Config) -> Result<(), ServerError> {
     let server_config = load_server_config()?;
 
     let (_, incoming) = Endpoint::server(server_config, ([127, 0, 0, 1], 5000).into())?;

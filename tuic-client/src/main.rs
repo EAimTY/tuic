@@ -1,11 +1,12 @@
-use crate::config::{Config, ConfigBuilder};
+use crate::config::ConfigBuilder;
 use std::env;
 
 mod certificate;
 mod client;
 mod config;
-mod server;
 mod socks5;
+
+pub use config::Config;
 
 #[tokio::main]
 async fn main() {
@@ -21,16 +22,8 @@ async fn main() {
         }
     };
 
-    match config {
-        Config::Client(cfg) => {
-            if let Err(err) = client::start(cfg).await {
-                eprintln!("{}", err);
-            }
-        }
-        Config::Server(cfg) => {
-            if let Err(err) = server::start(cfg).await {
-                eprintln!("{}", err);
-            }
-        }
+    match client::start(config).await {
+        Ok(()) => {}
+        Err(err) => eprintln!("{}", err),
     }
 }

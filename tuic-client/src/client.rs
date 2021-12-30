@@ -1,16 +1,16 @@
 use crate::{
     certificate::{self, CertificateError},
-    config::ClientConfig,
+    Config,
 };
 use quinn::{ClientConfig as QuinnClientConfig, Endpoint};
 use rustls::RootCertStore;
 use std::{io, net::SocketAddr};
 use thiserror::Error;
 
-pub async fn start(_config: ClientConfig) -> Result<(), ClientError> {
+pub async fn start(_config: Config) -> Result<(), ClientError> {
     let client_config = load_client_config()?;
 
-    let mut client = Endpoint::client(([127, 0, 0, 1], 5001).into())?;
+    let mut client = Endpoint::client(([0, 0, 0, 0], 0).into())?;
     client.set_default_client_config(client_config);
 
     handle_client(client, ([127, 0, 0, 1], 5000).into(), "localhost").await;
