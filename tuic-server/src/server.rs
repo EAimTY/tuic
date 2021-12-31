@@ -24,9 +24,11 @@ async fn handle_server(mut incoming: Incoming) {
             while let Some(stream) = conn.bi_streams.next().await {
                 match stream {
                     Ok((_send, recv)) => {
-                        println!("Server received a msg!");
-                        let msg = recv.read_to_end(10).await.unwrap();
-                        println!("Server received: {:?}", std::str::from_utf8(&msg).unwrap());
+                        tokio::spawn(async move {
+                            println!("Server received a msg!");
+                            let msg = recv.read_to_end(10).await.unwrap();
+                            println!("Server received: {:?}", std::str::from_utf8(&msg).unwrap());
+                        });
                     }
                     Err(ConnectionError::ApplicationClosed { .. }) => {
                         println!("Connection closed");

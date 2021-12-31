@@ -1,5 +1,3 @@
-//! A socks5 implementation from [shadowsocks-rust](https://github.com/shadowsocks/shadowsocks-rust/blob/master/crates/shadowsocks/src/relay/socks5.rs)
-
 #![allow(unused)]
 
 use std::{
@@ -50,9 +48,9 @@ mod consts {
 /// SOCKS5 command
 #[derive(Clone, Debug, Copy)]
 pub enum Command {
-    /// CONNECT command (TCP tunnel)
+    /// CONNECT command
     TcpConnect,
-    /// BIND command (Not supported in ShadowSocks)
+    /// BIND command
     TcpBind,
     /// UDP ASSOCIATE command
     UdpAssociate,
@@ -91,7 +89,6 @@ pub enum Reply {
     TtlExpired,
     CommandNotSupported,
     AddressTypeNotSupported,
-
     OtherReply(u8),
 }
 

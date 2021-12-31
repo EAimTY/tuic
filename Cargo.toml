@@ -3,4 +3,5 @@
 members = [
     "tuic-client",
     "tuic-server",
+    "tuic-protocol",
 ]
