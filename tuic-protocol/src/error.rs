@@ -13,6 +13,8 @@ pub enum Error {
     UnsupportedTuicVersion(u8),
     #[error("unsupported command {0:#x}")]
     UnsupportedCommand(u8),
+    #[error("invalid handshake response {0:#x}")]
+    InvalidHandshakeResponse(u8),
 }
 
 impl From<Error> for io::Error {

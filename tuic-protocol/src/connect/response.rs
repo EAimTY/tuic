@@ -6,11 +6,11 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 /// CONNECT response
 ///
 /// ```plain
-/// +----+-----+
-/// |VER | REP |
-/// +----+-----+
-/// | 1  |  1  |
-/// +----+-----+
+/// +-----+-----+
+/// | VER | REP |
+/// +-----+-----+
+/// |  1  |  1  |
+/// +-----+-----+
 /// ```
 #[derive(Clone, Debug)]
 pub struct ConnectResponse {

@@ -22,11 +22,11 @@ impl Address {
     where
         R: AsyncRead + Unpin,
     {
-        let mut addr_type_buf = [0u8; 1];
-        stream.read_exact(&mut addr_type_buf).await?;
+        let mut atyp_buf = [0u8; 1];
+        stream.read_exact(&mut atyp_buf).await?;
 
-        let addr_type = addr_type_buf[0];
-        match addr_type {
+        let atyp = atyp_buf[0];
+        match atyp {
             Self::ATYP_IPV4 => {
                 let mut buf = [0u8; 6];
                 stream.read_exact(&mut buf).await?;
@@ -87,7 +87,7 @@ impl Address {
 
                 Ok(Self::UriAuthorityAddress(addr, port))
             }
-            _ => Err(Error::AddressTypeNotSupported(addr_type)),
+            _ => Err(Error::AddressTypeNotSupported(atyp)),
         }
     }
 

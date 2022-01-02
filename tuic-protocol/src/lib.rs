@@ -1,4 +1,4 @@
-//! The custom protocol for tuic
+//! The custom protocol for TUIC
 
 mod address;
 mod command;
