@@ -1,9 +1,19 @@
-//! Custom protocol for tuic
+//! The custom protocol for tuic
 
-pub struct HandshakeRequest;
+mod address;
+mod command;
+mod connect;
+mod error;
+mod handshake;
+mod reply;
 
-pub struct HandshakeResponse;
+pub const TUIC_PROTOCOL_VERSION: u8 = 1;
 
-pub struct TcpRequest;
-
-pub struct TcpResponse;
+pub use crate::{
+    address::Address,
+    command::Command,
+    connect::{ConnectRequest, ConnectResponse},
+    error::Error,
+    handshake::{HandshakeRequest, HandshakeResponse},
+    reply::Reply,
+};

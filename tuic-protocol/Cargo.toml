@@ -4,3 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+bytes = "1.1"
+thiserror = "1.0"
+tokio = { version = "1.15", default-features = false }
