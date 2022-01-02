@@ -27,27 +27,33 @@ pub async fn start(_config: Config) -> Result<(), Error> {
 
     while let Ok((mut stream, addr)) = listener.accept().await {
         let conn = Arc::clone(&conn);
+        /*
+                tokio::spawn(async move {
+                    // Handshake
+                    let hs_req = socks5::HandshakeRequest::read_from(&mut stream)
+                        .await
+                        .unwrap();
+                    if hs_req.methods.contains(&socks5::SOCKS5_AUTH_METHOD_NONE) {
+                        let hs_res = socks5::HandshakeResponse::new(socks5::SOCKS5_AUTH_METHOD_NONE);
+                        hs_res.write_to(&mut stream).await.unwrap();
+                    } else {
+                        return;
+                    }
 
-        tokio::spawn(async move {
-            // Handshake
-            let hs_req = socks5::HandshakeRequest::read_from(&mut stream)
-                .await
-                .unwrap();
-            if hs_req.methods.contains(&socks5::SOCKS5_AUTH_METHOD_NONE) {
-                let hs_res = socks5::HandshakeResponse::new(socks5::SOCKS5_AUTH_METHOD_NONE);
-                hs_res.write_to(&mut stream).await.unwrap();
-            } else {
-                return;
-            }
+                    // Request
+                    let tcp_req = socks5::TcpRequestHeader::read_from(&mut stream)
+                        .await
+                        .unwrap();
 
-            // Request
-            let tcp_req = socks5::TcpRequestHeader::read_from(&mut stream)
-                .await
-                .unwrap();
-            let target_addr = tcp_req.address.to_socket_addrs().unwrap().next().unwrap();
-            let target_stream = TcpStream::connect(&target_addr).await.unwrap();
-            let local_addr = target_stream.local_addr().unwrap();
-        });
+                    let (mut send, recv) = conn.connection.open_bi().await.unwrap();
+                    tcp_req.write_to(&mut send).await.unwrap();
+                    send.finish().await.unwrap();
+
+                    let target_addr = tcp_req.address.to_socket_addrs().unwrap().next().unwrap();
+                    let target_stream = TcpStream::connect(&target_addr).await.unwrap();
+                    let local_addr = target_stream.local_addr().unwrap();
+                });
+        */
     }
 
     Ok(())
