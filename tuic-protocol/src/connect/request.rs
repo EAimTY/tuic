@@ -14,8 +14,9 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 /// ```
 ///
 /// ATYP:
-/// - 0x00: IPv4 address
-/// - 0x01: IPv6 address
+/// - 0x01: IPv4 address
+/// - 0x03: Domain name
+/// - 0x04: IPv6 address
 #[derive(Clone, Debug)]
 pub struct ConnectRequest {
     pub command: Command,
