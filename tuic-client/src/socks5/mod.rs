@@ -4,7 +4,7 @@ mod address;
 mod command;
 mod connect;
 mod error;
-mod handshake;
+pub mod handshake;
 mod reply;
 
 pub const SOCKS5_VERSION: u8 = 0x05;

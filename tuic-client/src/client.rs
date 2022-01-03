@@ -4,13 +4,12 @@ use crate::{
 };
 use quinn::{ClientConfig as QuinnClientConfig, Endpoint, NewConnection};
 use rustls::RootCertStore;
-use std::{
-    io,
-    net::{SocketAddr, ToSocketAddrs},
-    sync::Arc,
-};
+use std::{io, sync::Arc};
 use thiserror::Error;
-use tokio::net::{self, TcpListener, TcpStream};
+use tokio::{
+    io::AsyncWriteExt,
+    net::{self, TcpListener},
+};
 
 pub async fn start(_config: Config) -> Result<(), Error> {
     let quinn_client_config = load_client_config()?;
@@ -23,37 +22,67 @@ pub async fn start(_config: Config) -> Result<(), Error> {
 
     let conn = Arc::new(get_connection(&endpoint, "localhost", 5000).await?);
 
-    let listener = TcpListener::bind("0.0.0.0:8888").await.unwrap();
+    let (mut auth_send, mut auth_recv) = conn.connection.open_bi().await.unwrap();
 
-    while let Ok((mut stream, addr)) = listener.accept().await {
+    let tuic_hs_req = tuic_protocol::HandshakeRequest::new(Vec::new());
+    tuic_hs_req.write_to(&mut auth_send).await?;
+    auth_send.finish().await.unwrap();
+
+    let tuic_hs_res = tuic_protocol::HandshakeResponse::read_from(&mut auth_recv)
+        .await
+        .unwrap();
+    if !tuic_hs_res.is_succeeded {
+        return Err(Error::AuthFailed);
+    }
+
+    let listener = TcpListener::bind("0.0.0.0:8887").await.unwrap();
+
+    while let Ok((mut stream, _)) = listener.accept().await {
         let conn = Arc::clone(&conn);
-        /*
-                tokio::spawn(async move {
-                    // Handshake
-                    let hs_req = socks5::HandshakeRequest::read_from(&mut stream)
-                        .await
-                        .unwrap();
-                    if hs_req.methods.contains(&socks5::SOCKS5_AUTH_METHOD_NONE) {
-                        let hs_res = socks5::HandshakeResponse::new(socks5::SOCKS5_AUTH_METHOD_NONE);
-                        hs_res.write_to(&mut stream).await.unwrap();
-                    } else {
-                        return;
-                    }
+        tokio::spawn(async move {
+            let hs_req = socks5::HandshakeRequest::read_from(&mut stream)
+                .await
+                .unwrap();
+            if hs_req
+                .methods
+                .contains(&socks5::handshake::SOCKS5_AUTH_METHOD_NONE)
+            {
+                let hs_res =
+                    socks5::HandshakeResponse::new(socks5::handshake::SOCKS5_AUTH_METHOD_NONE);
+                hs_res.write_to(&mut stream).await.unwrap();
+            } else {
+                return;
+            }
 
-                    // Request
-                    let tcp_req = socks5::TcpRequestHeader::read_from(&mut stream)
-                        .await
-                        .unwrap();
+            let tcp_req = socks5::ConnectRequest::read_from(&mut stream)
+                .await
+                .unwrap();
 
-                    let (mut send, recv) = conn.connection.open_bi().await.unwrap();
-                    tcp_req.write_to(&mut send).await.unwrap();
-                    send.finish().await.unwrap();
+            let (mut send, mut recv) = conn.connection.open_bi().await.unwrap();
 
-                    let target_addr = tcp_req.address.to_socket_addrs().unwrap().next().unwrap();
-                    let target_stream = TcpStream::connect(&target_addr).await.unwrap();
-                    let local_addr = target_stream.local_addr().unwrap();
-                });
-        */
+            let tuic_connect_req = tuic_protocol::ConnectRequest::from(tcp_req);
+            tuic_connect_req.write_to(&mut send).await.unwrap();
+
+            let tuic_connect_res = tuic_protocol::ConnectResponse::read_from(&mut recv)
+                .await
+                .unwrap();
+
+            if tuic_connect_res.is_succeeded() {
+                let listener = TcpListener::bind("0.0.0.0:0").await.unwrap();
+
+                let addr = listener.local_addr().unwrap();
+                let tcp_res = socks5::ConnectResponse::new(socks5::Reply::Succeeded, addr.into());
+                tcp_res.write_to(&mut stream).await.unwrap();
+                stream.shutdown().await.unwrap();
+
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let (mut local_recv, mut local_send) = stream.split();
+
+                let remote_to_local = tokio::io::copy(&mut recv, &mut local_send);
+                let local_to_remote = tokio::io::copy(&mut local_recv, &mut send);
+                let _ = tokio::try_join!(remote_to_local, local_to_remote);
+            }
+        });
     }
 
     Ok(())
@@ -92,8 +121,10 @@ fn load_client_config() -> Result<QuinnClientConfig, Error> {
 
 #[derive(Debug, Error)]
 pub enum Error {
-    #[error(transparent)]
-    Certificate(#[from] CertificateError),
     #[error("Failed to create the client endpoint")]
     Endpoint(#[from] io::Error),
+    #[error(transparent)]
+    Certificate(#[from] CertificateError),
+    #[error("TUIC Authentication failed")]
+    AuthFailed,
 }

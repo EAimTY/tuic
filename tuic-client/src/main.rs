@@ -4,6 +4,7 @@ use std::env;
 mod certificate;
 mod client;
 mod config;
+mod convert;
 mod socks5;
 
 pub use config::Config;

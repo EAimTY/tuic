@@ -24,8 +24,11 @@ pub struct ConnectRequest {
 }
 
 impl ConnectRequest {
-    pub fn new(command: Command, address: Address) -> Self {
-        Self { command, address }
+    pub fn new(cmd: Command, addr: Address) -> Self {
+        Self {
+            command: cmd,
+            address: addr,
+        }
     }
 
     pub async fn read_from<R>(r: &mut R) -> Result<Self, Error>

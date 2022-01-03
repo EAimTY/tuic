@@ -22,6 +22,10 @@ impl ConnectResponse {
         Self { reply }
     }
 
+    pub fn is_succeeded(&self) -> bool {
+        self.reply == Reply::Succeeded
+    }
+
     pub async fn read_from<R>(r: &mut R) -> Result<Self, Error>
     where
         R: AsyncRead + Unpin,
