@@ -39,6 +39,7 @@ pub async fn start(_config: Config) -> Result<(), Error> {
 
     while let Ok((mut stream, _)) = listener.accept().await {
         let conn = Arc::clone(&conn);
+
         tokio::spawn(async move {
             let hs_req = socks5::HandshakeRequest::read_from(&mut stream)
                 .await
