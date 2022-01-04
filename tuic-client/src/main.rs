@@ -4,10 +4,16 @@ use std::env;
 mod certificate;
 mod client;
 mod config;
+mod connection;
 mod convert;
-mod socks5;
+mod socks5_protocol;
+mod socks5_server;
 
-pub use config::Config;
+pub use crate::{
+    config::Config,
+    connection::{Connection, ConnectionManager},
+    socks5_server::Socks5Server,
+};
 
 #[tokio::main]
 async fn main() {
