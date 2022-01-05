@@ -1,4 +1,4 @@
-use crate::{client::Error, connection::ChannelMessage, socks5_protocol, Config, Connection};
+use crate::{client::ClientError, connection::ChannelMessage, socks5_protocol, Config, Connection};
 use std::{net::SocketAddr, sync::Arc};
 use tokio::{
     io::AsyncWriteExt,
@@ -66,7 +66,7 @@ impl Socks5Connection {
         let _ = tokio::try_join!(remote_to_local, local_to_remote);
     }
 
-    async fn handshake(&mut self) -> Result<(), Error> {
+    async fn handshake(&mut self) -> Result<(), ClientError> {
         let hs_req = socks5_protocol::HandshakeRequest::read_from(&mut self.stream)
             .await
             .unwrap();
@@ -79,7 +79,7 @@ impl Socks5Connection {
             );
             hs_res.write_to(&mut self.stream).await.unwrap();
         } else {
-            return Err(Error::Socks5AuthFailed);
+            return Err(ClientError::Socks5AuthFailed);
         }
 
         Ok(())
@@ -88,10 +88,10 @@ impl Socks5Connection {
     async fn handle_request(
         &self,
         tcp_req: socks5_protocol::ConnectRequest,
-    ) -> Result<(quinn::SendStream, quinn::RecvStream), Error> {
+    ) -> Result<(quinn::SendStream, quinn::RecvStream), ClientError> {
         let conn = self.get_tuic_connection().await.unwrap();
         if conn.handshake().await.is_err() {
-            return Err(Error::AuthFailed);
+            return Err(ClientError::AuthFailed);
         }
 
         let (mut send, mut recv) = conn.open_bi().await.unwrap();
@@ -106,7 +106,7 @@ impl Socks5Connection {
         Ok((send, recv))
     }
 
-    async fn get_tuic_connection(&self) -> Result<Connection, Error> {
+    async fn get_tuic_connection(&self) -> Result<Connection, ClientError> {
         let (get_conn_msg, conn_receiver) = ChannelMessage::get_connection();
         self.channel
             .send(get_conn_msg)
@@ -130,7 +130,7 @@ impl Socks5Server {
         }
     }
 
-    pub async fn run(&self) -> Result<(), Error> {
+    pub async fn run(&self) -> Result<(), ClientError> {
         let socks5_listener = TcpListener::bind("0.0.0.0:8887").await.unwrap();
 
         while let Ok((stream, _)) = socks5_listener.accept().await {

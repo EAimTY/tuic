@@ -14,7 +14,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 /// ```
 #[derive(Clone, Debug)]
 pub struct HandshakeResponse {
-    pub is_succeeded: bool,
+    is_succeeded: bool,
 }
 
 impl HandshakeResponse {
@@ -23,6 +23,10 @@ impl HandshakeResponse {
 
     pub fn new(is_succeeded: bool) -> Self {
         Self { is_succeeded }
+    }
+
+    pub fn is_succeeded(&self) -> bool {
+        self.is_succeeded
     }
 
     pub async fn read_from<R>(r: &mut R) -> Result<Self, Error>

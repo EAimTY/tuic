@@ -1,7 +1,12 @@
-use crate::{certificate, client::Error, Config};
+use crate::{
+    certificate,
+    client::{exit, ClientError},
+    Config,
+};
 use quinn::{ClientConfig as QuinnClientConfig, Endpoint, NewConnection, OpenBi};
 use rustls::RootCertStore;
-use std::sync::Arc;
+use std::{io, net::ToSocketAddrs, sync::Arc};
+use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
 
 pub struct ConnectionManager {
@@ -10,7 +15,7 @@ pub struct ConnectionManager {
 }
 
 impl ConnectionManager {
-    pub fn new(_config: &Config) -> Result<(Self, mpsc::Sender<ChannelMessage>), Error> {
+    pub fn new(_config: &Config) -> Result<(Self, mpsc::Sender<ChannelMessage>), ClientError> {
         let quinn_client_config = load_client_config()?;
 
         let endpoint = {
@@ -19,7 +24,7 @@ impl ConnectionManager {
             endpoint
         };
 
-        let (sender, receiver) = mpsc::channel(8);
+        let (sender, receiver) = mpsc::channel(32);
 
         Ok((
             Self {
@@ -32,17 +37,25 @@ impl ConnectionManager {
 
     pub async fn run(mut self) {
         tokio::spawn(async move {
-            let mut conn = self.connect("localhost", 5000).await.unwrap();
+            let mut conn = match self.connect("localhost", 5000).await {
+                Ok(conn) => conn,
+                Err(err) => exit(err.into()),
+            };
 
             while let Some(msg) = self.channel.recv().await {
                 match msg {
                     ChannelMessage::GetConnection(conn_sender) => {
                         let conn = conn.clone();
-                        conn_sender.send(conn).map_err(|_| ()).unwrap();
+                        if conn_sender.send(conn).is_err() {
+                            exit(ClientError::GetConnection.into());
+                        }
                     }
                     ChannelMessage::ConnectionClosed(closed_conn_id) => {
                         if conn.id() == closed_conn_id {
-                            conn = self.connect("localhost", 5000).await.unwrap()
+                            conn = match self.connect("localhost", 5000).await {
+                                Ok(conn) => conn,
+                                Err(err) => exit(err.into()),
+                            };
                         }
                     }
                 }
@@ -50,22 +63,30 @@ impl ConnectionManager {
         });
     }
 
-    async fn connect(&self, server_addr: &str, server_port: u16) -> Result<Connection, Error> {
-        /*let socket_addr = net::lookup_host((server_addr, server_port))
-        .await
-        .unwrap()
-        .next()
-        .unwrap();*/
-        let socket_addr = ([127, 0, 0, 1], server_port).into();
+    async fn connect(
+        &self,
+        server_addr: &str,
+        server_port: u16,
+    ) -> Result<Connection, ConnectionError> {
+        let mut retries = 0;
 
-        let conn = self
-            .endpoint
-            .connect(socket_addr, server_addr)
-            .unwrap()
-            .await
-            .unwrap();
+        while retries <= 5 {
+            retries += 1;
 
-        Ok(Connection::new(conn))
+            if let Ok(socket_addrs) = (server_addr, server_port).to_socket_addrs() {
+                for socket_addr in socket_addrs {
+                    match self.endpoint.connect(socket_addr, server_addr) {
+                        Ok(connecting) => match connecting.await {
+                            Ok(conn) => return Ok(Connection::new(conn)),
+                            Err(_err) => {}
+                        },
+                        Err(_err) => {}
+                    }
+                }
+            }
+        }
+
+        Err(ConnectionError::TooManyRetries)
     }
 }
 
@@ -89,21 +110,16 @@ impl Connection {
         self.inner.connection.open_bi()
     }
 
-    pub async fn handshake(&self) -> Result<(), Error> {
-        let (mut auth_send, mut auth_recv) = self.inner.connection.open_bi().await.unwrap();
+    pub async fn handshake(&self) -> Result<bool, ConnectionError> {
+        let (mut hs_send, mut hs_recv) = self.inner.connection.open_bi().await?;
 
-        let tuic_hs_req = tuic_protocol::HandshakeRequest::new(Vec::new());
-        tuic_hs_req.write_to(&mut auth_send).await?;
-        auth_send.finish().await.unwrap();
+        let hs_req = tuic_protocol::HandshakeRequest::new(Vec::new());
+        hs_req.write_to(&mut hs_send).await?;
+        hs_send.finish().await?;
 
-        let tuic_hs_res = tuic_protocol::HandshakeResponse::read_from(&mut auth_recv)
-            .await
-            .unwrap();
-        if !tuic_hs_res.is_succeeded {
-            return Err(Error::AuthFailed);
-        }
+        let hs_res = tuic_protocol::HandshakeResponse::read_from(&mut hs_recv).await?;
 
-        Ok(())
+        Ok(hs_res.is_succeeded())
     }
 }
 
@@ -123,7 +139,7 @@ impl ChannelMessage {
     }
 }
 
-fn load_client_config() -> Result<QuinnClientConfig, Error> {
+fn load_client_config() -> Result<QuinnClientConfig, ClientError> {
     let cert = certificate::load_cert()?;
 
     let mut root_cert_store = RootCertStore::empty();
@@ -132,4 +148,18 @@ fn load_client_config() -> Result<QuinnClientConfig, Error> {
     let client_config = QuinnClientConfig::with_root_certificates(root_cert_store);
 
     Ok(client_config)
+}
+
+#[derive(Debug, Error)]
+pub enum ConnectionError {
+    #[error(transparent)]
+    QuicConnection(#[from] quinn::ConnectionError),
+    #[error(transparent)]
+    StreamWrite(#[from] io::Error),
+    #[error(transparent)]
+    StreamClose(#[from] quinn::WriteError),
+    #[error(transparent)]
+    TuicProtocol(#[from] tuic_protocol::Error),
+    #[error("Failed to connect to the server")]
+    TooManyRetries,
 }
