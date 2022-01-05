@@ -1,18 +1,16 @@
-use crate::config::ConfigBuilder;
-use std::env;
+use crate::{config::ConfigBuilder, server::Socks5Server};
+use std::{env, error::Error};
 
 mod certificate;
-mod client;
 mod config;
 mod connection;
-mod convert;
-mod socks5_protocol;
-mod socks5_server;
+mod error;
+mod server;
 
 pub use crate::{
     config::Config,
     connection::{Connection, ConnectionManager},
-    socks5_server::Socks5Server,
+    error::ClientError,
 };
 
 #[tokio::main]
@@ -29,8 +27,27 @@ async fn main() {
         }
     };
 
-    match client::start(config).await {
+    let (conn_mgr, channel_msg_sender) = match ConnectionManager::new(&config) {
+        Ok(res) => res,
+        Err(err) => {
+            eprintln!("{}", err);
+            return;
+        }
+    };
+    conn_mgr.run().await;
+
+    let socks5_server = Socks5Server::new(&config, channel_msg_sender);
+
+    match socks5_server.run().await {
         Ok(()) => {}
-        Err(err) => eprintln!("{}", err),
+        Err(err) => {
+            eprintln!("{}", err);
+            return;
+        }
     }
+}
+
+pub fn exit(err: Box<dyn Error>) -> ! {
+    eprintln!("{}", err);
+    std::process::exit(1);
 }

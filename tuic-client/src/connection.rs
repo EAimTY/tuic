@@ -1,8 +1,4 @@
-use crate::{
-    certificate,
-    client::{exit, ClientError},
-    Config,
-};
+use crate::{certificate, exit, ClientError, Config};
 use quinn::{ClientConfig as QuinnClientConfig, Endpoint, NewConnection, OpenBi};
 use rustls::RootCertStore;
 use std::{io, net::ToSocketAddrs, sync::Arc};
@@ -37,9 +33,10 @@ impl ConnectionManager {
 
     pub async fn run(mut self) {
         tokio::spawn(async move {
-            let mut conn = match self.connect("localhost", 5000).await {
-                Ok(conn) => conn,
-                Err(err) => exit(err.into()),
+            let mut conn = loop {
+                if let Ok(conn) = self.connect("localhost", 5000).await {
+                    break conn;
+                }
             };
 
             while let Some(msg) = self.channel.recv().await {

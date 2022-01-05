@@ -1,10 +1,13 @@
-use crate::{client::ClientError, connection::ChannelMessage, socks5_protocol, Config, Connection};
+use crate::{connection::ChannelMessage, ClientError, Config, Connection};
 use std::{net::SocketAddr, sync::Arc};
 use tokio::{
     io::AsyncWriteExt,
     net::{tcp, TcpListener, TcpStream},
     sync::mpsc,
 };
+
+mod convert;
+mod protocol;
 
 struct Socks5Connection {
     stream: TcpStream,
@@ -23,7 +26,7 @@ impl Socks5Connection {
         tokio::spawn(async move {
             self.handshake().await.unwrap();
 
-            let tcp_req = socks5_protocol::ConnectRequest::read_from(&mut self.stream)
+            let tcp_req = protocol::ConnectRequest::read_from(&mut self.stream)
                 .await
                 .unwrap();
 
@@ -31,10 +34,8 @@ impl Socks5Connection {
                 let listener = TcpListener::bind("0.0.0.0:0").await.unwrap();
 
                 let addr = listener.local_addr().unwrap();
-                let tcp_res = socks5_protocol::ConnectResponse::new(
-                    socks5_protocol::Reply::Succeeded,
-                    addr.into(),
-                );
+                let tcp_res =
+                    protocol::ConnectResponse::new(protocol::Reply::Succeeded, addr.into());
                 tcp_res.write_to(&mut self.stream).await.unwrap();
                 self.stream.shutdown().await.unwrap();
 
@@ -44,8 +45,8 @@ impl Socks5Connection {
                 self.forward(&mut send, &mut recv, &mut local_send, &mut local_recv)
                     .await;
             } else {
-                let tcp_res = socks5_protocol::ConnectResponse::new(
-                    socks5_protocol::Reply::GeneralFailure,
+                let tcp_res = protocol::ConnectResponse::new(
+                    protocol::Reply::GeneralFailure,
                     SocketAddr::from(([0, 0, 0, 0], 0)).into(),
                 );
                 tcp_res.write_to(&mut self.stream).await.unwrap();
@@ -67,16 +68,15 @@ impl Socks5Connection {
     }
 
     async fn handshake(&mut self) -> Result<(), ClientError> {
-        let hs_req = socks5_protocol::HandshakeRequest::read_from(&mut self.stream)
+        let hs_req = protocol::HandshakeRequest::read_from(&mut self.stream)
             .await
             .unwrap();
         if hs_req
             .methods
-            .contains(&socks5_protocol::handshake::SOCKS5_AUTH_METHOD_NONE)
+            .contains(&protocol::handshake::SOCKS5_AUTH_METHOD_NONE)
         {
-            let hs_res = socks5_protocol::HandshakeResponse::new(
-                socks5_protocol::handshake::SOCKS5_AUTH_METHOD_NONE,
-            );
+            let hs_res =
+                protocol::HandshakeResponse::new(protocol::handshake::SOCKS5_AUTH_METHOD_NONE);
             hs_res.write_to(&mut self.stream).await.unwrap();
         } else {
             return Err(ClientError::Socks5AuthFailed);
@@ -87,7 +87,7 @@ impl Socks5Connection {
 
     async fn handle_request(
         &self,
-        tcp_req: socks5_protocol::ConnectRequest,
+        tcp_req: protocol::ConnectRequest,
     ) -> Result<(quinn::SendStream, quinn::RecvStream), ClientError> {
         let conn = self.get_tuic_connection().await.unwrap();
         if conn.handshake().await.is_err() {

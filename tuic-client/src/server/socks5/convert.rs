@@ -1,4 +1,4 @@
-use crate::socks5_protocol;
+use super::protocol as socks5_protocol;
 
 impl From<socks5_protocol::ConnectRequest> for tuic_protocol::ConnectRequest {
     fn from(req: socks5_protocol::ConnectRequest) -> Self {
