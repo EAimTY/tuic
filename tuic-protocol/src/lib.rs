@@ -6,7 +6,6 @@ mod error;
 mod reply;
 mod request;
 mod response;
-pub mod token;
 
 pub const TUIC_PROTOCOL_VERSION: u8 = 0x01;
 
