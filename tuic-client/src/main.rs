@@ -9,7 +9,7 @@ mod server;
 
 pub use crate::{
     config::Config,
-    connection::{Connection, ConnectionManager},
+    connection::{Connection, ConnectionGuard},
     error::ClientError,
 };
 
@@ -27,14 +27,14 @@ async fn main() {
         }
     };
 
-    let (conn_mgr, channel_msg_sender) = match ConnectionManager::new(&config) {
+    let (conn_guard, channel_msg_sender) = match ConnectionGuard::new(&config) {
         Ok(res) => res,
         Err(err) => {
             eprintln!("{}", err);
             return;
         }
     };
-    conn_mgr.run().await;
+    conn_guard.run().await;
 
     let socks5_server = Socks5Server::new(&config, channel_msg_sender);
 

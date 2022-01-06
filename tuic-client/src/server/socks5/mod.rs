@@ -1,4 +1,7 @@
-use crate::{connection::ChannelMessage, ClientError, Config, Connection};
+use crate::{
+    connection::{ConnectionRequest, ConnectionResponse},
+    ClientError, Config,
+};
 use std::{net::SocketAddr, sync::Arc};
 use tokio::{
     io::AsyncWriteExt,
@@ -9,16 +12,39 @@ use tokio::{
 mod convert;
 mod protocol;
 
+pub struct Socks5Server {
+    request_sender: Arc<mpsc::Sender<ConnectionRequest>>,
+}
+
+impl Socks5Server {
+    pub fn new(_config: &Config, sender: mpsc::Sender<ConnectionRequest>) -> Self {
+        Self {
+            request_sender: Arc::new(sender),
+        }
+    }
+
+    pub async fn run(&self) -> Result<(), ClientError> {
+        let socks5_listener = TcpListener::bind("0.0.0.0:8887").await.unwrap();
+
+        while let Ok((stream, _)) = socks5_listener.accept().await {
+            let socks5_conn = Socks5Connection::new(stream, &self.request_sender);
+            socks5_conn.process().await;
+        }
+
+        Ok(())
+    }
+}
+
 struct Socks5Connection {
     stream: TcpStream,
-    channel: Arc<mpsc::Sender<ChannelMessage>>,
+    request_sender: Arc<mpsc::Sender<ConnectionRequest>>,
 }
 
 impl Socks5Connection {
-    fn new(stream: TcpStream, channel: &Arc<mpsc::Sender<ChannelMessage>>) -> Self {
+    fn new(stream: TcpStream, request_sender: &Arc<mpsc::Sender<ConnectionRequest>>) -> Self {
         Self {
             stream,
-            channel: channel.clone(),
+            request_sender: Arc::clone(request_sender),
         }
     }
 
@@ -26,31 +52,44 @@ impl Socks5Connection {
         tokio::spawn(async move {
             self.handshake().await.unwrap();
 
-            let tcp_req = protocol::ConnectRequest::read_from(&mut self.stream)
+            let socks5_req = protocol::ConnectRequest::read_from(&mut self.stream)
                 .await
                 .unwrap();
 
-            if let Ok((mut send, mut recv)) = self.handle_request(tcp_req).await {
-                let listener = TcpListener::bind("0.0.0.0:0").await.unwrap();
+            let (req, res_receiver) =
+                ConnectionRequest::new(socks5_req.command.into(), socks5_req.address.into());
 
-                let addr = listener.local_addr().unwrap();
-                let tcp_res =
-                    protocol::ConnectResponse::new(protocol::Reply::Succeeded, addr.into());
-                tcp_res.write_to(&mut self.stream).await.unwrap();
-                self.stream.shutdown().await.unwrap();
+            self.request_sender.send(req).await.map_err(|_| ()).unwrap();
 
-                let (stream, _) = listener.accept().await.unwrap();
-                let (mut local_recv, mut local_send) = stream.into_split();
+            match res_receiver.await.unwrap() {
+                Ok((mut remote_send, mut remote_recv)) => {
+                    let listener = TcpListener::bind("0.0.0.0:0").await.unwrap();
 
-                self.forward(&mut send, &mut recv, &mut local_send, &mut local_recv)
+                    let addr = listener.local_addr().unwrap();
+                    let tcp_res =
+                        protocol::ConnectResponse::new(protocol::Reply::Succeeded, addr.into());
+                    tcp_res.write_to(&mut self.stream).await.unwrap();
+                    self.stream.shutdown().await.unwrap();
+
+                    let (stream, _) = listener.accept().await.unwrap();
+                    let (mut local_recv, mut local_send) = stream.into_split();
+
+                    self.forward(
+                        &mut remote_send,
+                        &mut remote_recv,
+                        &mut local_send,
+                        &mut local_recv,
+                    )
                     .await;
-            } else {
-                let tcp_res = protocol::ConnectResponse::new(
-                    protocol::Reply::GeneralFailure,
-                    SocketAddr::from(([0, 0, 0, 0], 0)).into(),
-                );
-                tcp_res.write_to(&mut self.stream).await.unwrap();
-                self.stream.shutdown().await.unwrap();
+                }
+                Err(err) => {
+                    let tcp_res = protocol::ConnectResponse::new(
+                        protocol::Reply::GeneralFailure,
+                        SocketAddr::from(([0, 0, 0, 0], 0)).into(),
+                    );
+                    tcp_res.write_to(&mut self.stream).await.unwrap();
+                    self.stream.shutdown().await.unwrap();
+                }
             }
         });
     }
@@ -80,62 +119,6 @@ impl Socks5Connection {
             hs_res.write_to(&mut self.stream).await.unwrap();
         } else {
             return Err(ClientError::Socks5AuthFailed);
-        }
-
-        Ok(())
-    }
-
-    async fn handle_request(
-        &self,
-        tcp_req: protocol::ConnectRequest,
-    ) -> Result<(quinn::SendStream, quinn::RecvStream), ClientError> {
-        let conn = self.get_tuic_connection().await.unwrap();
-        if conn.handshake().await.is_err() {
-            return Err(ClientError::AuthFailed);
-        }
-
-        let (mut send, mut recv) = conn.open_bi().await.unwrap();
-
-        let tuic_connect_req = tuic_protocol::ConnectRequest::from(tcp_req);
-        tuic_connect_req.write_to(&mut send).await.unwrap();
-
-        let _tuic_connect_res = tuic_protocol::ConnectResponse::read_from(&mut recv)
-            .await
-            .unwrap();
-
-        Ok((send, recv))
-    }
-
-    async fn get_tuic_connection(&self) -> Result<Connection, ClientError> {
-        let (get_conn_msg, conn_receiver) = ChannelMessage::get_connection();
-        self.channel
-            .send(get_conn_msg)
-            .await
-            .map_err(|_| ())
-            .unwrap();
-        let conn = conn_receiver.await.map_err(|_| ()).unwrap();
-
-        Ok(conn)
-    }
-}
-
-pub struct Socks5Server {
-    channel: Arc<mpsc::Sender<ChannelMessage>>,
-}
-
-impl Socks5Server {
-    pub fn new(_config: &Config, channel: mpsc::Sender<ChannelMessage>) -> Self {
-        Self {
-            channel: Arc::new(channel),
-        }
-    }
-
-    pub async fn run(&self) -> Result<(), ClientError> {
-        let socks5_listener = TcpListener::bind("0.0.0.0:8887").await.unwrap();
-
-        while let Ok((stream, _)) = socks5_listener.accept().await {
-            let socks5_conn = Socks5Connection::new(stream, &self.channel);
-            socks5_conn.process().await;
         }
 
         Ok(())
