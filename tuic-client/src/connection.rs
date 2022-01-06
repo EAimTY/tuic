@@ -1,8 +1,5 @@
-use crate::{certificate, exit, ClientError, Config};
-use quinn::{
-    ClientConfig as QuinnClientConfig, Connection as QuinnConnection, Endpoint, NewConnection,
-    OpenBi,
-};
+use crate::{certificate, ClientError, Config};
+use quinn::{ClientConfig as QuinnClientConfig, Connection, Endpoint, NewConnection};
 use rustls::RootCertStore;
 use std::{io, net::ToSocketAddrs};
 use thiserror::Error;
@@ -44,10 +41,28 @@ impl ConnectionGuard {
                 let (mut send, mut recv) = match self.get_stream(&mut conn).await {
                     Ok(res) => res,
                     Err(err) => {
-                        conn_sender.send(Err(err)).unwrap();
+                        conn_sender.send(Err(err));
                         continue;
                     }
                 };
+
+                async fn handshake(
+                    req: tuic_protocol::Request,
+                    send: &mut quinn::SendStream,
+                    recv: &mut quinn::RecvStream,
+                ) -> Result<(), ConnectionError> {
+                    if let Err(err) = req.write_to(send).await {
+                        return Err(err.into());
+                    }
+
+                    match tuic_protocol::Response::read_from(recv).await {
+                        Ok(res) => match res.reply {
+                            tuic_protocol::Reply::Succeeded => Ok(()),
+                            err => Err(tuic_protocol::Error::from(err).into()),
+                        },
+                        Err(err) => Err(err.into()),
+                    }
+                }
 
                 tokio::spawn(async move {
                     match handshake(tuic_req, &mut send, &mut recv).await {
@@ -57,32 +72,6 @@ impl ConnectionGuard {
                 });
             }
         });
-    }
-
-    async fn get_stream(
-        &self,
-        conn: &mut Option<Connection>,
-    ) -> Result<(quinn::SendStream, quinn::RecvStream), ConnectionError> {
-        if let Some(conn) = conn {
-            if let Ok(res) = conn.open_bi().await {
-                return Ok(res);
-            }
-        }
-
-        let err = match self.get_connection("localhost", 5000).await {
-            Ok(mut new_conn) => match new_conn.open_bi().await {
-                Ok(res) => {
-                    *conn = Some(new_conn);
-                    return Ok(res);
-                }
-                Err(err) => err.into(),
-            },
-            Err(err) => err,
-        };
-
-        *conn = None;
-
-        Err(err)
     }
 
     async fn get_connection(
@@ -101,7 +90,7 @@ impl ConnectionGuard {
                         Ok(connecting) => match connecting.await {
                             Ok(NewConnection {
                                 connection: conn, ..
-                            }) => return Ok(Connection::new(conn)),
+                            }) => return Ok(conn),
                             Err(_err) => {}
                         },
                         Err(_err) => {}
@@ -112,53 +101,31 @@ impl ConnectionGuard {
 
         Err(ConnectionError::TooManyRetries)
     }
-}
 
-async fn handshake(
-    req: tuic_protocol::ConnectRequest,
-    send: &mut quinn::SendStream,
-    recv: &mut quinn::RecvStream,
-) -> Result<(), ConnectionError> {
-    if let Err(err) = req.write_to(send).await {
-        return Err(err.into());
-    }
-
-    match tuic_protocol::ConnectResponse::read_from(recv).await {
-        Ok(res) => {
-            if res.is_succeeded() {
-                Ok(())
-            } else {
-                Err(ConnectionError::ConnectionRefused)
+    async fn get_stream(
+        &self,
+        conn: &mut Option<Connection>,
+    ) -> Result<(quinn::SendStream, quinn::RecvStream), ConnectionError> {
+        if let Some(conn) = conn {
+            if let Ok(res) = conn.open_bi().await {
+                return Ok(res);
             }
         }
-        Err(err) => Err(err.into()),
-    }
-}
 
-#[derive(Clone)]
-pub struct Connection {
-    inner: QuinnConnection,
-}
+        let err = match self.get_connection("localhost", 5000).await {
+            Ok(new_conn) => match new_conn.open_bi().await {
+                Ok(res) => {
+                    *conn = Some(new_conn);
+                    return Ok(res);
+                }
+                Err(err) => err.into(),
+            },
+            Err(err) => err,
+        };
 
-impl Connection {
-    fn new(conn: QuinnConnection) -> Self {
-        Self { inner: conn }
-    }
+        *conn = None;
 
-    fn open_bi(&mut self) -> OpenBi {
-        self.inner.open_bi()
-    }
-
-    pub async fn handshake(&self) -> Result<bool, ConnectionError> {
-        let (mut hs_send, mut hs_recv) = self.inner.open_bi().await?;
-
-        let hs_req = tuic_protocol::HandshakeRequest::new(Vec::new());
-        hs_req.write_to(&mut hs_send).await?;
-        hs_send.finish().await?;
-
-        let hs_res = tuic_protocol::HandshakeResponse::read_from(&mut hs_recv).await?;
-
-        Ok(hs_res.is_succeeded())
+        Err(err)
     }
 }
 
@@ -186,13 +153,8 @@ impl ConnectionRequest {
         )
     }
 
-    fn to_tuic_request(
-        self,
-    ) -> (
-        tuic_protocol::ConnectRequest,
-        oneshot::Sender<ConnectionResponse>,
-    ) {
-        let req = tuic_protocol::ConnectRequest::new(self.command, self.address);
+    fn to_tuic_request(self) -> (tuic_protocol::Request, oneshot::Sender<ConnectionResponse>) {
+        let req = tuic_protocol::Request::new(self.command, 0, self.address);
         (req, self.response_sender)
     }
 }
@@ -217,9 +179,7 @@ pub enum ConnectionError {
     #[error(transparent)]
     StreamClose(#[from] quinn::WriteError),
     #[error(transparent)]
-    TuicProtocol(#[from] tuic_protocol::Error),
-    #[error("Connection refused")]
-    ConnectionRefused,
+    Tuic(#[from] tuic_protocol::Error),
     #[error("Failed to connect to the server")]
     TooManyRetries,
 }

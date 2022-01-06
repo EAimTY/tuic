@@ -1,8 +1,6 @@
-use crate::{
-    connection::{ConnectionRequest, ConnectionResponse},
-    ClientError, Config,
-};
-use std::{net::SocketAddr, sync::Arc};
+use crate::{connection::ConnectionRequest, ClientError, Config};
+use std::{io, net::SocketAddr, sync::Arc};
+use thiserror::Error;
 use tokio::{
     io::AsyncWriteExt,
     net::{tcp, TcpListener, TcpStream},
@@ -27,8 +25,9 @@ impl Socks5Server {
         let socks5_listener = TcpListener::bind("0.0.0.0:8887").await.unwrap();
 
         while let Ok((stream, _)) = socks5_listener.accept().await {
-            let socks5_conn = Socks5Connection::new(stream, &self.request_sender);
-            socks5_conn.process().await;
+            let mut socks5_conn = Socks5Connection::new(stream, &self.request_sender);
+
+            tokio::spawn(async move { if let Err(_err) = socks5_conn.process().await {} });
         }
 
         Ok(())
@@ -48,50 +47,78 @@ impl Socks5Connection {
         }
     }
 
-    async fn process(mut self) {
-        tokio::spawn(async move {
-            self.handshake().await.unwrap();
+    async fn process(&mut self) -> Result<(), Socks5ConnectionError> {
+        let is_hs_succeed = self.handshake().await?;
 
-            let socks5_req = protocol::ConnectRequest::read_from(&mut self.stream)
-                .await
-                .unwrap();
+        if !is_hs_succeed {
+            return Ok(());
+        }
 
-            let (req, res_receiver) =
-                ConnectionRequest::new(socks5_req.command.into(), socks5_req.address.into());
+        let socks5_req = protocol::Request::read_from(&mut self.stream).await?;
 
-            self.request_sender.send(req).await.map_err(|_| ()).unwrap();
+        let (req, res_receiver) =
+            ConnectionRequest::new(socks5_req.command.into(), socks5_req.address.into());
 
-            match res_receiver.await.unwrap() {
-                Ok((mut remote_send, mut remote_recv)) => {
-                    let listener = TcpListener::bind("0.0.0.0:0").await.unwrap();
+        self.request_sender
+            .send(req)
+            .await
+            .map_err(|_| Socks5ConnectionError::ConnectionGuard)?;
 
-                    let addr = listener.local_addr().unwrap();
-                    let tcp_res =
-                        protocol::ConnectResponse::new(protocol::Reply::Succeeded, addr.into());
-                    tcp_res.write_to(&mut self.stream).await.unwrap();
-                    self.stream.shutdown().await.unwrap();
+        match res_receiver
+            .await
+            .map_err(|_| Socks5ConnectionError::ConnectionGuard)?
+        {
+            Ok((mut remote_send, mut remote_recv)) => {
+                let listener = TcpListener::bind("0.0.0.0:0").await?;
+                let addr = listener.local_addr()?;
 
-                    let (stream, _) = listener.accept().await.unwrap();
-                    let (mut local_recv, mut local_send) = stream.into_split();
+                let socks5_res = protocol::Response::new(protocol::Reply::Succeeded, addr.into());
+                socks5_res.write_to(&mut self.stream).await?;
+                self.stream.shutdown().await?;
 
-                    self.forward(
-                        &mut remote_send,
-                        &mut remote_recv,
-                        &mut local_send,
-                        &mut local_recv,
-                    )
-                    .await;
-                }
-                Err(err) => {
-                    let tcp_res = protocol::ConnectResponse::new(
-                        protocol::Reply::GeneralFailure,
-                        SocketAddr::from(([0, 0, 0, 0], 0)).into(),
-                    );
-                    tcp_res.write_to(&mut self.stream).await.unwrap();
-                    self.stream.shutdown().await.unwrap();
-                }
+                let (stream, _) = listener.accept().await?;
+                let (mut local_recv, mut local_send) = stream.into_split();
+
+                self.forward(
+                    &mut remote_send,
+                    &mut remote_recv,
+                    &mut local_send,
+                    &mut local_recv,
+                )
+                .await;
             }
-        });
+            Err(err) => {
+                let reply = match err {
+                    crate::connection::ConnectionError::Tuic(err) => {
+                        protocol::Error::from(err).as_reply()
+                    }
+                    _ => protocol::Reply::GeneralFailure,
+                };
+
+                let socks5_res =
+                    protocol::Response::new(reply, SocketAddr::from(([0, 0, 0, 0], 0)).into());
+                socks5_res.write_to(&mut self.stream).await?;
+                self.stream.shutdown().await?;
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn handshake(&mut self) -> Result<bool, protocol::Error> {
+        let hs_req = protocol::HandshakeRequest::read_from(&mut self.stream).await?;
+        if hs_req
+            .methods
+            .contains(&protocol::handshake::SOCKS5_AUTH_METHOD_NONE)
+        {
+            let hs_res =
+                protocol::HandshakeResponse::new(protocol::handshake::SOCKS5_AUTH_METHOD_NONE);
+            hs_res.write_to(&mut self.stream).await?;
+
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
 
     async fn forward(
@@ -105,22 +132,14 @@ impl Socks5Connection {
         let local_to_remote = tokio::io::copy(local_recv, remote_send);
         let _ = tokio::try_join!(remote_to_local, local_to_remote);
     }
+}
 
-    async fn handshake(&mut self) -> Result<(), ClientError> {
-        let hs_req = protocol::HandshakeRequest::read_from(&mut self.stream)
-            .await
-            .unwrap();
-        if hs_req
-            .methods
-            .contains(&protocol::handshake::SOCKS5_AUTH_METHOD_NONE)
-        {
-            let hs_res =
-                protocol::HandshakeResponse::new(protocol::handshake::SOCKS5_AUTH_METHOD_NONE);
-            hs_res.write_to(&mut self.stream).await.unwrap();
-        } else {
-            return Err(ClientError::Socks5AuthFailed);
-        }
-
-        Ok(())
-    }
+#[derive(Debug, Error)]
+pub enum Socks5ConnectionError {
+    #[error(transparent)]
+    Io(#[from] io::Error),
+    #[error(transparent)]
+    Socks5(#[from] protocol::Error),
+    #[error("Failed to communicate with the connection guard")]
+    ConnectionGuard,
 }

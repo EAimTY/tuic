@@ -24,7 +24,7 @@ impl Reply {
     const REPLY_TTL_EXPIRED: u8 = 0x06;
     const REPLY_COMMAND_NOT_SUPPORTED: u8 = 0x07;
     const REPLY_ADDRESS_TYPE_NOT_SUPPORTED: u8 = 0x08;
-    
+
     #[inline]
     pub fn as_u8(self) -> u8 {
         match self {

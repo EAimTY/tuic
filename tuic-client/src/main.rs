@@ -1,4 +1,4 @@
-use crate::{config::ConfigBuilder, socks5::Socks5Server};
+use crate::{config::ConfigBuilder, connection::ConnectionGuard, socks5::Socks5Server};
 use std::{env, error::Error};
 
 mod certificate;
@@ -7,11 +7,7 @@ mod connection;
 mod error;
 mod socks5;
 
-pub use crate::{
-    config::Config,
-    connection::{Connection, ConnectionGuard},
-    error::ClientError,
-};
+pub use crate::{config::Config, error::ClientError};
 
 #[tokio::main]
 async fn main() {

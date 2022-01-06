@@ -13,9 +13,9 @@ pub const SOCKS5_VERSION: u8 = 0x05;
 pub use self::{
     address::Address,
     command::Command,
-    request::Request,
-    response::Response,
     error::Error,
     handshake::{HandshakeRequest, HandshakeResponse},
     reply::Reply,
+    request::Request,
+    response::Response,
 };
