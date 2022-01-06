@@ -1,9 +1,9 @@
-use crate::{Error, TUIC_PROTOCOL_VERSION};
+use crate::{Error, Reply, TUIC_PROTOCOL_VERSION};
 use bytes::{BufMut, BytesMut};
 use std::io;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
-/// Handshake response
+/// Response
 ///
 /// ```plain
 /// +-----+-----+
@@ -13,20 +13,17 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 /// +-----+-----+
 /// ```
 #[derive(Clone, Debug)]
-pub struct HandshakeResponse {
-    is_succeeded: bool,
+pub struct Response {
+    pub reply: Reply,
 }
 
-impl HandshakeResponse {
-    const HANDSHAKE_SUCCEEDED: u8 = 0;
-    const HANDSHAKE_FAILED: u8 = 1;
-
-    pub fn new(is_succeeded: bool) -> Self {
-        Self { is_succeeded }
+impl Response {
+    pub fn new(reply: Reply) -> Self {
+        Self { reply }
     }
 
     pub fn is_succeeded(&self) -> bool {
-        self.is_succeeded
+        self.reply == Reply::Succeeded
     }
 
     pub async fn read_from<R>(r: &mut R) -> Result<Self, Error>
@@ -39,16 +36,12 @@ impl HandshakeResponse {
         let ver = buf[0];
         let rep = buf[1];
 
-        if ver != TUIC_PROTOCOL_VERSION {
-            return Err(Error::UnsupportedTuicVersion(ver));
-        }
+        let reply = Reply::from_u8(rep);
 
-        match rep {
-            Self::HANDSHAKE_SUCCEEDED => Ok(Self { is_succeeded: true }),
-            Self::HANDSHAKE_FAILED => Ok(Self {
-                is_succeeded: false,
-            }),
-            _ => Err(Error::InvalidHandshakeResponse(rep)),
+        if ver != TUIC_PROTOCOL_VERSION {
+            Err(Error::UnsupportedVersion(ver))
+        } else {
+            Ok(Self { reply })
         }
     }
 
@@ -63,16 +56,10 @@ impl HandshakeResponse {
 
     pub fn write_to_buf<B: BufMut>(&self, buf: &mut B) {
         buf.put_u8(TUIC_PROTOCOL_VERSION);
-
-        if self.is_succeeded {
-            buf.put_u8(Self::HANDSHAKE_SUCCEEDED);
-        } else {
-            buf.put_u8(Self::HANDSHAKE_FAILED);
-        }
+        buf.put_u8(self.reply.as_u8());
     }
 
-    #[inline]
     pub fn serialized_len(&self) -> usize {
-        2
+        1 + 1
     }
 }

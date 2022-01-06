@@ -2,18 +2,15 @@
 
 mod address;
 mod command;
-mod connect;
 mod error;
-mod handshake;
 mod reply;
+mod request;
+mod response;
+pub mod token;
 
-pub const TUIC_PROTOCOL_VERSION: u8 = 1;
+pub const TUIC_PROTOCOL_VERSION: u8 = 0x01;
 
 pub use crate::{
-    address::Address,
-    command::Command,
-    connect::{ConnectRequest, ConnectResponse},
-    error::Error,
-    handshake::{HandshakeRequest, HandshakeResponse},
-    reply::Reply,
+    address::Address, command::Command, error::Error, reply::Reply, request::Request,
+    response::Response,
 };

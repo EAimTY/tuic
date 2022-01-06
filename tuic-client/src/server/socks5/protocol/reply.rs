@@ -21,7 +21,7 @@ pub enum Reply {
     TtlExpired,
     CommandNotSupported,
     AddressTypeNotSupported,
-    OtherSelf(u8),
+    Other(u8),
 }
 
 impl Reply {
@@ -37,7 +37,7 @@ impl Reply {
             Self::TtlExpired => SOCKS5_REPLY_TTL_EXPIRED,
             Self::CommandNotSupported => SOCKS5_REPLY_COMMAND_NOT_SUPPORTED,
             Self::AddressTypeNotSupported => SOCKS5_REPLY_ADDRESS_TYPE_NOT_SUPPORTED,
-            Self::OtherSelf(c) => c,
+            Self::Other(c) => c,
         }
     }
 
@@ -53,7 +53,7 @@ impl Reply {
             SOCKS5_REPLY_TTL_EXPIRED => Self::TtlExpired,
             SOCKS5_REPLY_COMMAND_NOT_SUPPORTED => Self::CommandNotSupported,
             SOCKS5_REPLY_ADDRESS_TYPE_NOT_SUPPORTED => Self::AddressTypeNotSupported,
-            _ => Self::OtherSelf(code),
+            _ => Self::Other(code),
         }
     }
 }
@@ -69,7 +69,7 @@ impl fmt::Display for Reply {
             Self::GeneralFailure => write!(f, "General failure"),
             Self::HostUnreachable => write!(f, "Host unreachable"),
             Self::NetworkUnreachable => write!(f, "Network unreachable"),
-            Self::OtherSelf(u) => write!(f, "Other reply ({})", u),
+            Self::Other(u) => write!(f, "Other reply ({})", u),
             Self::TtlExpired => write!(f, "TTL expired"),
         }
     }

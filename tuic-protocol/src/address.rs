@@ -14,9 +14,9 @@ pub enum Address {
 }
 
 impl Address {
-    const ATYP_IPV4: u8 = 1;
-    const ATYP_URI_AUTHORITY: u8 = 3;
-    const ATYP_IPV6: u8 = 4;
+    const ATYP_IPV4: u8 = 0x01;
+    const ATYP_URI_AUTHORITY: u8 = 0x03;
+    const ATYP_IPV6: u8 = 0x04;
 
     pub async fn read_from<R>(stream: &mut R) -> Result<Self, Error>
     where

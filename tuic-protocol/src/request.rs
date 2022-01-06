@@ -3,29 +3,26 @@ use bytes::{BufMut, BytesMut};
 use std::io;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
-/// CONNECT request
+/// Request
 ///
 /// ```plain
-/// +-----+-----+------+----------+----------+
-/// | VER | CMD | ATYP | DST.ADDR | DST.PORT |
-/// +-----+-----+------+----------+----------+
-/// |  1  |  1  |  1   | Variable |    2     |
-/// +-----+-----+------+----------+----------+
+/// +-----+-----+-----+------+----------+----------+
+/// | VER | CMD | TKN | ATYP | DST.ADDR | DST.PORT |
+/// +-----+-----+-----+------+----------+----------+
+/// |  1  |  1  |  8  |  1   | Variable |    2     |
+/// +-----+-----+-----+------+----------+----------+
 /// ```
-///
-/// ATYP:
-/// - 0x01: IPv4 address
-/// - 0x03: Domain name
-/// - 0x04: IPv6 address
 #[derive(Clone, Debug)]
-pub struct ConnectRequest {
+pub struct Request {
+    pub token: u64,
     pub command: Command,
     pub address: Address,
 }
 
-impl ConnectRequest {
-    pub fn new(cmd: Command, addr: Address) -> Self {
+impl Request {
+    pub fn new(cmd: Command, token: u64, addr: Address) -> Self {
         Self {
+            token,
             command: cmd,
             address: addr,
         }
@@ -35,22 +32,32 @@ impl ConnectRequest {
     where
         R: AsyncRead + Unpin,
     {
-        let mut buf = [0u8; 3];
+        let mut buf = [0u8; 2];
         r.read_exact(&mut buf).await?;
 
         let ver = buf[0];
+        let cmd = buf[1];
+
         if ver != TUIC_PROTOCOL_VERSION {
-            return Err(Error::UnsupportedTuicVersion(ver));
+            return Err(Error::UnsupportedVersion(ver));
         }
 
-        let cmd = buf[1];
         let command = match Command::from_u8(cmd) {
             Some(c) => c,
             None => return Err(Error::UnsupportedCommand(cmd)),
         };
 
+        let mut tkn = [0u8; 8];
+        r.read_exact(&mut tkn).await?;
+        let token = u64::from_le_bytes(tkn);
+
         let address = Address::read_from(r).await?;
-        Ok(Self { command, address })
+
+        Ok(Self {
+            token,
+            command,
+            address,
+        })
     }
 
     pub async fn write_to<W>(&self, w: &mut W) -> io::Result<()>
@@ -64,12 +71,13 @@ impl ConnectRequest {
 
     pub fn write_to_buf<B: BufMut>(&self, buf: &mut B) {
         buf.put_u8(TUIC_PROTOCOL_VERSION);
+        buf.put_u64(self.token);
         buf.put_u8(self.command.as_u8());
         self.address.write_to_buf(buf);
     }
 
     #[inline]
     pub fn serialized_len(&self) -> usize {
-        self.address.serialized_len() + 2
+        1 + 1 + 8 + self.address.serialized_len()
     }
 }
