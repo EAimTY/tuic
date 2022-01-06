@@ -33,7 +33,7 @@ impl HandshakeRequest {
         let nmet = buf[1];
 
         if ver != SOCKS5_VERSION {
-            return Err(Error::UnsupportedSocksVersion(ver));
+            return Err(Error::UnsupportedVersion(ver));
         }
 
         let mut methods = vec![0u8; nmet as usize];

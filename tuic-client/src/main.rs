@@ -1,11 +1,11 @@
-use crate::{config::ConfigBuilder, server::Socks5Server};
+use crate::{config::ConfigBuilder, socks5::Socks5Server};
 use std::{env, error::Error};
 
 mod certificate;
 mod config;
 mod connection;
 mod error;
-mod server;
+mod socks5;
 
 pub use crate::{
     config::Config,

@@ -1,14 +1,5 @@
 use super::protocol as socks5_protocol;
 
-impl From<socks5_protocol::ConnectRequest> for tuic_protocol::ConnectRequest {
-    fn from(req: socks5_protocol::ConnectRequest) -> Self {
-        tuic_protocol::ConnectRequest {
-            address: req.address.into(),
-            command: req.command.into(),
-        }
-    }
-}
-
 impl From<socks5_protocol::Address> for tuic_protocol::Address {
     fn from(addr: socks5_protocol::Address) -> Self {
         match addr {

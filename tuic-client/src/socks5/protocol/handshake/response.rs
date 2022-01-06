@@ -33,7 +33,7 @@ impl HandshakeResponse {
         let met = buf[1];
 
         if ver != SOCKS5_VERSION {
-            Err(Error::UnsupportedSocksVersion(ver))
+            Err(Error::UnsupportedVersion(ver))
         } else {
             Ok(Self { chosen_method: met })
         }

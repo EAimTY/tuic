@@ -1,26 +1,29 @@
-use super::{Address, Error, Reply, SOCKS5_VERSION};
+use super::{Address, Command, Error, SOCKS5_VERSION};
 use bytes::{BufMut, BytesMut};
 use std::io;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
-/// TCP response header
+/// Request
 ///
 /// ```plain
 /// +-----+-----+-------+------+----------+----------+
-/// | VER | REP |  RSV  | ATYP | BND.ADDR | BND.PORT |
+/// | VER | CMD |  RSV  | ATYP | DST.ADDR | DST.PORT |
 /// +-----+-----+-------+------+----------+----------+
 /// |  1  |  1  | X'00' |  1   | Variable |    2     |
 /// +-----+-----+-------+------+----------+----------+
 /// ```
 #[derive(Clone, Debug)]
-pub struct ConnectResponse {
-    pub reply: Reply,
+pub struct Request {
+    pub command: Command,
     pub address: Address,
 }
 
-impl ConnectResponse {
-    pub fn new(reply: Reply, address: Address) -> Self {
-        Self { reply, address }
+impl Request {
+    pub fn new(cmd: Command, addr: Address) -> Self {
+        Self {
+            command: cmd,
+            address: addr,
+        }
     }
 
     pub async fn read_from<R>(r: &mut R) -> Result<Self, Error>
@@ -31,18 +34,18 @@ impl ConnectResponse {
         r.read_exact(&mut buf).await?;
 
         let ver = buf[0];
-        let reply_code = buf[1];
-
         if ver != SOCKS5_VERSION {
-            return Err(Error::UnsupportedSocksVersion(ver));
+            return Err(Error::UnsupportedVersion(ver));
         }
 
-        let address = Address::read_from(r).await?;
+        let cmd = buf[1];
+        let command = match Command::from_u8(cmd) {
+            Some(c) => c,
+            None => return Err(Error::UnsupportedCommand(cmd)),
+        };
 
-        Ok(Self {
-            reply: Reply::from_u8(reply_code),
-            address,
-        })
+        let address = Address::read_from(r).await?;
+        Ok(Self { command, address })
     }
 
     pub async fn write_to<W>(&self, w: &mut W) -> io::Result<()>
@@ -56,7 +59,7 @@ impl ConnectResponse {
 
     pub fn write_to_buf<B: BufMut>(&self, buf: &mut B) {
         buf.put_u8(SOCKS5_VERSION);
-        buf.put_u8(self.reply.as_u8());
+        buf.put_u8(self.command.as_u8());
         buf.put_u8(0x00);
         self.address.write_to_buf(buf);
     }
