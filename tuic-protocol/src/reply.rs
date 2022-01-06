@@ -1,3 +1,5 @@
+use std::fmt;
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Reply {
     Succeeded,
@@ -56,6 +58,24 @@ impl Reply {
             Self::REPLY_ADDRESS_TYPE_NOT_SUPPORTED => Self::AddressTypeNotSupported,
             Self::REPLY_AUTHENTICATION_FAILED => Self::AuthenticationFailed,
             _ => Self::Other(code),
+        }
+    }
+}
+
+impl fmt::Display for Reply {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Succeeded => write!(f, "Succeeded"),
+            Self::GeneralFailure => write!(f, "General failure"),
+            Self::ConnectionNotAllowed => write!(f, "Connection not allowed"),
+            Self::NetworkUnreachable => write!(f, "Network unreachable"),
+            Self::HostUnreachable => write!(f, "Host unreachable"),
+            Self::ConnectionRefused => write!(f, "Connection refused"),
+            Self::TtlExpired => write!(f, "TTL expired"),
+            Self::CommandNotSupported => write!(f, "Command not supported"),
+            Self::AddressTypeNotSupported => write!(f, "Address type not supported"),
+            Self::AuthenticationFailed => write!(f, "Authentication failed"),
+            Self::Other(code) => write!(f, "Other reply ({})", code),
         }
     }
 }
