@@ -1,7 +1,7 @@
-use super::{Address, Error, Reply, SOCKS5_VERSION};
+use super::{Address, Reply, SOCKS5_VERSION};
 use bytes::{BufMut, BytesMut};
 use std::io;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 /// Response
 ///
@@ -21,28 +21,6 @@ pub struct Response {
 impl Response {
     pub fn new(reply: Reply, address: Address) -> Self {
         Self { reply, address }
-    }
-
-    pub async fn read_from<R>(r: &mut R) -> Result<Self, Error>
-    where
-        R: AsyncRead + Unpin,
-    {
-        let mut buf = [0u8; 3];
-        r.read_exact(&mut buf).await?;
-
-        let ver = buf[0];
-        let reply_code = buf[1];
-
-        if ver != SOCKS5_VERSION {
-            return Err(Error::UnsupportedVersion(ver));
-        }
-
-        let address = Address::read_from(r).await?;
-
-        Ok(Self {
-            reply: Reply::from_u8(reply_code),
-            address,
-        })
     }
 
     pub async fn write_to<W>(&self, w: &mut W) -> io::Result<()>

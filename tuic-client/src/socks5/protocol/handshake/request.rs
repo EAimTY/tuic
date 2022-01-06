@@ -1,7 +1,5 @@
 use super::{Error, SOCKS5_VERSION};
-use bytes::{BufMut, BytesMut};
-use std::io;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt};
 
 /// SOCKS5 handshake request packet
 ///
@@ -9,7 +7,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 /// +-----+----------+----------+
 /// | VER | NMETHODS | METHODS  |
 /// +-----+----------+----------+
-/// |  5  |    1     | 1 to 255 |
+/// |  1  |    1     | 1 to 255 |
 /// +-----+----------+----------|
 /// ```
 #[derive(Clone, Debug)]
@@ -18,10 +16,6 @@ pub struct HandshakeRequest {
 }
 
 impl HandshakeRequest {
-    pub fn new(methods: Vec<u8>) -> Self {
-        Self { methods }
-    }
-
     pub async fn read_from<R>(r: &mut R) -> Result<Self, Error>
     where
         R: AsyncRead + Unpin,
@@ -40,24 +34,5 @@ impl HandshakeRequest {
         r.read_exact(&mut methods).await?;
 
         Ok(Self { methods })
-    }
-
-    pub async fn write_to<W>(&self, w: &mut W) -> io::Result<()>
-    where
-        W: AsyncWrite + Unpin,
-    {
-        let mut buf = BytesMut::with_capacity(self.serialized_len());
-        self.write_to_buf(&mut buf);
-        w.write_all(&buf).await
-    }
-
-    pub fn write_to_buf<B: BufMut>(&self, buf: &mut B) {
-        buf.put_u8(SOCKS5_VERSION);
-        buf.put_u8(self.methods.len() as u8);
-        buf.put_slice(&self.methods);
-    }
-
-    pub fn serialized_len(&self) -> usize {
-        2 + self.methods.len()
     }
 }

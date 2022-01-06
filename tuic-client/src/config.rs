@@ -1,4 +1,4 @@
-use getopts::Options;
+use getopts::{Fail, Options};
 use thiserror::Error;
 
 pub struct ConfigBuilder<'cfg> {
@@ -48,7 +48,7 @@ pub struct Config;
 #[derive(Debug, Error)]
 pub enum ConfigError {
     #[error(transparent)]
-    FailedToParseConfig(#[from] getopts::Fail),
+    FailedToParseConfig(#[from] Fail),
     #[error("Unexpected urgument: `{0}`")]
     UnexpectedArgument(String),
     #[error("")]

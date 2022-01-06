@@ -1,5 +1,5 @@
 use crate::{config::ConfigBuilder, connection::ConnectionGuard, socks5::Socks5Server};
-use std::{env, error::Error};
+use std::env;
 
 mod certificate;
 mod config;
@@ -41,9 +41,4 @@ async fn main() {
             return;
         }
     }
-}
-
-pub fn exit(err: Box<dyn Error>) -> ! {
-    eprintln!("{}", err);
-    std::process::exit(1);
 }

@@ -1,7 +1,7 @@
-use super::{Error, SOCKS5_VERSION};
+use super::SOCKS5_VERSION;
 use bytes::{BufMut, BytesMut};
 use std::io;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 /// SOCKS5 handshake response packet
 ///
@@ -20,23 +20,6 @@ pub struct HandshakeResponse {
 impl HandshakeResponse {
     pub fn new(cm: u8) -> Self {
         Self { chosen_method: cm }
-    }
-
-    pub async fn read_from<R>(r: &mut R) -> Result<Self, Error>
-    where
-        R: AsyncRead + Unpin,
-    {
-        let mut buf = [0u8; 2];
-        r.read_exact(&mut buf).await?;
-
-        let ver = buf[0];
-        let met = buf[1];
-
-        if ver != SOCKS5_VERSION {
-            Err(Error::UnsupportedVersion(ver))
-        } else {
-            Ok(Self { chosen_method: met })
-        }
     }
 
     pub async fn write_to<W>(&self, w: &mut W) -> io::Result<()>

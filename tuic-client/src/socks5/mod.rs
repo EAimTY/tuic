@@ -1,21 +1,31 @@
-use crate::{connection::ConnectionRequest, ClientError, Config};
-use std::{io, net::SocketAddr, sync::Arc};
+use self::protocol::{
+    handshake, Error as Socks5Error, HandshakeRequest, HandshakeResponse, Reply, Request, Response,
+};
+use crate::{
+    connection::{ConnectionError as TuicConnectionError, ConnectionRequest},
+    ClientError, Config,
+};
+use quinn::{RecvStream as QuinnRecvStream, SendStream as QuinnSendStream};
+use std::{io::Error as IoError, net::SocketAddr, sync::Arc};
 use thiserror::Error;
 use tokio::{
-    io::AsyncWriteExt,
-    net::{tcp, TcpListener, TcpStream},
-    sync::mpsc,
+    io::{self, AsyncWriteExt},
+    net::{
+        tcp::{ReadHalf as TcpRecvStream, WriteHalf as TcpSendStream},
+        TcpListener, TcpStream,
+    },
+    sync::mpsc::Sender as MpscSender,
 };
 
 mod convert;
 mod protocol;
 
 pub struct Socks5Server {
-    request_sender: Arc<mpsc::Sender<ConnectionRequest>>,
+    request_sender: Arc<MpscSender<ConnectionRequest>>,
 }
 
 impl Socks5Server {
-    pub fn new(_config: &Config, sender: mpsc::Sender<ConnectionRequest>) -> Self {
+    pub fn new(_config: &Config, sender: MpscSender<ConnectionRequest>) -> Self {
         Self {
             request_sender: Arc::new(sender),
         }
@@ -36,11 +46,11 @@ impl Socks5Server {
 
 struct Socks5Connection {
     stream: TcpStream,
-    request_sender: Arc<mpsc::Sender<ConnectionRequest>>,
+    request_sender: Arc<MpscSender<ConnectionRequest>>,
 }
 
 impl Socks5Connection {
-    fn new(stream: TcpStream, request_sender: &Arc<mpsc::Sender<ConnectionRequest>>) -> Self {
+    fn new(stream: TcpStream, request_sender: &Arc<MpscSender<ConnectionRequest>>) -> Self {
         Self {
             stream,
             request_sender: Arc::clone(request_sender),
@@ -54,7 +64,7 @@ impl Socks5Connection {
             return Ok(());
         }
 
-        let socks5_req = protocol::Request::read_from(&mut self.stream).await?;
+        let socks5_req = Request::read_from(&mut self.stream).await?;
 
         let (req, res_receiver) =
             ConnectionRequest::new(socks5_req.command.into(), socks5_req.address.into());
@@ -72,12 +82,12 @@ impl Socks5Connection {
                 let listener = TcpListener::bind("0.0.0.0:0").await?;
                 let addr = listener.local_addr()?;
 
-                let socks5_res = protocol::Response::new(protocol::Reply::Succeeded, addr.into());
+                let socks5_res = Response::new(Reply::Succeeded, addr.into());
                 socks5_res.write_to(&mut self.stream).await?;
                 self.stream.shutdown().await?;
 
-                let (stream, _) = listener.accept().await?;
-                let (mut local_recv, mut local_send) = stream.into_split();
+                let (mut stream, _) = listener.accept().await?;
+                let (mut local_recv, mut local_send) = stream.split();
 
                 self.forward(
                     &mut remote_send,
@@ -89,14 +99,11 @@ impl Socks5Connection {
             }
             Err(err) => {
                 let reply = match err {
-                    crate::connection::ConnectionError::Tuic(err) => {
-                        protocol::Error::from(err).as_reply()
-                    }
-                    _ => protocol::Reply::GeneralFailure,
+                    TuicConnectionError::Tuic(err) => Socks5Error::from(err).as_reply(),
+                    _ => Reply::GeneralFailure,
                 };
 
-                let socks5_res =
-                    protocol::Response::new(reply, SocketAddr::from(([0, 0, 0, 0], 0)).into());
+                let socks5_res = Response::new(reply, SocketAddr::from(([0, 0, 0, 0], 0)).into());
                 socks5_res.write_to(&mut self.stream).await?;
                 self.stream.shutdown().await?;
             }
@@ -105,14 +112,10 @@ impl Socks5Connection {
         Ok(())
     }
 
-    async fn handshake(&mut self) -> Result<bool, protocol::Error> {
-        let hs_req = protocol::HandshakeRequest::read_from(&mut self.stream).await?;
-        if hs_req
-            .methods
-            .contains(&protocol::handshake::SOCKS5_AUTH_METHOD_NONE)
-        {
-            let hs_res =
-                protocol::HandshakeResponse::new(protocol::handshake::SOCKS5_AUTH_METHOD_NONE);
+    async fn handshake(&mut self) -> Result<bool, Socks5Error> {
+        let hs_req = HandshakeRequest::read_from(&mut self.stream).await?;
+        if hs_req.methods.contains(&handshake::SOCKS5_AUTH_METHOD_NONE) {
+            let hs_res = HandshakeResponse::new(handshake::SOCKS5_AUTH_METHOD_NONE);
             hs_res.write_to(&mut self.stream).await?;
 
             Ok(true)
@@ -123,13 +126,13 @@ impl Socks5Connection {
 
     async fn forward(
         &self,
-        remote_send: &mut quinn::SendStream,
-        remote_recv: &mut quinn::RecvStream,
-        local_send: &mut tcp::OwnedWriteHalf,
-        local_recv: &mut tcp::OwnedReadHalf,
+        remote_send: &mut QuinnSendStream,
+        remote_recv: &mut QuinnRecvStream,
+        local_send: &mut TcpSendStream<'_>,
+        local_recv: &mut TcpRecvStream<'_>,
     ) {
-        let remote_to_local = tokio::io::copy(remote_recv, local_send);
-        let local_to_remote = tokio::io::copy(local_recv, remote_send);
+        let remote_to_local = io::copy(remote_recv, local_send);
+        let local_to_remote = io::copy(local_recv, remote_send);
         let _ = tokio::try_join!(remote_to_local, local_to_remote);
     }
 }
@@ -137,9 +140,9 @@ impl Socks5Connection {
 #[derive(Debug, Error)]
 pub enum Socks5ConnectionError {
     #[error(transparent)]
-    Io(#[from] io::Error),
+    Io(#[from] IoError),
     #[error(transparent)]
-    Socks5(#[from] protocol::Error),
+    Socks5(#[from] Socks5Error),
     #[error("Failed to communicate with the connection guard")]
     ConnectionGuard,
 }

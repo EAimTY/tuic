@@ -1,17 +1,24 @@
 use crate::{certificate, ClientError, Config};
-use quinn::{ClientConfig as QuinnClientConfig, Connection, Endpoint, NewConnection};
+use quinn::{
+    ClientConfig as QuinnClientConfig, Connection, ConnectionError as QuinnConnectionError,
+    Endpoint, NewConnection, RecvStream, SendStream, WriteError as QuinnWriteError,
+};
 use rustls::RootCertStore;
-use std::{io, net::ToSocketAddrs};
+use std::{io::Error as IoError, net::ToSocketAddrs};
 use thiserror::Error;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{
+    mpsc::{self, Receiver as MpscReceiver, Sender as MpscSender},
+    oneshot::{self, Receiver as OneshotReceiver, Sender as OneshotSender},
+};
+use tuic_protocol::{Address, Command, Error as TuicError, Reply, Request, Response};
 
 pub struct ConnectionGuard {
     client_endpoint: Endpoint,
-    request_receiver: mpsc::Receiver<ConnectionRequest>,
+    request_receiver: MpscReceiver<ConnectionRequest>,
 }
 
 impl ConnectionGuard {
-    pub fn new(_config: &Config) -> Result<(Self, mpsc::Sender<ConnectionRequest>), ClientError> {
+    pub fn new(_config: &Config) -> Result<(Self, MpscSender<ConnectionRequest>), ClientError> {
         let quinn_client_config = load_client_config()?;
 
         let endpoint = {
@@ -41,24 +48,24 @@ impl ConnectionGuard {
                 let (mut send, mut recv) = match self.get_stream(&mut conn).await {
                     Ok(res) => res,
                     Err(err) => {
-                        conn_sender.send(Err(err));
+                        if let Err(_err) = conn_sender.send(Err(err)) {}
                         continue;
                     }
                 };
 
                 async fn handshake(
-                    req: tuic_protocol::Request,
-                    send: &mut quinn::SendStream,
-                    recv: &mut quinn::RecvStream,
+                    req: Request,
+                    send: &mut SendStream,
+                    recv: &mut RecvStream,
                 ) -> Result<(), ConnectionError> {
                     if let Err(err) = req.write_to(send).await {
                         return Err(err.into());
                     }
 
-                    match tuic_protocol::Response::read_from(recv).await {
+                    match Response::read_from(recv).await {
                         Ok(res) => match res.reply {
-                            tuic_protocol::Reply::Succeeded => Ok(()),
-                            err => Err(tuic_protocol::Error::from(err).into()),
+                            Reply::Succeeded => Ok(()),
+                            err => Err(TuicError::from(err).into()),
                         },
                         Err(err) => Err(err.into()),
                     }
@@ -105,7 +112,7 @@ impl ConnectionGuard {
     async fn get_stream(
         &self,
         conn: &mut Option<Connection>,
-    ) -> Result<(quinn::SendStream, quinn::RecvStream), ConnectionError> {
+    ) -> Result<(SendStream, RecvStream), ConnectionError> {
         if let Some(conn) = conn {
             if let Ok(res) = conn.open_bi().await {
                 return Ok(res);
@@ -129,19 +136,16 @@ impl ConnectionGuard {
     }
 }
 
-pub type ConnectionResponse = Result<(quinn::SendStream, quinn::RecvStream), ConnectionError>;
+pub type ConnectionResponse = Result<(SendStream, RecvStream), ConnectionError>;
 
 pub struct ConnectionRequest {
-    command: tuic_protocol::Command,
-    address: tuic_protocol::Address,
-    response_sender: oneshot::Sender<ConnectionResponse>,
+    command: Command,
+    address: Address,
+    response_sender: OneshotSender<ConnectionResponse>,
 }
 
 impl ConnectionRequest {
-    pub fn new(
-        cmd: tuic_protocol::Command,
-        addr: tuic_protocol::Address,
-    ) -> (Self, oneshot::Receiver<ConnectionResponse>) {
+    pub fn new(cmd: Command, addr: Address) -> (Self, OneshotReceiver<ConnectionResponse>) {
         let (res_sender, res_receiver) = oneshot::channel();
         (
             Self {
@@ -153,8 +157,8 @@ impl ConnectionRequest {
         )
     }
 
-    fn to_tuic_request(self) -> (tuic_protocol::Request, oneshot::Sender<ConnectionResponse>) {
-        let req = tuic_protocol::Request::new(self.command, 0, self.address);
+    fn to_tuic_request(self) -> (Request, OneshotSender<ConnectionResponse>) {
+        let req = Request::new(self.command, 0, self.address);
         (req, self.response_sender)
     }
 }
@@ -173,13 +177,13 @@ fn load_client_config() -> Result<QuinnClientConfig, ClientError> {
 #[derive(Debug, Error)]
 pub enum ConnectionError {
     #[error(transparent)]
-    QuicConnection(#[from] quinn::ConnectionError),
+    QuicConnection(#[from] QuinnConnectionError),
     #[error(transparent)]
-    StreamWrite(#[from] io::Error),
+    StreamWrite(#[from] IoError),
     #[error(transparent)]
-    StreamClose(#[from] quinn::WriteError),
+    StreamClose(#[from] QuinnWriteError),
     #[error(transparent)]
-    Tuic(#[from] tuic_protocol::Error),
+    Tuic(#[from] TuicError),
     #[error("Failed to connect to the server")]
     TooManyRetries,
 }

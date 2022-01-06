@@ -1,5 +1,3 @@
-#![allow(unused)]
-
 mod address;
 mod command;
 mod error;

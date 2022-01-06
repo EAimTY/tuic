@@ -1,7 +1,5 @@
 use super::{Address, Command, Error, SOCKS5_VERSION};
-use bytes::{BufMut, BytesMut};
-use std::io;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt};
 
 /// Request
 ///
@@ -19,13 +17,6 @@ pub struct Request {
 }
 
 impl Request {
-    pub fn new(cmd: Command, addr: Address) -> Self {
-        Self {
-            command: cmd,
-            address: addr,
-        }
-    }
-
     pub async fn read_from<R>(r: &mut R) -> Result<Self, Error>
     where
         R: AsyncRead + Unpin,
@@ -46,26 +37,5 @@ impl Request {
 
         let address = Address::read_from(r).await?;
         Ok(Self { command, address })
-    }
-
-    pub async fn write_to<W>(&self, w: &mut W) -> io::Result<()>
-    where
-        W: AsyncWrite + Unpin,
-    {
-        let mut buf = BytesMut::with_capacity(self.serialized_len());
-        self.write_to_buf(&mut buf);
-        w.write_all(&buf).await
-    }
-
-    pub fn write_to_buf<B: BufMut>(&self, buf: &mut B) {
-        buf.put_u8(SOCKS5_VERSION);
-        buf.put_u8(self.command.as_u8());
-        buf.put_u8(0x00);
-        self.address.write_to_buf(buf);
-    }
-
-    #[inline]
-    pub fn serialized_len(&self) -> usize {
-        self.address.serialized_len() + 3
     }
 }
