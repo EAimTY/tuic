@@ -86,11 +86,7 @@ impl ConnectionGuard {
         server_addr: &str,
         server_port: u16,
     ) -> Result<Connection, ConnectionError> {
-        let mut retries = 0usize;
-
-        while retries <= 5 {
-            retries += 1;
-
+        for _ in 0usize..=5 {
             if let Ok(socket_addrs) = (server_addr, server_port).to_socket_addrs() {
                 for socket_addr in socket_addrs {
                     match self.client_endpoint.connect(socket_addr, server_addr) {

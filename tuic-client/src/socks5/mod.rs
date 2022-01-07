@@ -32,7 +32,7 @@ impl Socks5Server {
     }
 
     pub async fn run(&self) -> Result<(), ClientError> {
-        let socks5_listener = TcpListener::bind("0.0.0.0:8887").await.unwrap();
+        let socks5_listener = TcpListener::bind("0.0.0.0:8887").await?;
 
         while let Ok((stream, _)) = socks5_listener.accept().await {
             let mut socks5_conn = Socks5Connection::new(stream, &self.request_sender);
