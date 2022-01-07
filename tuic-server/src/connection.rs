@@ -4,7 +4,7 @@ use quinn::{
     RecvStream, SendStream,
 };
 use std::{
-    io::Error as IoError,
+    io::{Error as IoError, ErrorKind},
     net::{SocketAddr, ToSocketAddrs},
     vec::IntoIter,
 };
@@ -82,7 +82,10 @@ impl Stream {
                 self.forward(target_stream).await;
             }
             Err(err) => {
-                let reply = err.map_or(Reply::HostUnreachable, |err| err.into());
+                let reply = err.map_or(Reply::HostUnreachable, |err| match err.kind() {
+                    ErrorKind::ConnectionRefused => Reply::ConnectionRefused,
+                    _ => Reply::GeneralFailure,
+                });
                 let res = Response::new(reply);
                 res.write_to(&mut self.send).await?;
             }
