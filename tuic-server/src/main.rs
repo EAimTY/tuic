@@ -3,9 +3,11 @@ use std::env;
 
 mod certificate;
 mod config;
+mod connection;
+mod error;
 mod server;
 
-pub use config::Config;
+pub use crate::{config::Config, connection::Connection, error::ServerError};
 
 #[tokio::main]
 async fn main() {

@@ -1,4 +1,4 @@
-use getopts::Options;
+use getopts::{Fail, Options};
 use thiserror::Error;
 
 pub struct ConfigBuilder<'cfg> {
@@ -9,8 +9,6 @@ pub struct ConfigBuilder<'cfg> {
 impl<'cfg> ConfigBuilder<'cfg> {
     pub fn new() -> Self {
         let mut opts = Options::new();
-        opts.optflag("c", "client", "Run tuicsocks in the client mode");
-        opts.optflag("s", "server", "Run tuicsocks in the server mode");
         opts.optflag("h", "help", "Print this help menu");
 
         Self {
@@ -22,7 +20,7 @@ impl<'cfg> ConfigBuilder<'cfg> {
     pub fn get_usage(&self) -> String {
         self.opts.usage(&format!(
             "Usage: {} [options]",
-            self.program.unwrap_or("tuicsocks")
+            self.program.unwrap_or("tuic-server")
         ))
     }
 
@@ -50,7 +48,7 @@ pub struct Config;
 #[derive(Debug, Error)]
 pub enum ConfigError {
     #[error(transparent)]
-    FailedToParseConfig(#[from] getopts::Fail),
+    FailedToParseConfig(#[from] Fail),
     #[error("Unexpected urgument: `{0}`")]
     UnexpectedArgument(String),
     #[error("")]
