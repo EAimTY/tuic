@@ -1,76 +1,101 @@
+use futures_util::StreamExt;
 use quinn::{
-    Connecting, Connection as QuinnConnection, ConnectionError as QuinnConnectionError,
-    IncomingBiStreams, NewConnection,
+    Connecting, ConnectionError as QuinnConnectionError, IncomingBiStreams, NewConnection,
+    RecvStream, SendStream,
+};
+use std::{
+    io::Error as IoError,
+    net::{SocketAddr, ToSocketAddrs},
+    vec::IntoIter,
 };
 use thiserror::Error;
+use tokio::{io, net::TcpStream};
+use tuic_protocol::{Error as TuicError, Reply, Request, Response};
 
 pub struct Connection {
-    connection: QuinnConnection,
     bi_streams: IncomingBiStreams,
 }
 
 impl Connection {
     pub async fn new(conn: Connecting) -> Result<Self, ConnectionError> {
-        let NewConnection {
-            connection,
-            bi_streams,
-            ..
-        } = conn.await?;
-        Ok(Self {
-            connection,
-            bi_streams,
-        })
+        let NewConnection { bi_streams, .. } = conn.await?;
+        Ok(Self { bi_streams })
     }
 
-    pub async fn process(self) -> Result<(), ConnectionError> {
-        /*let (mut auth_send, mut auth_recv) = conn.bi_streams.next().await.unwrap().unwrap();
-        let _hs_req = tuic_protocol::HandshakeRequest::read_from(&mut auth_recv)
-            .await
-            .unwrap();
-
-        let hs_res = tuic_protocol::HandshakeResponse::new(true);
-        hs_res.write_to(&mut auth_send).await.unwrap();
-        auth_send.finish().await.unwrap();
-
-        while let Some(stream) = conn.bi_streams.next().await {
+    pub async fn process(mut self) {
+        while let Some(stream) = self.bi_streams.next().await {
             match stream {
-                Ok((mut send, mut recv)) => {
+                Ok((send, recv)) => {
                     tokio::spawn(async move {
-                        let connect_req = tuic_protocol::ConnectRequest::read_from(&mut recv)
-                            .await
-                            .unwrap();
-
-                        let addr = connect_req
-                            .address
-                            .to_socket_addrs()
-                            .unwrap()
-                            .next()
-                            .unwrap();
-                        let mut stream = TcpStream::connect(addr).await.unwrap();
-
-                        let connect_res = tuic_protocol::ConnectResponse::new(
-                            tuic_protocol::Reply::Succeeded,
-                        );
-                        connect_res.write_to(&mut send).await.unwrap();
-
-                        let (mut local_recv, mut local_send) = stream.split();
-
-                        let remote_to_local = tokio::io::copy(&mut recv, &mut local_send);
-                        let local_to_remote = tokio::io::copy(&mut local_recv, &mut send);
-                        let _ = tokio::try_join!(remote_to_local, local_to_remote);
+                        let stream = Stream::new(send, recv);
+                        match stream.handle().await {
+                            Ok(()) => {}
+                            Err(_err) => {}
+                        }
                     });
                 }
-                Err(ConnectionError::ApplicationClosed { .. }) => {
-                    println!("Connection closed");
-                    break;
-                }
-                Err(e) => {
-                    println!("Connection error: {:?}", e);
+                Err(QuinnConnectionError::ApplicationClosed { .. }) => break,
+                Err(_err) => {
                     break;
                 }
             }
-        }*/
+        }
+    }
+}
+
+struct Stream {
+    send: SendStream,
+    recv: RecvStream,
+}
+
+impl Stream {
+    fn new(send: SendStream, recv: RecvStream) -> Self {
+        Self { send, recv }
+    }
+
+    async fn handle(mut self) -> Result<(), ConnectionError> {
+        let req = Request::read_from(&mut self.recv).await?;
+
+        // TODO: verify token
+
+        let target_addrs = req.address.to_socket_addrs()?;
+
+        async fn connect_remote(
+            target_addrs: IntoIter<SocketAddr>,
+        ) -> Result<TcpStream, Option<IoError>> {
+            let mut last_err = None;
+
+            for target_addr in target_addrs {
+                match TcpStream::connect(target_addr).await {
+                    Ok(stream) => return Ok(stream),
+                    Err(err) => last_err = Some(err),
+                }
+            }
+
+            Err(last_err)
+        }
+
+        match connect_remote(target_addrs).await {
+            Ok(target_stream) => {
+                let res = Response::new(Reply::Succeeded);
+                res.write_to(&mut self.send).await?;
+                self.forward(target_stream).await;
+            }
+            Err(err) => {
+                let reply = err.map_or(Reply::HostUnreachable, |err| err.into());
+                let res = Response::new(reply);
+                res.write_to(&mut self.send).await?;
+            }
+        }
+
         Ok(())
+    }
+
+    async fn forward(&mut self, mut target_stream: TcpStream) {
+        let (mut target_recv, mut target_send) = target_stream.split();
+        let target_to_tunnel = io::copy(&mut target_recv, &mut self.send);
+        let tunnel_to_target = io::copy(&mut self.recv, &mut target_send);
+        let _ = tokio::try_join!(target_to_tunnel, tunnel_to_target);
     }
 }
 
@@ -78,4 +103,8 @@ impl Connection {
 pub enum ConnectionError {
     #[error(transparent)]
     Quinn(#[from] QuinnConnectionError),
+    #[error(transparent)]
+    Tuic(#[from] TuicError),
+    #[error(transparent)]
+    Io(#[from] IoError),
 }

@@ -1,7 +1,4 @@
-use crate::{
-    certificate,
-    Config, Connection, ServerError,
-};
+use crate::{certificate, Config, Connection, ServerError};
 use futures_util::StreamExt;
 use quinn::{Endpoint, ServerConfig as QuinnServerConfig};
 
@@ -19,7 +16,7 @@ pub async fn start(_config: Config) -> Result<(), ServerError> {
                 }
             };
 
-            if let Err(_err) = conn.process().await {}
+            conn.process().await;
         });
     }
 
