@@ -119,7 +119,7 @@ impl Address {
                 }
             },
             Self::UriAuthorityAddress(addr, port) => {
-                if addr.len() <= u8::MAX as usize {
+                if addr.len() > u8::MAX as usize {
                     panic!("domain name length must be smaller than 256");
                 }
 
