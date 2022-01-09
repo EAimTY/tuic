@@ -18,7 +18,7 @@ async fn main() {
     let config = match cfg_builder.parse(&args) {
         Ok(cfg) => cfg,
         Err(err) => {
-            eprintln!("{}\n\n{}", err, cfg_builder.get_usage());
+            eprintln!("{}", err);
             return;
         }
     };
