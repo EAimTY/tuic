@@ -1,21 +1,27 @@
 use rustls::{Certificate, PrivateKey};
+use std::{fs, io::Error as IoError};
 use thiserror::Error;
 
-const CERT: &[u8] = include_bytes!("../../cert.der");
-const KEY: &[u8] = include_bytes!("../../key.der");
-
-pub fn load_cert() -> Result<Certificate, CertificateError> {
-    let cert = Certificate(CERT.to_vec());
+pub fn load_cert(cert_path: &str) -> Result<Certificate, CertificateError> {
+    let cert = fs::read(cert_path)?;
+    let cert = Certificate(cert);
     Ok(cert)
 }
 
-pub fn load_priv_key() -> Result<PrivateKey, PrivateKeyError> {
-    let priv_key = PrivateKey(KEY.to_vec());
-    Ok(priv_key)
+pub fn load_priv_key(key_path: &str) -> Result<PrivateKey, PrivateKeyError> {
+    let key = fs::read(key_path)?;
+    let key = PrivateKey(key);
+    Ok(key)
 }
 
 #[derive(Debug, Error)]
-pub enum CertificateError {}
+pub enum CertificateError {
+    #[error("Failed to read the certificate file: {0}")]
+    Read(#[from] IoError),
+}
 
 #[derive(Debug, Error)]
-pub enum PrivateKeyError {}
+pub enum PrivateKeyError {
+    #[error("Failed to read the private key file: {0}")]
+    Read(#[from] IoError),
+}

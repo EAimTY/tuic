@@ -24,6 +24,19 @@ impl<'cfg> ConfigBuilder<'cfg> {
             "TOKEN",
         );
 
+        opts.reqopt(
+            "c",
+            "cert",
+            "Set the certificate for QUIC handshake(Required)",
+            "CERTIFICATE",
+        );
+        opts.reqopt(
+            "k",
+            "priv-key",
+            "Set the private key for QUIC handshake(Required)",
+            "PRIVATE_KEY",
+        );
+
         opts.optflag("v", "version", "Print the version");
         opts.optflag("h", "help", "Print this help menu");
 
@@ -74,13 +87,23 @@ impl<'cfg> ConfigBuilder<'cfg> {
             seahash::hash(&token.into_bytes())
         };
 
-        Ok(Config { token, port })
+        let certificate_path = matches.opt_str("c").unwrap();
+        let private_key_path = matches.opt_str("k").unwrap();
+
+        Ok(Config {
+            token,
+            port,
+            certificate_path,
+            private_key_path,
+        })
     }
 }
 
 pub struct Config {
     pub port: u16,
     pub token: u64,
+    pub certificate_path: String,
+    pub private_key_path: String,
 }
 
 #[derive(Debug, Error)]
