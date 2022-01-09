@@ -1,7 +1,14 @@
 [package]
 name = "tuic-protocol"
 version = "0.1.0"
+authors = ["EAimTY <ea.imty@gmail.com>"]
+description = ""
+categories = ["network-programming"]
+keywords = ["tuic", "proxy", "quic"]
 edition = "2021"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/EAimTY/tuic"
 
 [dependencies]
 bytes = "1.1"
