@@ -38,7 +38,6 @@ async fn main() {
         Ok(()) => {}
         Err(err) => {
             eprintln!("{}", err);
-            return;
         }
     }
 }

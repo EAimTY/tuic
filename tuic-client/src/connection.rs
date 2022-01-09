@@ -52,7 +52,7 @@ impl ConnectionGuard {
             let mut conn = None;
 
             while let Some(req) = self.request_receiver.recv().await {
-                let (tuic_req, conn_sender) = req.to_tuic_request(self.token);
+                let (tuic_req, conn_sender) = req.into_tuic_request(self.token);
 
                 let (mut send, mut recv) = match self.get_stream(&mut conn).await {
                     Ok(res) => res,
@@ -97,7 +97,7 @@ impl ConnectionGuard {
                 server_name,
             } => {
                 for _ in 0..=self.number_of_retries {
-                    match self.client_endpoint.connect(*server_addr, &server_name) {
+                    match self.client_endpoint.connect(*server_addr, server_name) {
                         Ok(connecting) => match connecting.await {
                             Ok(NewConnection {
                                 connection: conn, ..
@@ -117,7 +117,7 @@ impl ConnectionGuard {
                         (uri_authority.as_str(), *server_port).to_socket_addrs()
                     {
                         for socket_addr in socket_addrs {
-                            match self.client_endpoint.connect(socket_addr, &uri_authority) {
+                            match self.client_endpoint.connect(socket_addr, uri_authority) {
                                 Ok(connecting) => match connecting.await {
                                     Ok(NewConnection {
                                         connection: conn, ..
@@ -183,7 +183,7 @@ impl ConnectionRequest {
         )
     }
 
-    fn to_tuic_request(self, token: u64) -> (Request, OneshotSender<ConnectionResponse>) {
+    fn into_tuic_request(self, token: u64) -> (Request, OneshotSender<ConnectionResponse>) {
         let req = Request::new(self.command, token, self.address);
         (req, self.response_sender)
     }
