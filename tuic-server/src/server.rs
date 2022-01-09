@@ -1,11 +1,14 @@
+use std::net::SocketAddr;
+
 use crate::{certificate, Config, Connection, ServerError};
 use futures_util::StreamExt;
 use quinn::{Endpoint, ServerConfig as QuinnServerConfig};
 
-pub async fn start(_config: Config) -> Result<(), ServerError> {
+pub async fn start(config: Config) -> Result<(), ServerError> {
     let server_config = load_server_config()?;
 
-    let (_, mut incoming) = Endpoint::server(server_config, ([127, 0, 0, 1], 5000).into())?;
+    let (_, mut incoming) =
+        Endpoint::server(server_config, SocketAddr::from(([0, 0, 0, 0], config.port)))?;
 
     while let Some(conn) = incoming.next().await {
         tokio::spawn(async move {
@@ -16,7 +19,7 @@ pub async fn start(_config: Config) -> Result<(), ServerError> {
                 }
             };
 
-            conn.process().await;
+            conn.process(config.token).await;
         });
     }
 

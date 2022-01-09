@@ -22,13 +22,13 @@ impl Connection {
         Ok(Self { bi_streams })
     }
 
-    pub async fn process(mut self) {
+    pub async fn process(mut self, token: u64) {
         while let Some(stream) = self.bi_streams.next().await {
             match stream {
                 Ok((send, recv)) => {
                     tokio::spawn(async move {
                         let stream = Stream::new(send, recv);
-                        match stream.handle().await {
+                        match stream.handle(token).await {
                             Ok(()) => {}
                             Err(_err) => {}
                         }
@@ -53,7 +53,7 @@ impl Stream {
         Self { send, recv }
     }
 
-    async fn handle(mut self) -> Result<(), ConnectionError> {
+    async fn handle(mut self, token: u64) -> Result<(), ConnectionError> {
         let req = Request::read_from(&mut self.recv).await?;
 
         // TODO: verify token
