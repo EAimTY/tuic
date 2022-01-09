@@ -45,6 +45,13 @@ impl<'cfg> ConfigBuilder<'cfg> {
             "SERVER_IP",
         );
 
+        opts.optopt(
+            "",
+            "number-of-retries",
+            "Set the number of retries for TUIC connection establishment (default: 3)",
+            "NUMBER_OF_RETRIES",
+        );
+
         opts.optflag(
             "",
             "allow-external-connection",
@@ -138,10 +145,20 @@ impl<'cfg> ConfigBuilder<'cfg> {
             }
         };
 
+        let number_of_retries =
+            if let Some(number_of_retries) = matches.opt_str("number-of-retries") {
+                number_of_retries
+                    .parse()
+                    .map_err(|err| ConfigError::ParseNumberOfRetries(err, self.get_usage()))?
+            } else {
+                3
+            };
+
         Ok(Config {
             server_addr,
             token,
             local_addr,
+            number_of_retries,
         })
     }
 }
@@ -150,6 +167,7 @@ pub struct Config {
     pub server_addr: ServerAddr,
     pub token: u64,
     pub local_addr: SocketAddr,
+    pub number_of_retries: usize,
 }
 
 pub enum ServerAddr {
@@ -173,6 +191,8 @@ pub enum ConfigError {
     ParsePort(ParseIntError, String),
     #[error("Failed to parse the server IP: {0}\n\n{1}")]
     ParseServerIp(AddrParseError, String),
+    #[error("Failed to parse the number of retries: {0}\n\n{1}")]
+    ParseNumberOfRetries(ParseIntError, String),
     #[error("{0}")]
     Version(&'static str),
     #[error("{0}")]
