@@ -53,6 +53,13 @@ impl<'cfg> ConfigBuilder<'cfg> {
             "NUMBER_OF_RETRIES",
         );
 
+        opts.optopt(
+            "",
+            "cert",
+            "Set the custom certificate for QUIC handshake. If not set, the platform's native roots will be trusted",
+            "CERTIFICATE",
+        );
+
         opts.optflag(
             "",
             "allow-external-connection",
@@ -154,11 +161,14 @@ impl<'cfg> ConfigBuilder<'cfg> {
             }
         };
 
+        let certificate_path = matches.opt_str("cert");
+
         Ok(Config {
             server_addr,
             token,
             number_of_retries,
             local_addr,
+            certificate_path,
         })
     }
 }
@@ -168,6 +178,7 @@ pub struct Config {
     pub token: u64,
     pub number_of_retries: usize,
     pub local_addr: SocketAddr,
+    pub certificate_path: Option<String>,
 }
 
 #[derive(Clone)]

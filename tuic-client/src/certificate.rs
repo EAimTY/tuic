@@ -1,12 +1,15 @@
 use rustls::Certificate;
+use std::{fs, io::Error as IoError};
 use thiserror::Error;
 
-const CERT: &[u8] = include_bytes!("../../cert.der");
-
-pub fn load_cert() -> Result<Certificate, CertificateError> {
-    let cert = Certificate(CERT.to_vec());
+pub fn load_cert(cert_path: &str) -> Result<Certificate, CertificateError> {
+    let cert = fs::read(cert_path)?;
+    let cert = Certificate(cert);
     Ok(cert)
 }
 
 #[derive(Debug, Error)]
-pub enum CertificateError {}
+pub enum CertificateError {
+    #[error("Failed to read the certificate file: {0}")]
+    Read(#[from] IoError),
+}

@@ -25,7 +25,7 @@ pub struct ConnectionGuard {
 
 impl ConnectionGuard {
     pub fn new(config: &Config) -> Result<(Self, MpscSender<ConnectionRequest>), ClientError> {
-        let quinn_client_config = load_client_config()?;
+        let quinn_client_config = load_client_config(config.certificate_path.as_deref())?;
 
         let endpoint = {
             let mut endpoint = Endpoint::client(SocketAddr::from(([0, 0, 0, 0], 0)))?;
@@ -189,15 +189,19 @@ impl ConnectionRequest {
     }
 }
 
-fn load_client_config() -> Result<QuinnClientConfig, ClientError> {
-    let cert = certificate::load_cert()?;
+fn load_client_config(cert_path: Option<&str>) -> Result<QuinnClientConfig, ClientError> {
+    if let Some(cert_path) = cert_path {
+        let cert = certificate::load_cert(cert_path)?;
 
-    let mut root_cert_store = RootCertStore::empty();
-    root_cert_store.add(&cert).unwrap();
+        let mut root_cert_store = RootCertStore::empty();
+        root_cert_store.add(&cert)?;
 
-    let client_config = QuinnClientConfig::with_root_certificates(root_cert_store);
-
-    Ok(client_config)
+        let client_config = QuinnClientConfig::with_root_certificates(root_cert_store);
+        Ok(client_config)
+    } else {
+        let client_config = QuinnClientConfig::with_native_roots();
+        Ok(client_config)
+    }
 }
 
 #[derive(Debug, Error)]
