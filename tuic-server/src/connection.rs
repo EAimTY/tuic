@@ -56,7 +56,11 @@ impl Stream {
     async fn handle(mut self, token: u64) -> Result<(), ConnectionError> {
         let req = Request::read_from(&mut self.recv).await?;
 
-        // TODO: verify token
+        if req.token != token {
+            let res = Response::new(Reply::AuthenticationFailed);
+            res.write_to(&mut self.send).await?;
+            return Err(ConnectionError::AuthenticationFailed);
+        }
 
         let target_addrs = req.address.to_socket_addrs()?;
 
@@ -106,6 +110,8 @@ impl Stream {
 pub enum ConnectionError {
     #[error(transparent)]
     Quinn(#[from] QuinnConnectionError),
+    #[error("authentication failed")]
+    AuthenticationFailed,
     #[error(transparent)]
     Tuic(#[from] TuicError),
     #[error(transparent)]
