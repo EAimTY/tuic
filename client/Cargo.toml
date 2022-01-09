@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-tuic-protocol = { path="../tuic-protocol" }
+tuic-protocol = { path="../protocol" }
 
 bytes = "1.1"
 futures-util = { version = "0.3", default-features = false }

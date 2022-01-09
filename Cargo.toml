@@ -1,7 +1,7 @@
 [workspace]
 
 members = [
-    "tuic-client",
-    "tuic-server",
-    "tuic-protocol",
+    "client",
+    "server",
+    "protocol",
 ]
