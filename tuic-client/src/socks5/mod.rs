@@ -19,17 +19,19 @@ mod protocol;
 
 pub struct Socks5Server {
     request_sender: Arc<MpscSender<ConnectionRequest>>,
+    local_addr: SocketAddr,
 }
 
 impl Socks5Server {
-    pub fn new(_config: &Config, sender: MpscSender<ConnectionRequest>) -> Self {
+    pub fn new(config: &Config, sender: MpscSender<ConnectionRequest>) -> Self {
         Self {
             request_sender: Arc::new(sender),
+            local_addr: config.local_addr,
         }
     }
 
-    pub async fn run(&self) -> Result<(), ClientError> {
-        let socks5_listener = TcpListener::bind("0.0.0.0:8887").await?;
+    pub async fn run(self) -> Result<(), ClientError> {
+        let socks5_listener = TcpListener::bind(self.local_addr).await?;
 
         while let Ok((stream, _)) = socks5_listener.accept().await {
             let mut socks5_conn = Socks5Connection::new(stream, &self.request_sender);

@@ -131,6 +131,15 @@ impl<'cfg> ConfigBuilder<'cfg> {
             seahash::hash(&token.into_bytes())
         };
 
+        let number_of_retries =
+            if let Some(number_of_retries) = matches.opt_str("number-of-retries") {
+                number_of_retries
+                    .parse()
+                    .map_err(|err| ConfigError::ParseNumberOfRetries(err, self.get_usage()))?
+            } else {
+                3
+            };
+
         let local_addr = {
             let local_port = matches
                 .opt_str("l")
@@ -145,20 +154,11 @@ impl<'cfg> ConfigBuilder<'cfg> {
             }
         };
 
-        let number_of_retries =
-            if let Some(number_of_retries) = matches.opt_str("number-of-retries") {
-                number_of_retries
-                    .parse()
-                    .map_err(|err| ConfigError::ParseNumberOfRetries(err, self.get_usage()))?
-            } else {
-                3
-            };
-
         Ok(Config {
             server_addr,
             token,
-            local_addr,
             number_of_retries,
+            local_addr,
         })
     }
 }
@@ -166,10 +166,11 @@ impl<'cfg> ConfigBuilder<'cfg> {
 pub struct Config {
     pub server_addr: ServerAddr,
     pub token: u64,
-    pub local_addr: SocketAddr,
     pub number_of_retries: usize,
+    pub local_addr: SocketAddr,
 }
 
+#[derive(Clone)]
 pub enum ServerAddr {
     SocketAddr {
         server_addr: SocketAddr,

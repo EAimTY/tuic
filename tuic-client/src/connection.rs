@@ -1,28 +1,34 @@
-use crate::{certificate, ClientError, Config};
+use crate::{certificate, config::ServerAddr, ClientError, Config};
 use quinn::{
     ClientConfig as QuinnClientConfig, Connection, ConnectionError as QuinnConnectionError,
     Endpoint, NewConnection, RecvStream, SendStream, WriteError as QuinnWriteError,
 };
 use rustls::RootCertStore;
-use std::{io::Error as IoError, net::ToSocketAddrs};
+use std::{io::Error as IoError, net::SocketAddr};
 use thiserror::Error;
-use tokio::sync::{
-    mpsc::{self, Receiver as MpscReceiver, Sender as MpscSender},
-    oneshot::{self, Receiver as OneshotReceiver, Sender as OneshotSender},
+use tokio::{
+    net,
+    sync::{
+        mpsc::{self, Receiver as MpscReceiver, Sender as MpscSender},
+        oneshot::{self, Receiver as OneshotReceiver, Sender as OneshotSender},
+    },
 };
 use tuic_protocol::{Address, Command, Error as TuicError, Reply, Request, Response};
 
 pub struct ConnectionGuard {
     client_endpoint: Endpoint,
     request_receiver: MpscReceiver<ConnectionRequest>,
+    server_addr: ServerAddr,
+    token: u64,
+    number_of_retries: usize,
 }
 
 impl ConnectionGuard {
-    pub fn new(_config: &Config) -> Result<(Self, MpscSender<ConnectionRequest>), ClientError> {
+    pub fn new(config: &Config) -> Result<(Self, MpscSender<ConnectionRequest>), ClientError> {
         let quinn_client_config = load_client_config()?;
 
         let endpoint = {
-            let mut endpoint = Endpoint::client(([0, 0, 0, 0], 0).into())?;
+            let mut endpoint = Endpoint::client(SocketAddr::from(([0, 0, 0, 0], 0)))?;
             endpoint.set_default_client_config(quinn_client_config);
             endpoint
         };
@@ -33,6 +39,9 @@ impl ConnectionGuard {
             Self {
                 client_endpoint: endpoint,
                 request_receiver: req_receiver,
+                server_addr: config.server_addr.to_owned(),
+                token: config.token,
+                number_of_retries: config.number_of_retries,
             },
             req_sender,
         ))
@@ -43,7 +52,7 @@ impl ConnectionGuard {
             let mut conn = None;
 
             while let Some(req) = self.request_receiver.recv().await {
-                let (tuic_req, conn_sender) = req.to_tuic_request();
+                let (tuic_req, conn_sender) = req.to_tuic_request(self.token);
 
                 let (mut send, mut recv) = match self.get_stream(&mut conn).await {
                     Ok(res) => res,
@@ -81,15 +90,14 @@ impl ConnectionGuard {
         });
     }
 
-    async fn get_connection(
-        &self,
-        server_addr: &str,
-        server_port: u16,
-    ) -> Result<Connection, ConnectionError> {
-        for _ in 0usize..=5 {
-            if let Ok(socket_addrs) = (server_addr, server_port).to_socket_addrs() {
-                for socket_addr in socket_addrs {
-                    match self.client_endpoint.connect(socket_addr, server_addr) {
+    async fn get_connection(&self) -> Result<Connection, ConnectionError> {
+        match &self.server_addr {
+            ServerAddr::SocketAddr {
+                server_addr,
+                server_name,
+            } => {
+                for _ in 0..=self.number_of_retries {
+                    match self.client_endpoint.connect(*server_addr, &server_name) {
                         Ok(connecting) => match connecting.await {
                             Ok(NewConnection {
                                 connection: conn, ..
@@ -100,9 +108,31 @@ impl ConnectionGuard {
                     }
                 }
             }
+            ServerAddr::UriAuthorityAddr {
+                uri_authority,
+                server_port,
+            } => {
+                for _ in 0..=self.number_of_retries {
+                    if let Ok(socket_addrs) =
+                        net::lookup_host((uri_authority.as_str(), *server_port)).await
+                    {
+                        for socket_addr in socket_addrs {
+                            match self.client_endpoint.connect(socket_addr, &uri_authority) {
+                                Ok(connecting) => match connecting.await {
+                                    Ok(NewConnection {
+                                        connection: conn, ..
+                                    }) => return Ok(conn),
+                                    Err(_err) => {}
+                                },
+                                Err(_err) => {}
+                            }
+                        }
+                    }
+                }
+            }
         }
 
-        Err(ConnectionError::TooManyRetries)
+        Err(ConnectionError::TooManyRetries(self.number_of_retries))
     }
 
     async fn get_stream(
@@ -115,7 +145,7 @@ impl ConnectionGuard {
             }
         }
 
-        let err = match self.get_connection("localhost", 5000).await {
+        let err = match self.get_connection().await {
             Ok(new_conn) => match new_conn.open_bi().await {
                 Ok(res) => {
                     *conn = Some(new_conn);
@@ -153,8 +183,8 @@ impl ConnectionRequest {
         )
     }
 
-    fn to_tuic_request(self) -> (Request, OneshotSender<ConnectionResponse>) {
-        let req = Request::new(self.command, 0, self.address);
+    fn to_tuic_request(self, token: u64) -> (Request, OneshotSender<ConnectionResponse>) {
+        let req = Request::new(self.command, token, self.address);
         (req, self.response_sender)
     }
 }
@@ -180,6 +210,6 @@ pub enum ConnectionError {
     StreamClose(#[from] QuinnWriteError),
     #[error(transparent)]
     Tuic(#[from] TuicError),
-    #[error("Failed to connect to the server")]
-    TooManyRetries,
+    #[error("Failed to connect to the server after {0} retries")]
+    TooManyRetries(usize),
 }

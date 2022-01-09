@@ -23,7 +23,7 @@ async fn main() {
         }
     };
 
-    let (conn_guard, channel_msg_sender) = match ConnectionGuard::new(&config) {
+    let (conn_guard, req_sender) = match ConnectionGuard::new(&config) {
         Ok(res) => res,
         Err(err) => {
             eprintln!("{}", err);
@@ -32,7 +32,7 @@ async fn main() {
     };
     conn_guard.run().await;
 
-    let socks5_server = Socks5Server::new(&config, channel_msg_sender);
+    let socks5_server = Socks5Server::new(&config, req_sender);
 
     match socks5_server.run().await {
         Ok(()) => {}
