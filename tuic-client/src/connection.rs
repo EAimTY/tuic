@@ -4,14 +4,14 @@ use quinn::{
     Endpoint, NewConnection, RecvStream, SendStream, WriteError as QuinnWriteError,
 };
 use rustls::RootCertStore;
-use std::{io::Error as IoError, net::SocketAddr};
+use std::{
+    io::Error as IoError,
+    net::{SocketAddr, ToSocketAddrs},
+};
 use thiserror::Error;
-use tokio::{
-    net,
-    sync::{
-        mpsc::{self, Receiver as MpscReceiver, Sender as MpscSender},
-        oneshot::{self, Receiver as OneshotReceiver, Sender as OneshotSender},
-    },
+use tokio::sync::{
+    mpsc::{self, Receiver as MpscReceiver, Sender as MpscSender},
+    oneshot::{self, Receiver as OneshotReceiver, Sender as OneshotSender},
 };
 use tuic_protocol::{Address, Command, Error as TuicError, Reply, Request, Response};
 
@@ -114,7 +114,7 @@ impl ConnectionGuard {
             } => {
                 for _ in 0..=self.number_of_retries {
                     if let Ok(socket_addrs) =
-                        net::lookup_host((uri_authority.as_str(), *server_port)).await
+                        (uri_authority.as_str(), *server_port).to_socket_addrs()
                     {
                         for socket_addr in socket_addrs {
                             match self.client_endpoint.connect(socket_addr, &uri_authority) {

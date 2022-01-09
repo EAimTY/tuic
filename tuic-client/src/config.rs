@@ -13,6 +13,7 @@ pub struct ConfigBuilder<'cfg> {
 impl<'cfg> ConfigBuilder<'cfg> {
     pub fn new() -> Self {
         let mut opts = Options::new();
+
         opts.reqopt(
             "s",
             "server",
@@ -127,7 +128,6 @@ impl<'cfg> ConfigBuilder<'cfg> {
 
         let token = {
             let token = matches.opt_str("t").unwrap();
-
             seahash::hash(&token.into_bytes())
         };
 
