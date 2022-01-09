@@ -9,8 +9,8 @@ impl From<Socks5Address> for TuicAddress {
     fn from(addr: Socks5Address) -> Self {
         match addr {
             Socks5Address::SocketAddress(addr) => Self::SocketAddress(addr),
-            Socks5Address::UriAuthorityAddress(authority, port) => {
-                Self::UriAuthorityAddress(authority, port)
+            Socks5Address::HostnameAddress(authority, port) => {
+                Self::HostnameAddress(authority, port)
             }
         }
     }

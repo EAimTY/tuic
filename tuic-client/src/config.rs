@@ -126,8 +126,8 @@ impl<'cfg> ConfigBuilder<'cfg> {
                     server_name,
                 }
             } else {
-                ServerAddr::UriAuthorityAddr {
-                    uri_authority: server_name,
+                ServerAddr::HostnameAddr {
+                    hostname: server_name,
                     server_port,
                 }
             }
@@ -187,8 +187,8 @@ pub enum ServerAddr {
         server_addr: SocketAddr,
         server_name: String,
     },
-    UriAuthorityAddr {
-        uri_authority: String,
+    HostnameAddr {
+        hostname: String,
         server_port: u16,
     },
 }

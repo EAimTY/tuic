@@ -10,12 +10,12 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum Address {
     SocketAddress(SocketAddr),
-    UriAuthorityAddress(String, u16),
+    HostnameAddress(String, u16),
 }
 
 impl Address {
     const ATYP_IPV4: u8 = 0x01;
-    const ATYP_URI_AUTHORITY: u8 = 0x03;
+    const ATYP_HOSTNAME: u8 = 0x03;
     const ATYP_IPV6: u8 = 0x04;
 
     pub async fn read_from<R>(stream: &mut R) -> Result<Self, Error>
@@ -65,7 +65,7 @@ impl Address {
                     port,
                 )))
             }
-            Self::ATYP_URI_AUTHORITY => {
+            Self::ATYP_HOSTNAME => {
                 let mut length_buf = [0u8; 1];
                 stream.read_exact(&mut length_buf).await?;
                 let length = length_buf[0] as usize;
@@ -85,7 +85,7 @@ impl Address {
                     Err(..) => return Err(Error::AddressDomainInvalidEncoding),
                 };
 
-                Ok(Self::UriAuthorityAddress(addr, port))
+                Ok(Self::HostnameAddress(addr, port))
             }
             _ => Err(Error::AddressTypeNotSupported(atyp)),
         }
@@ -118,12 +118,12 @@ impl Address {
                     buf.put_u16(addr.port());
                 }
             },
-            Self::UriAuthorityAddress(addr, port) => {
+            Self::HostnameAddress(addr, port) => {
                 if addr.len() <= u8::MAX as usize {
                     panic!("domain name length must be smaller than 256");
                 }
 
-                buf.put_u8(Self::ATYP_URI_AUTHORITY);
+                buf.put_u8(Self::ATYP_HOSTNAME);
                 buf.put_u8(addr.len() as u8);
                 buf.put_slice(addr.as_bytes());
                 buf.put_u16(*port);
@@ -138,7 +138,7 @@ impl Address {
                 SocketAddr::V4(_) => 1 + 4 + 2,
                 SocketAddr::V6(_) => 1 + 8 * 2 + 2,
             },
-            Address::UriAuthorityAddress(addr, _) => 1 + 1 + addr.len() + 2,
+            Address::HostnameAddress(addr, _) => 1 + 1 + addr.len() + 2,
         }
     }
 
@@ -150,14 +150,14 @@ impl Address {
     pub fn port(&self) -> u16 {
         match self {
             Address::SocketAddress(addr) => addr.port(),
-            Address::UriAuthorityAddress(_, port) => *port,
+            Address::HostnameAddress(_, port) => *port,
         }
     }
 
     pub fn host(&self) -> String {
         match self {
             Address::SocketAddress(addr) => addr.ip().to_string(),
-            Address::UriAuthorityAddress(authority, ..) => authority.to_owned(),
+            Address::HostnameAddress(authority, ..) => authority.to_owned(),
         }
     }
 }
@@ -170,7 +170,7 @@ impl From<SocketAddr> for Address {
 
 impl From<(String, u16)> for Address {
     fn from((authority, port): (String, u16)) -> Address {
-        Address::UriAuthorityAddress(authority, port)
+        Address::HostnameAddress(authority, port)
     }
 }
 
@@ -180,7 +180,7 @@ impl ToSocketAddrs for Address {
     fn to_socket_addrs(&self) -> io::Result<vec::IntoIter<SocketAddr>> {
         match self {
             Address::SocketAddress(addr) => Ok(vec![addr.to_owned()].into_iter()),
-            Address::UriAuthorityAddress(authority, port) => {
+            Address::HostnameAddress(authority, port) => {
                 (authority.as_str(), *port).to_socket_addrs()
             }
         }

@@ -108,16 +108,14 @@ impl ConnectionGuard {
                     }
                 }
             }
-            ServerAddr::UriAuthorityAddr {
-                uri_authority,
+            ServerAddr::HostnameAddr {
+                hostname,
                 server_port,
             } => {
                 for _ in 0..=self.number_of_retries {
-                    if let Ok(socket_addrs) =
-                        (uri_authority.as_str(), *server_port).to_socket_addrs()
-                    {
+                    if let Ok(socket_addrs) = (hostname.as_str(), *server_port).to_socket_addrs() {
                         for socket_addr in socket_addrs {
-                            match self.client_endpoint.connect(socket_addr, uri_authority) {
+                            match self.client_endpoint.connect(socket_addr, hostname) {
                                 Ok(connecting) => match connecting.await {
                                     Ok(NewConnection {
                                         connection: conn, ..
