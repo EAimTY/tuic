@@ -36,7 +36,11 @@ impl Socks5Server {
         while let Ok((stream, _)) = socks5_listener.accept().await {
             let mut socks5_conn = Socks5Connection::new(stream, &self.request_sender);
 
-            tokio::spawn(async move { if let Err(_err) = socks5_conn.process().await {} });
+            tokio::spawn(async move {
+                if let Err(err) = socks5_conn.process().await {
+                    log::warn!("{err}");
+                }
+            });
         }
 
         Ok(())
@@ -58,27 +62,29 @@ impl Socks5Connection {
 
     async fn process(&mut self) -> Result<(), Socks5ConnectionError> {
         if !self.handshake().await? {
+            log::warn!("[local]SOCKS5 Authentication failed");
             return Ok(());
         }
 
         let socks5_req = Request::read_from(&mut self.stream).await?;
 
+        log::info!("[local]{:?} {:?}", &socks5_req.command, &socks5_req.address);
+
         let (req, res_receiver) =
             ConnectionRequest::new(socks5_req.command.into(), socks5_req.address.into());
 
-        if let (true, Ok(res)) = (
-            self.request_sender.send(req).await.is_ok(),
-            res_receiver.await,
-        ) {
-            match res {
-                Ok((mut remote_send, mut remote_recv)) => {
+        if self.request_sender.send(req).await.is_ok() {
+            match res_receiver.await {
+                Ok(Ok((mut remote_send, mut remote_recv))) => {
                     let socks5_res =
                         Response::new(Reply::Succeeded, SocketAddr::from(([0, 0, 0, 0], 0)).into());
                     socks5_res.write_to(&mut self.stream).await?;
 
                     self.forward(&mut remote_send, &mut remote_recv).await;
+
+                    return Ok(());
                 }
-                Err(err) => {
+                Ok(Err(err)) => {
                     let reply = match err {
                         TuicConnectionError::Tuic(err) => Socks5Error::from(err).as_reply(),
                         _ => Reply::GeneralFailure,
@@ -87,19 +93,20 @@ impl Socks5Connection {
                     let socks5_res =
                         Response::new(reply, SocketAddr::from(([0, 0, 0, 0], 0)).into());
                     socks5_res.write_to(&mut self.stream).await?;
+
+                    return Ok(());
                 }
+                _ => {}
             }
-
-            Ok(())
-        } else {
-            let socks5_res = Response::new(
-                Reply::GeneralFailure,
-                SocketAddr::from(([0, 0, 0, 0], 0)).into(),
-            );
-            socks5_res.write_to(&mut self.stream).await?;
-
-            Err(Socks5ConnectionError::ConnectionManager)
         }
+
+        let socks5_res = Response::new(
+            Reply::GeneralFailure,
+            SocketAddr::from(([0, 0, 0, 0], 0)).into(),
+        );
+        socks5_res.write_to(&mut self.stream).await?;
+
+        Err(Socks5ConnectionError::ConnectionManager)
     }
 
     async fn handshake(&mut self) -> Result<bool, Socks5Error> {

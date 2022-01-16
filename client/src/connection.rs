@@ -57,7 +57,9 @@ impl ConnectionGuard {
                 let (mut send, mut recv) = match self.get_stream(&mut conn).await {
                     Ok(res) => res,
                     Err(err) => {
-                        if let Err(_err) = conn_sender.send(Err(err)) {}
+                        if conn_sender.send(Err(err)).is_err() {
+                            log::warn!("Failed to communiate with the local socks5 server");
+                        }
                         continue;
                     }
                 };
@@ -74,7 +76,7 @@ impl ConnectionGuard {
                     match Response::read_from(recv).await {
                         Ok(res) => match res.reply {
                             Reply::Succeeded => Ok(()),
-                            err => Err(TuicError::from(err).into()),
+                            reply_err => Err(TuicError::from(reply_err).into()),
                         },
                         Err(err) => Err(err.into()),
                     }
@@ -82,8 +84,18 @@ impl ConnectionGuard {
 
                 tokio::spawn(async move {
                     match handshake(tuic_req, &mut send, &mut recv).await {
-                        Ok(()) => conn_sender.send(Ok((send, recv))),
-                        Err(err) => conn_sender.send(Err(err)),
+                        Ok(()) => {
+                            if conn_sender.send(Ok((send, recv))).is_err() {
+                                log::warn!("Failed to communiate with the local socks5 server");
+                            }
+                        }
+                        Err(err) => {
+                            log::warn!("[tuic]{err}");
+
+                            if conn_sender.send(Err(err)).is_err() {
+                                log::warn!("Failed to communiate with the local socks5 server");
+                            }
+                        }
                     }
                 });
             }
@@ -102,9 +114,9 @@ impl ConnectionGuard {
                             Ok(NewConnection {
                                 connection: conn, ..
                             }) => return Ok(conn),
-                            Err(_err) => {}
+                            Err(err) => log::warn!("[tuic]{err}"),
                         },
-                        Err(_err) => {}
+                        Err(err) => log::warn!("[tuic]{err}"),
                     }
                 }
             }
@@ -120,9 +132,9 @@ impl ConnectionGuard {
                                     Ok(NewConnection {
                                         connection: conn, ..
                                     }) => return Ok(conn),
-                                    Err(_err) => {}
+                                    Err(err) => log::warn!("[tuic]{err}"),
                                 },
-                                Err(_err) => {}
+                                Err(err) => log::warn!("[tuic]{err}"),
                             }
                         }
                     }
