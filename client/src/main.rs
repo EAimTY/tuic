@@ -32,7 +32,7 @@ async fn main() {
     };
     conn_guard.run().await;
 
-    let socks5_server = Socks5Server::new(&config, req_sender);
+    let socks5_server = Socks5Server::new(config, req_sender);
 
     match socks5_server.run().await {
         Ok(()) => {}

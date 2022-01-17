@@ -1,46 +1,33 @@
 use super::{Error, SOCKS5_VERSION};
 
-mod password_request;
-mod password_response;
+pub mod password;
 mod request;
 mod response;
 
-pub use self::{
-    password_request::HandshakePasswordRequest, password_response::HandshakePasswordResponse,
-    request::HandshakeRequest, response::HandshakeResponse,
-};
+pub use self::{request::HandshakeRequest, response::HandshakeResponse};
 
-pub const SOCKS5_SUBNEGOTIATION_VERSION: u8 = 0x01;
-
-#[derive(Clone)]
-pub enum Socks5AuthMethod {
-    NONE,
+pub enum Authentication {
+    None,
     // GSSAPI,
-    PASSWORD { username: String, password: String },
-    UNACCEPTABLE,
-}
-impl Socks5AuthMethod {
-    pub fn as_u8(&self) -> u8 {
-        match self {
-            Socks5AuthMethod::NONE => 0x00,
-            // Socks5AuthMethod::GSSAPI => 0x01,
-            Socks5AuthMethod::PASSWORD { .. } => 0x02,
-            Socks5AuthMethod::UNACCEPTABLE => 0xff,
-        }
-    }
-}
-// TODO: implement GSSAPI
-
-pub enum Socks5PasswordAuthStatus {
-    SUCCESS,
-    FAILED,
+    Password {
+        username: Vec<u8>,
+        password: Vec<u8>,
+    },
+    Unacceptable,
 }
 
-impl Socks5PasswordAuthStatus {
+impl Authentication {
+    const AUTH_METHOD_NONE: u8 = 0x00;
+    // const AUTH_METHOD_GSSAPI: u8 = 0x01;
+    const AUTH_METHOD_PASSWORD: u8 = 0x02;
+    const AUTH_METHOD_UNACCEPTABLE: u8 = 0xff;
+
+    #[inline]
     pub fn as_u8(&self) -> u8 {
         match self {
-            Socks5PasswordAuthStatus::SUCCESS => 0x00,
-            Socks5PasswordAuthStatus::FAILED => 0xff,
+            Self::None => Self::AUTH_METHOD_NONE,
+            Self::Password { .. } => Self::AUTH_METHOD_PASSWORD,
+            Self::Unacceptable => Self::AUTH_METHOD_UNACCEPTABLE,
         }
     }
 }

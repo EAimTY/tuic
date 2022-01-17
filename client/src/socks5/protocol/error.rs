@@ -6,8 +6,10 @@ use thiserror::Error;
 pub enum Error {
     #[error("{0}")]
     Io(#[from] io::Error),
-    #[error("unsupported version {0:#x}")]
-    UnsupportedVersion(u8),
+    #[error("unsupported socks5 version {0:#x}")]
+    UnsupportedSocks5Version(u8),
+    #[error("unsupported socks5 password authentication version {0:#x}")]
+    UnsupportedPasswordAuthenticationVersion(u8),
     #[error("unsupported command {0:#x}")]
     UnsupportedCommand(u8),
     #[error("address type {0:#x} not supported")]
@@ -27,9 +29,9 @@ impl Error {
             },
             Self::UnsupportedCommand(..) => Reply::CommandNotSupported,
             Self::AddressTypeNotSupported(..) => Reply::AddressTypeNotSupported,
-            Self::AddressDomainInvalidEncoding | Self::UnsupportedVersion(..) => {
-                Reply::GeneralFailure
-            }
+            Self::AddressDomainInvalidEncoding
+            | Self::UnsupportedSocks5Version(..)
+            | Self::UnsupportedPasswordAuthenticationVersion(..) => Reply::GeneralFailure,
             Self::Reply(r) => *r,
         }
     }

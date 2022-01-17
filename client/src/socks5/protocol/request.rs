@@ -26,7 +26,7 @@ impl Request {
 
         let ver = buf[0];
         if ver != SOCKS5_VERSION {
-            return Err(Error::UnsupportedVersion(ver));
+            return Err(Error::UnsupportedSocks5Version(ver));
         }
 
         let cmd = buf[1];

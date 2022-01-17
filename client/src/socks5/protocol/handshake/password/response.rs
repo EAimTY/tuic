@@ -1,9 +1,9 @@
-use super::SOCKS5_SUBNEGOTIATION_VERSION;
+use super::SUBNEGOTIATION_VERSION;
 use bytes::{BufMut, BytesMut};
 use std::io;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
-/// SOCKS5 handshake password response packet
+/// SOCKS5 password handshake response packet
 ///
 /// ```plain
 /// +-----+--------+
@@ -14,13 +14,16 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
 /// ```
 
 #[derive(Clone, Debug)]
-pub struct HandshakePasswordResponse {
-    pub status: u8,
+pub struct Response {
+    pub is_succeed: bool,
 }
 
-impl HandshakePasswordResponse {
-    pub fn new(status: u8) -> Self {
-        Self { status }
+impl Response {
+    const STATUS_SUCCEED: u8 = 0x00;
+    const STATUS_FAILED: u8 = 0xff;
+
+    pub fn new(is_succeed: bool) -> Self {
+        Self { is_succeed }
     }
 
     pub async fn write_to<W>(&self, w: &mut W) -> io::Result<()>
@@ -33,8 +36,13 @@ impl HandshakePasswordResponse {
     }
 
     pub fn write_to_buf<B: BufMut>(&self, buf: &mut B) {
-        buf.put_u8(SOCKS5_SUBNEGOTIATION_VERSION);
-        buf.put_u8(self.status);
+        buf.put_u8(SUBNEGOTIATION_VERSION);
+
+        if self.is_succeed {
+            buf.put_u8(Self::STATUS_SUCCEED);
+        } else {
+            buf.put_u8(Self::STATUS_FAILED);
+        }
     }
 
     pub fn serialized_len(&self) -> usize {

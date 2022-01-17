@@ -46,7 +46,7 @@ impl From<TuicError> for Socks5Error {
     fn from(err: TuicError) -> Self {
         match err {
             TuicError::Io(err) => Self::Io(err),
-            TuicError::UnsupportedVersion(version) => Self::UnsupportedVersion(version),
+            TuicError::UnsupportedVersion(_) => Self::Reply(Socks5Reply::GeneralFailure),
             TuicError::UnsupportedCommand(cmd) => Self::UnsupportedCommand(cmd),
             TuicError::AddressTypeNotSupported(addr_type) => {
                 Self::AddressTypeNotSupported(addr_type)

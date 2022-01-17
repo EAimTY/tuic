@@ -41,19 +41,6 @@ impl<'cfg> ConfigBuilder<'cfg> {
 
         opts.optopt(
             "",
-            "username",
-            "Set the username of the local socks5 server",
-            "USERNAME",
-        );
-        opts.optopt(
-            "",
-            "password",
-            "Set the password of the local socks5 server",
-            "PASSWORD",
-        );
-
-        opts.optopt(
-            "",
             "server-ip",
             "Set the server IP, for overwriting the DNS lookup result of the server address",
             "SERVER_IP",
@@ -64,6 +51,19 @@ impl<'cfg> ConfigBuilder<'cfg> {
             "number-of-retries",
             "Set the number of retries for TUIC connection establishment (default: 3)",
             "NUMBER_OF_RETRIES",
+        );
+
+        opts.optopt(
+            "",
+            "socks5-username",
+            "Set the username of the local socks5 server authentication",
+            "SOCKS5_USERNAME",
+        );
+        opts.optopt(
+            "",
+            "socks5-password",
+            "Set the password of the local socks5 server authentication",
+            "SOCKS5_PASSWORD",
         );
 
         opts.optopt(
@@ -176,18 +176,25 @@ impl<'cfg> ConfigBuilder<'cfg> {
 
         let certificate_path = matches.opt_str("cert");
 
-        let username = matches.opt_str("username");
-
-        let password = matches.opt_str("password");
+        let socks5_authentication = match (
+            matches.opt_str("socks5-username"),
+            matches.opt_str("socks5-password"),
+        ) {
+            (None, None) => Socks5AuthenticationConfig::None,
+            (Some(username), Some(password)) => Socks5AuthenticationConfig::Password {
+                username: username.into_bytes(),
+                password: password.into_bytes(),
+            },
+            _ => return Err(ConfigError::Socks5UsernameAndPassword(self.get_usage())),
+        };
 
         Ok(Config {
             server_addr,
             token,
             number_of_retries,
             local_addr,
+            socks5_authentication,
             certificate_path,
-            username,
-            password,
         })
     }
 }
@@ -197,9 +204,8 @@ pub struct Config {
     pub token: u64,
     pub number_of_retries: usize,
     pub local_addr: SocketAddr,
+    pub socks5_authentication: Socks5AuthenticationConfig,
     pub certificate_path: Option<String>,
-    pub username: Option<String>,
-    pub password: Option<String>,
 }
 
 #[derive(Clone)]
@@ -211,6 +217,15 @@ pub enum ServerAddr {
     HostnameAddr {
         hostname: String,
         server_port: u16,
+    },
+}
+
+pub enum Socks5AuthenticationConfig {
+    None,
+    // GSSAPI,
+    Password {
+        username: Vec<u8>,
+        password: Vec<u8>,
     },
 }
 
@@ -226,6 +241,8 @@ pub enum ConfigError {
     ParseServerIp(AddrParseError, String),
     #[error("Failed to parse the number of retries: {0}\n\n{1}")]
     ParseNumberOfRetries(ParseIntError, String),
+    #[error("Socks5 username and password must be set together\n\n{0}")]
+    Socks5UsernameAndPassword(String),
     #[error("{0}")]
     Version(&'static str),
     #[error("{0}")]
