@@ -83,7 +83,7 @@ impl<'cfg> ConfigBuilder<'cfg> {
         opts.optflag(
             "",
             "log-level",
-            "Set the log level. 0 - off, 1 - error, 2 - warn (default), 3 - info, 4 - debug, 5 - trace",
+            "Set the log level. 0 - off, 1 - error, 2 - warn (default), 3 - info, 4 - debug",
         );
 
         opts.optflag("v", "version", "Print the version");
@@ -202,7 +202,6 @@ impl<'cfg> ConfigBuilder<'cfg> {
                 Ok(2) => Some(LogLevel::Warn),
                 Ok(3) => Some(LogLevel::Info),
                 Ok(4) => Some(LogLevel::Debug),
-                Ok(5) => Some(LogLevel::Trace),
                 _ => return Err(ConfigError::ParseLogLevel(level, self.get_usage())),
             }
         } else {

@@ -18,7 +18,7 @@ async fn main() {
     let config = match cfg_builder.parse(&args) {
         Ok(cfg) => cfg,
         Err(err) => {
-            eprintln!("{}", err);
+            eprintln!("{err}");
             return;
         }
     };
@@ -27,7 +27,7 @@ async fn main() {
         match simple_logger::init_with_level(log_level) {
             Ok(()) => {}
             Err(err) => {
-                eprintln!("Failed to initialize logger: {}", err);
+                eprintln!("Failed to initialize logger: {err}");
                 return;
             }
         }
@@ -36,7 +36,7 @@ async fn main() {
     let (conn_guard, req_sender) = match ConnectionGuard::new(&config) {
         Ok(res) => res,
         Err(err) => {
-            eprintln!("{}", err);
+            log::error!("{err}");
             return;
         }
     };
@@ -47,7 +47,7 @@ async fn main() {
     match socks5_server.run().await {
         Ok(()) => {}
         Err(err) => {
-            eprintln!("{}", err);
+            log::error!("{err}");
         }
     }
 }
