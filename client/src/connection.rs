@@ -58,14 +58,14 @@ impl ConnectionGuard {
                     Ok(res) => res,
                     Err(err) => {
                         if conn_sender.send(Err(err)).is_err() {
-                            log::warn!("Failed to communiate with the local socks5 server");
+                            log::debug!("Failed to communiate with the local socks5 server");
                         }
                         continue;
                     }
                 };
 
                 async fn handshake(
-                    req: Request,
+                    req: &Request,
                     send: &mut SendStream,
                     recv: &mut RecvStream,
                 ) -> Result<(), ConnectionError> {
@@ -74,26 +74,32 @@ impl ConnectionGuard {
                     }
 
                     match Response::read_from(recv).await {
-                        Ok(res) => match res.reply {
-                            Reply::Succeeded => Ok(()),
-                            reply_err => Err(TuicError::from(reply_err).into()),
-                        },
-                        Err(err) => Err(err.into()),
+                        Ok(res) => {
+                            log::info!("[tuic]{:?}", &res);
+                            match res.reply {
+                                Reply::Succeeded => Ok(()),
+                                reply_err => Err(TuicError::from(reply_err).into()),
+                            }
+                        }
+                        Err(err) => {
+                            log::debug!("[tuic]{}", err);
+                            Err(err.into())
+                        }
                     }
                 }
 
                 tokio::spawn(async move {
-                    match handshake(tuic_req, &mut send, &mut recv).await {
+                    match handshake(&tuic_req, &mut send, &mut recv).await {
                         Ok(()) => {
                             if conn_sender.send(Ok((send, recv))).is_err() {
-                                log::warn!("Failed to communiate with the local socks5 server");
+                                log::debug!("Failed to communiate with the local socks5 server");
                             }
                         }
                         Err(err) => {
-                            log::warn!("[tuic]{err}");
+                            log::debug!("[tuic]{err}");
 
                             if conn_sender.send(Err(err)).is_err() {
-                                log::warn!("Failed to communiate with the local socks5 server");
+                                log::debug!("Failed to communiate with the local socks5 server");
                             }
                         }
                     }

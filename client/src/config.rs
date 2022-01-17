@@ -1,4 +1,5 @@
 use getopts::{Fail, Options};
+use log::Level as LogLevel;
 use std::{
     net::{AddrParseError, SocketAddr},
     num::ParseIntError,
@@ -77,6 +78,12 @@ impl<'cfg> ConfigBuilder<'cfg> {
             "",
             "allow-external-connection",
             "Allow external connections to the local socks5 server",
+        );
+
+        opts.optflag(
+            "",
+            "log-level",
+            "Set the log level. 0 - off, 1 - error, 2 - warn (default), 3 - info, 4 - debug, 5 - trace",
         );
 
         opts.optflag("v", "version", "Print the version");
@@ -188,6 +195,20 @@ impl<'cfg> ConfigBuilder<'cfg> {
             _ => return Err(ConfigError::Socks5UsernameAndPassword(self.get_usage())),
         };
 
+        let log_level = if let Some(level) = matches.opt_str("log-level") {
+            match level.parse() {
+                Ok(0) => None,
+                Ok(1) => Some(LogLevel::Error),
+                Ok(2) => Some(LogLevel::Warn),
+                Ok(3) => Some(LogLevel::Info),
+                Ok(4) => Some(LogLevel::Debug),
+                Ok(5) => Some(LogLevel::Trace),
+                _ => return Err(ConfigError::ParseLogLevel(level, self.get_usage())),
+            }
+        } else {
+            Some(LogLevel::Warn)
+        };
+
         Ok(Config {
             server_addr,
             token,
@@ -195,6 +216,7 @@ impl<'cfg> ConfigBuilder<'cfg> {
             local_addr,
             socks5_authentication,
             certificate_path,
+            log_level,
         })
     }
 }
@@ -206,6 +228,7 @@ pub struct Config {
     pub local_addr: SocketAddr,
     pub socks5_authentication: Socks5AuthenticationConfig,
     pub certificate_path: Option<String>,
+    pub log_level: Option<LogLevel>,
 }
 
 #[derive(Clone)]
@@ -243,6 +266,8 @@ pub enum ConfigError {
     ParseNumberOfRetries(ParseIntError, String),
     #[error("Socks5 username and password must be set together\n\n{0}")]
     Socks5UsernameAndPassword(String),
+    #[error("Failed to parse the log level: {0}\n\n{1}")]
+    ParseLogLevel(String, String),
     #[error("{0}")]
     Version(&'static str),
     #[error("{0}")]

@@ -49,13 +49,17 @@ impl Socks5Server {
     pub async fn run(self) -> Result<(), ClientError> {
         let socks5_listener = TcpListener::bind(self.local_addr).await?;
 
-        while let Ok((stream, _)) = socks5_listener.accept().await {
-            let mut socks5_conn =
-                Socks5Connection::new(stream, &self.request_sender, &self.authentication);
+        while let Ok((stream, source_addr)) = socks5_listener.accept().await {
+            let mut socks5_conn = Socks5Connection::new(
+                stream,
+                source_addr,
+                &self.request_sender,
+                &self.authentication,
+            );
 
             tokio::spawn(async move {
                 if let Err(err) = socks5_conn.process().await {
-                    log::warn!("{err}");
+                    log::debug!("{err}");
                 }
             });
         }
@@ -66,6 +70,7 @@ impl Socks5Server {
 
 struct Socks5Connection {
     stream: TcpStream,
+    source_addr: SocketAddr,
     request_sender: Arc<MpscSender<ConnectionRequest>>,
     authentication: Arc<Authentication>,
 }
@@ -73,11 +78,13 @@ struct Socks5Connection {
 impl Socks5Connection {
     fn new(
         stream: TcpStream,
+        source_addr: SocketAddr,
         request_sender: &Arc<MpscSender<ConnectionRequest>>,
         authentication: &Arc<Authentication>,
     ) -> Self {
         Self {
             stream,
+            source_addr,
             request_sender: Arc::clone(request_sender),
             authentication: Arc::clone(authentication),
         }
@@ -85,13 +92,13 @@ impl Socks5Connection {
 
     async fn process(&mut self) -> Result<(), Socks5ConnectionError> {
         if !self.handshake().await? {
-            log::warn!("[local]SOCKS5 Authentication failed");
+            log::info!("[local][denied]{}", self.source_addr);
             return Ok(());
         }
 
         let socks5_req = Request::read_from(&mut self.stream).await?;
 
-        log::info!("[local]{:?} {:?}", &socks5_req.command, &socks5_req.address);
+        log::info!("[local][accepted]{} {:?}", self.source_addr, &socks5_req);
 
         let (req, res_receiver) =
             ConnectionRequest::new(socks5_req.command.into(), socks5_req.address.into());

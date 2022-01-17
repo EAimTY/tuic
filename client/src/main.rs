@@ -23,6 +23,16 @@ async fn main() {
         }
     };
 
+    if let Some(log_level) = config.log_level {
+        match simple_logger::init_with_level(log_level) {
+            Ok(()) => {}
+            Err(err) => {
+                eprintln!("Failed to initialize logger: {}", err);
+                return;
+            }
+        }
+    }
+
     let (conn_guard, req_sender) = match ConnectionGuard::new(&config) {
         Ok(res) => res,
         Err(err) => {
