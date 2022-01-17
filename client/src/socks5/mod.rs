@@ -1,5 +1,7 @@
 use self::protocol::{
-    handshake, Error as Socks5Error, HandshakeRequest, HandshakeResponse, Reply, Request, Response,
+    handshake::{self, Socks5AuthMethod, Socks5PasswordAuthStatus},
+    Error as Socks5Error, HandshakePasswordRequest, HandshakePasswordResponse, HandshakeRequest,
+    HandshakeResponse, Reply, Request, Response,
 };
 use crate::{
     connection::{ConnectionError as TuicConnectionError, ConnectionRequest},
@@ -20,6 +22,7 @@ mod protocol;
 pub struct Socks5Server {
     request_sender: Arc<MpscSender<ConnectionRequest>>,
     local_addr: SocketAddr,
+    auth_method: Socks5AuthMethod,
 }
 
 impl Socks5Server {
@@ -27,6 +30,16 @@ impl Socks5Server {
         Self {
             request_sender: Arc::new(sender),
             local_addr: config.local_addr,
+            auth_method: {
+                if config.username.is_some() && config.password.is_some() {
+                    Socks5AuthMethod::PASSWORD {
+                        username: config.username.clone().expect("username is required"),
+                        password: config.password.clone().expect("password is required"),
+                    }
+                } else {
+                    Socks5AuthMethod::NONE
+                }
+            },
         }
     }
 
@@ -34,7 +47,8 @@ impl Socks5Server {
         let socks5_listener = TcpListener::bind(self.local_addr).await?;
 
         while let Ok((stream, _)) = socks5_listener.accept().await {
-            let mut socks5_conn = Socks5Connection::new(stream, &self.request_sender);
+            let mut socks5_conn =
+                Socks5Connection::new(stream, &self.request_sender, self.auth_method.clone());
 
             tokio::spawn(async move {
                 if let Err(err) = socks5_conn.process().await {
@@ -50,13 +64,19 @@ impl Socks5Server {
 struct Socks5Connection {
     stream: TcpStream,
     request_sender: Arc<MpscSender<ConnectionRequest>>,
+    auth_method: Socks5AuthMethod,
 }
 
 impl Socks5Connection {
-    fn new(stream: TcpStream, request_sender: &Arc<MpscSender<ConnectionRequest>>) -> Self {
+    fn new(
+        stream: TcpStream,
+        request_sender: &Arc<MpscSender<ConnectionRequest>>,
+        auth_method: Socks5AuthMethod,
+    ) -> Self {
         Self {
             stream,
             request_sender: Arc::clone(request_sender),
+            auth_method,
         }
     }
 
@@ -110,13 +130,48 @@ impl Socks5Connection {
     }
 
     async fn handshake(&mut self) -> Result<bool, Socks5Error> {
-        let hs_req = HandshakeRequest::read_from(&mut self.stream).await?;
-        if hs_req.methods.contains(&handshake::SOCKS5_AUTH_METHOD_NONE) {
-            let hs_res = HandshakeResponse::new(handshake::SOCKS5_AUTH_METHOD_NONE);
-            hs_res.write_to(&mut self.stream).await?;
-            Ok(true)
-        } else {
-            Ok(false)
+        match &self.auth_method {
+            handshake::Socks5AuthMethod::NONE => {
+                let hs_req = HandshakeRequest::read_from(&mut self.stream).await?;
+                if hs_req.methods.contains(&self.auth_method.as_u8()) {
+                    let hs_res = HandshakeResponse::new(self.auth_method.as_u8());
+                    hs_res.write_to(&mut self.stream).await?;
+                    Ok(true)
+                } else {
+                    let hs_res =
+                        HandshakeResponse::new(handshake::Socks5AuthMethod::UNACCEPTABLE.as_u8());
+                    hs_res.write_to(&mut self.stream).await?;
+                    Ok(false)
+                }
+            }
+            handshake::Socks5AuthMethod::PASSWORD { .. } => {
+                let hs_req = HandshakeRequest::read_from(&mut self.stream).await?;
+                if hs_req.methods.contains(&self.auth_method.as_u8()) {
+                    let hs_res = HandshakeResponse::new(self.auth_method.as_u8());
+                    hs_res.write_to(&mut self.stream).await?;
+                } else {
+                    let hs_res =
+                        HandshakeResponse::new(handshake::Socks5AuthMethod::UNACCEPTABLE.as_u8());
+                    hs_res.write_to(&mut self.stream).await?;
+                    return Ok(false);
+                }
+
+                let hs_password_req = HandshakePasswordRequest::read_from(&mut self.stream).await?;
+                if hs_password_req.authenticated(&self.auth_method) {
+                    let hs_password_res =
+                        HandshakePasswordResponse::new(Socks5PasswordAuthStatus::SUCCESS.as_u8());
+                    hs_password_res.write_to(&mut self.stream).await?;
+                    Ok(true)
+                } else {
+                    let hs_password_res =
+                        HandshakePasswordResponse::new(Socks5PasswordAuthStatus::FAILED.as_u8());
+                    hs_password_res.write_to(&mut self.stream).await?;
+                    Ok(false)
+                }
+            }
+            // handshake::Socks5AuthMethod::GSSAPI => {}
+            // TODO: implement GSSAPI
+            _ => Ok(false),
         }
     }
 

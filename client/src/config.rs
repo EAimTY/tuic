@@ -41,6 +41,19 @@ impl<'cfg> ConfigBuilder<'cfg> {
 
         opts.optopt(
             "",
+            "username",
+            "Set the username of the local socks5 server",
+            "USERNAME",
+        );
+        opts.optopt(
+            "",
+            "password",
+            "Set the password of the local socks5 server",
+            "PASSWORD",
+        );
+
+        opts.optopt(
+            "",
             "server-ip",
             "Set the server IP, for overwriting the DNS lookup result of the server address",
             "SERVER_IP",
@@ -163,12 +176,18 @@ impl<'cfg> ConfigBuilder<'cfg> {
 
         let certificate_path = matches.opt_str("cert");
 
+        let username = matches.opt_str("username");
+
+        let password = matches.opt_str("password");
+
         Ok(Config {
             server_addr,
             token,
             number_of_retries,
             local_addr,
             certificate_path,
+            username,
+            password,
         })
     }
 }
@@ -179,6 +198,8 @@ pub struct Config {
     pub number_of_retries: usize,
     pub local_addr: SocketAddr,
     pub certificate_path: Option<String>,
+    pub username: Option<String>,
+    pub password: Option<String>,
 }
 
 #[derive(Clone)]
