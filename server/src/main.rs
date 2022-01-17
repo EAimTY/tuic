@@ -18,13 +18,23 @@ async fn main() {
     let config = match cfg_builder.parse(&args) {
         Ok(cfg) => cfg,
         Err(err) => {
-            eprintln!("{}", err);
+            eprintln!("{err}");
             return;
         }
     };
 
+    if let Some(log_level) = config.log_level {
+        match simple_logger::init_with_level(log_level) {
+            Ok(()) => {}
+            Err(err) => {
+                eprintln!("Failed to initialize logger: {err}");
+                return;
+            }
+        }
+    }
+
     match server::start(config).await {
         Ok(()) => {}
-        Err(err) => eprintln!("{}", err),
+        Err(err) => log::error!("{err}"),
     }
 }

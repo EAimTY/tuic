@@ -1,4 +1,5 @@
 use getopts::{Fail, Options};
+use log::Level as LogLevel;
 use std::num::ParseIntError;
 use thiserror::Error;
 
@@ -35,6 +36,12 @@ impl<'cfg> ConfigBuilder<'cfg> {
             "priv-key",
             "Set the private key for QUIC handshake(Required)",
             "PRIVATE_KEY",
+        );
+
+        opts.optflag(
+            "",
+            "log-level",
+            "Set the log level. 0 - off, 1 - error, 2 - warn (default), 3 - info, 4 - debug",
         );
 
         opts.optflag("v", "version", "Print the version");
@@ -90,11 +97,25 @@ impl<'cfg> ConfigBuilder<'cfg> {
         let certificate_path = matches.opt_str("c").unwrap();
         let private_key_path = matches.opt_str("k").unwrap();
 
+        let log_level = if let Some(level) = matches.opt_str("log-level") {
+            match level.parse() {
+                Ok(0) => None,
+                Ok(1) => Some(LogLevel::Error),
+                Ok(2) => Some(LogLevel::Warn),
+                Ok(3) => Some(LogLevel::Info),
+                Ok(4) => Some(LogLevel::Debug),
+                _ => return Err(ConfigError::ParseLogLevel(level, self.get_usage())),
+            }
+        } else {
+            Some(LogLevel::Warn)
+        };
+
         Ok(Config {
             token,
             port,
             certificate_path,
             private_key_path,
+            log_level,
         })
     }
 }
@@ -104,6 +125,7 @@ pub struct Config {
     pub token: u64,
     pub certificate_path: String,
     pub private_key_path: String,
+    pub log_level: Option<LogLevel>,
 }
 
 #[derive(Debug, Error)]
@@ -114,6 +136,8 @@ pub enum ConfigError {
     UnexpectedArgument(String, String),
     #[error("Failed to parse the port: {0}\n\n{1}")]
     ParsePort(ParseIntError, String),
+    #[error("Failed to parse the log level: {0}\n\n{1}")]
+    ParseLogLevel(String, String),
     #[error("{0}")]
     Version(&'static str),
     #[error("{0}")]
