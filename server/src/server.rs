@@ -11,14 +11,10 @@ pub async fn start(config: Config) -> Result<(), ServerError> {
 
     while let Some(conn) = incoming.next().await {
         tokio::spawn(async move {
-            let conn = match Connection::new(conn).await {
-                Ok(conn) => conn,
-                Err(_err) => {
-                    return;
-                }
-            };
-
-            conn.process(config.token).await;
+            match Connection::new(conn).await {
+                Ok(conn) => conn.process(config.token).await,
+                Err(err) => log::debug!("{err}"),
+            }
         });
     }
 

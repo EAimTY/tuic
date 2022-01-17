@@ -16,6 +16,7 @@ tuic-protocol = { path="../protocol" }
 bytes = "1.1"
 futures-util = { version = "0.3", default-features = false }
 getopts = "0.2"
+log = "0.4"
 quinn = "0.8"
 rustls = { version = "0.20", features = ["quic"], default-features = false }
 seahash = { version = "4.1", features = ["use_std"] }

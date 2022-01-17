@@ -6,20 +6,29 @@ use quinn::{
 use std::{
     io::{Error as IoError, ErrorKind},
     net::{SocketAddr, ToSocketAddrs},
-    vec::IntoIter,
 };
 use thiserror::Error;
 use tokio::{io, net::TcpStream};
-use tuic_protocol::{Error as TuicError, Reply, Request, Response};
+use tuic_protocol::{Address, Error as TuicError, Reply, Request, Response};
 
 pub struct Connection {
     bi_streams: IncomingBiStreams,
+    remote_addr: SocketAddr,
 }
 
 impl Connection {
     pub async fn new(conn: Connecting) -> Result<Self, ConnectionError> {
-        let NewConnection { bi_streams, .. } = conn.await?;
-        Ok(Self { bi_streams })
+        let NewConnection {
+            bi_streams,
+            connection,
+            ..
+        } = conn.await?;
+        let remote_addr = connection.remote_address();
+
+        Ok(Self {
+            bi_streams,
+            remote_addr,
+        })
     }
 
     pub async fn process(mut self, token: u64) {
@@ -27,15 +36,16 @@ impl Connection {
             match stream {
                 Ok((send, recv)) => {
                     tokio::spawn(async move {
-                        let stream = Stream::new(send, recv);
+                        let stream = Stream::new(send, recv, self.remote_addr);
                         match stream.handle(token).await {
                             Ok(()) => {}
-                            Err(_err) => {}
+                            Err(err) => log::debug!("{err}"),
                         }
                     });
                 }
                 Err(QuinnConnectionError::ApplicationClosed { .. }) => break,
-                Err(_err) => {
+                Err(err) => {
+                    log::debug!("{err}");
                     break;
                 }
             }
@@ -46,27 +56,35 @@ impl Connection {
 struct Stream {
     send: SendStream,
     recv: RecvStream,
+    remote_addr: SocketAddr,
 }
 
 impl Stream {
-    fn new(send: SendStream, recv: RecvStream) -> Self {
-        Self { send, recv }
+    fn new(send: SendStream, recv: RecvStream, remote_addr: SocketAddr) -> Self {
+        Self {
+            send,
+            recv,
+            remote_addr,
+        }
     }
 
     async fn handle(mut self, token: u64) -> Result<(), ConnectionError> {
         let req = Request::read_from(&mut self.recv).await?;
 
         if req.token != token {
+            log::info!("[denied] {} {:?}", self.remote_addr, &req);
+
             let res = Response::new(Reply::AuthenticationFailed);
             res.write_to(&mut self.send).await?;
-            return Err(ConnectionError::AuthenticationFailed);
+
+            return Ok(());
         }
 
-        let target_addrs = req.address.to_socket_addrs()?;
+        log::info!("[accepted] {} {:?}", self.remote_addr, &req);
 
-        async fn connect_remote(
-            target_addrs: IntoIter<SocketAddr>,
-        ) -> Result<TcpStream, Option<IoError>> {
+        async fn connect_remote(addr: &Address) -> Result<TcpStream, Option<IoError>> {
+            let target_addrs = addr.to_socket_addrs()?;
+
             let mut last_err = None;
 
             for target_addr in target_addrs {
@@ -79,7 +97,7 @@ impl Stream {
             Err(last_err)
         }
 
-        match connect_remote(target_addrs).await {
+        match connect_remote(&req.address).await {
             Ok(target_stream) => {
                 let res = Response::new(Reply::Succeeded);
                 res.write_to(&mut self.send).await?;
@@ -110,8 +128,6 @@ impl Stream {
 pub enum ConnectionError {
     #[error(transparent)]
     Quinn(#[from] QuinnConnectionError),
-    #[error("authentication failed")]
-    AuthenticationFailed,
     #[error(transparent)]
     Tuic(#[from] TuicError),
     #[error(transparent)]
