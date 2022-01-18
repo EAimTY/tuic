@@ -20,6 +20,7 @@ impl From<Socks5Command> for TuicCommand {
     fn from(cmd: Socks5Command) -> Self {
         match cmd {
             Socks5Command::Connect => Self::Connect,
+            Socks5Command::Associate => Self::Associate,
         }
     }
 }
