@@ -2,6 +2,7 @@ mod address;
 mod command;
 mod error;
 pub mod handshake;
+mod header;
 mod reply;
 mod request;
 mod response;
