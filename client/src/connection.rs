@@ -54,7 +54,7 @@ impl ConnectionGuard {
             while let Some(req) = self.request_receiver.recv().await {
                 let (tuic_req, conn_sender) = req.into_tuic_request(self.token);
 
-                let (mut send, mut recv) = match self.get_stream(&mut conn).await {
+                let (send, recv) = match self.get_stream(&mut conn).await {
                     Ok(res) => res,
                     Err(err) => {
                         if conn_sender.send(Err(err)).is_err() {
@@ -64,32 +64,22 @@ impl ConnectionGuard {
                     }
                 };
 
-                async fn handshake(
-                    req: &Request,
-                    send: &mut SendStream,
-                    recv: &mut RecvStream,
-                ) -> Result<(), ConnectionError> {
-                    if let Err(err) = req.write_to(send).await {
-                        return Err(err.into());
-                    }
+                self.process(tuic_req, send, recv, conn_sender).await;
+            }
+        });
+    }
 
-                    match Response::read_from(recv).await {
-                        Ok(res) => {
-                            log::info!("[tuic]{:?}", &res);
-                            match res.reply {
-                                Reply::Succeeded => Ok(()),
-                                reply_err => Err(TuicError::from(reply_err).into()),
-                            }
-                        }
-                        Err(err) => {
-                            log::debug!("[tuic]{}", err);
-                            Err(err.into())
-                        }
-                    }
-                }
-
+    async fn process(
+        &self,
+        req: Request,
+        mut send: SendStream,
+        mut recv: RecvStream,
+        conn_sender: OneshotSender<ConnectionResponse>,
+    ) {
+        match req.command {
+            Command::Connect => {
                 tokio::spawn(async move {
-                    match handshake(&tuic_req, &mut send, &mut recv).await {
+                    match handshake(&req, &mut send, &mut recv).await {
                         Ok(()) => {
                             if conn_sender.send(Ok((send, recv))).is_err() {
                                 log::debug!("Failed to communiate with the local socks5 server");
@@ -103,9 +93,38 @@ impl ConnectionGuard {
                             }
                         }
                     }
+
+                    async fn handshake(
+                        req: &Request,
+                        send: &mut SendStream,
+                        recv: &mut RecvStream,
+                    ) -> Result<(), ConnectionError> {
+                        if let Err(err) = req.write_to(send).await {
+                            return Err(err.into());
+                        }
+
+                        match Response::read_from(recv).await {
+                            Ok(res) => {
+                                log::info!("[tuic]{:?}", &res);
+                                match res.reply {
+                                    Reply::Succeeded => Ok(()),
+                                    reply_err => Err(TuicError::from(reply_err).into()),
+                                }
+                            }
+                            Err(err) => {
+                                log::debug!("[tuic]{}", err);
+                                Err(err.into())
+                            }
+                        }
+                    }
                 });
             }
-        });
+            Command::Associate => {
+                if conn_sender.send(Ok((send, recv))).is_err() {
+                    log::debug!("Failed to communiate with the local socks5 server");
+                }
+            }
+        }
     }
 
     async fn get_connection(&self) -> Result<Connection, ConnectionError> {
