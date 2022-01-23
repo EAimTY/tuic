@@ -25,7 +25,7 @@ mod convert;
 mod protocol;
 
 pub struct Socks5Server {
-    request_sender: Arc<MpscSender<ConnectionRequest>>,
+    request_sender: MpscSender<ConnectionRequest>,
     local_addr: SocketAddr,
     authentication: Arc<Authentication>,
 }
@@ -40,7 +40,7 @@ impl Socks5Server {
         };
 
         Self {
-            request_sender: Arc::new(sender),
+            request_sender: sender,
             local_addr: config.local_addr,
             authentication: Arc::new(auth),
         }
@@ -71,7 +71,7 @@ impl Socks5Server {
 struct Socks5Connection {
     stream: TcpStream,
     source_addr: SocketAddr,
-    request_sender: Arc<MpscSender<ConnectionRequest>>,
+    request_sender: MpscSender<ConnectionRequest>,
     authentication: Arc<Authentication>,
 }
 
@@ -79,14 +79,14 @@ impl Socks5Connection {
     fn new(
         stream: TcpStream,
         source_addr: SocketAddr,
-        request_sender: &Arc<MpscSender<ConnectionRequest>>,
+        request_sender: &MpscSender<ConnectionRequest>,
         authentication: &Arc<Authentication>,
     ) -> Self {
         Self {
             stream,
             source_addr,
-            request_sender: Arc::clone(request_sender),
-            authentication: Arc::clone(authentication),
+            request_sender: request_sender.clone(),
+            authentication: authentication.clone(),
         }
     }
 
