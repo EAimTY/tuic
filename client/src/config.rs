@@ -126,11 +126,9 @@ impl<'cfg> ConfigBuilder<'cfg> {
         }
 
         let server_addr = {
-            let server_name = matches.opt_str("s").unwrap();
+            let server_name = unsafe { matches.opt_str("s").unwrap_unchecked() };
 
-            let server_port = matches
-                .opt_str("p")
-                .unwrap()
+            let server_port = unsafe { matches.opt_str("p").unwrap_unchecked() }
                 .parse()
                 .map_err(|err| ConfigError::ParsePort(err, self.get_usage()))?;
 
@@ -154,7 +152,7 @@ impl<'cfg> ConfigBuilder<'cfg> {
         };
 
         let token = {
-            let token = matches.opt_str("t").unwrap();
+            let token = unsafe { matches.opt_str("t").unwrap_unchecked() };
             seahash::hash(&token.into_bytes())
         };
 
@@ -168,9 +166,7 @@ impl<'cfg> ConfigBuilder<'cfg> {
             };
 
         let local_addr = {
-            let local_port = matches
-                .opt_str("l")
-                .unwrap()
+            let local_port = unsafe { matches.opt_str("l").unwrap_unchecked() }
                 .parse()
                 .map_err(|err| ConfigError::ParsePort(err, self.get_usage()))?;
 
