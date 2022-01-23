@@ -2,10 +2,10 @@ mod address;
 mod command;
 mod error;
 pub mod handshake;
-mod header;
 mod reply;
 mod request;
 mod response;
+mod udp;
 
 pub const SOCKS5_VERSION: u8 = 0x05;
 

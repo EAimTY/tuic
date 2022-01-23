@@ -105,12 +105,15 @@ impl Socks5Connection {
 
         if self.request_sender.send(req).await.is_ok() {
             match res_receiver.await {
-                Ok(Ok((mut remote_send, mut remote_recv))) => {
-                    let socks5_res =
-                        Response::new(Reply::Succeeded, SocketAddr::from(([0, 0, 0, 0], 0)).into());
-                    socks5_res.write_to(&mut self.stream).await?;
-
-                    self.forward(&mut remote_send, &mut remote_recv).await;
+                Ok(Ok((remote_send, remote_recv))) => {
+                    match socks5_req.command {
+                        protocol::Command::Connect => {
+                            self.handle_connect(remote_send, remote_recv).await?
+                        }
+                        protocol::Command::Associate => {
+                            self.handle_associate(remote_send, remote_recv).await?
+                        }
+                    }
 
                     return Ok(());
                 }
@@ -175,15 +178,29 @@ impl Socks5Connection {
         }
     }
 
-    async fn forward(
+    async fn handle_connect(
         &mut self,
-        remote_send: &mut QuinnSendStream,
-        remote_recv: &mut QuinnRecvStream,
-    ) {
+        mut remote_send: QuinnSendStream,
+        mut remote_recv: QuinnRecvStream,
+    ) -> Result<(), Socks5Error> {
+        let socks5_res =
+            Response::new(Reply::Succeeded, SocketAddr::from(([0, 0, 0, 0], 0)).into());
+        socks5_res.write_to(&mut self.stream).await?;
+
         let (mut local_recv, mut local_send) = self.stream.split();
-        let remote_to_local = io::copy(remote_recv, &mut local_send);
-        let local_to_remote = io::copy(&mut local_recv, remote_send);
+        let remote_to_local = io::copy(&mut remote_recv, &mut local_send);
+        let local_to_remote = io::copy(&mut local_recv, &mut remote_send);
         let _ = tokio::try_join!(remote_to_local, local_to_remote);
+
+        Ok(())
+    }
+
+    async fn handle_associate(
+        &mut self,
+        mut _remote_send: QuinnSendStream,
+        mut _remote_recv: QuinnRecvStream,
+    ) -> Result<(), Socks5Error> {
+        todo!()
     }
 }
 
