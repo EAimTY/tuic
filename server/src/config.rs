@@ -83,19 +83,17 @@ impl<'cfg> ConfigBuilder<'cfg> {
             return Err(ConfigError::Help(self.get_usage()));
         }
 
-        let port = matches
-            .opt_str("p")
-            .unwrap()
+        let port = unsafe { matches.opt_str("p").unwrap_unchecked() }
             .parse()
             .map_err(|err| ConfigError::ParsePort(err, self.get_usage()))?;
 
         let token = {
-            let token = matches.opt_str("t").unwrap();
+            let token = unsafe { matches.opt_str("t").unwrap_unchecked() };
             seahash::hash(&token.into_bytes())
         };
 
-        let certificate_path = matches.opt_str("c").unwrap();
-        let private_key_path = matches.opt_str("k").unwrap();
+        let certificate_path = unsafe { matches.opt_str("c").unwrap_unchecked() };
+        let private_key_path = unsafe { matches.opt_str("k").unwrap_unchecked() };
 
         let log_level = if let Some(level) = matches.opt_str("log-level") {
             match level.parse() {
