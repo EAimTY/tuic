@@ -5,7 +5,7 @@ use self::protocol::{
         },
         Authentication,
     },
-    Error as Socks5Error, HandshakeRequest, HandshakeResponse, Reply, Request, Response,
+    Address, Error as Socks5Error, HandshakeRequest, HandshakeResponse, Reply, Request, Response,
 };
 use crate::{
     config::Socks5AuthenticationConfig,
@@ -17,7 +17,7 @@ use std::{io::Error as IoError, net::SocketAddr, sync::Arc};
 use thiserror::Error;
 use tokio::{
     io,
-    net::{TcpListener, TcpStream},
+    net::{TcpListener, TcpStream, UdpSocket},
     sync::mpsc::Sender as MpscSender,
 };
 
@@ -100,46 +100,51 @@ impl Socks5Connection {
 
         log::info!("[local][accepted]{} {:?}", self.source_addr, &socks5_req);
 
-        let (req, res_receiver) =
-            ConnectionRequest::new(socks5_req.command.into(), socks5_req.address.into());
+        let err = match socks5_req.command {
+            protocol::Command::Connect => {
+                let (req, res_receiver) = ConnectionRequest::new_connect(socks5_req.address.into());
 
-        if self.request_sender.send(req).await.is_ok() {
-            match res_receiver.await {
-                Ok(Ok((remote_send, remote_recv))) => {
-                    match socks5_req.command {
-                        protocol::Command::Connect => {
-                            self.handle_connect(remote_send, remote_recv).await?
-                        }
-                        protocol::Command::Associate => {
-                            self.handle_associate(remote_send, remote_recv).await?
-                        }
+                unsafe {
+                    self.request_sender.send(req).await.unwrap_unchecked();
+                }
+
+                match unsafe { res_receiver.await.unwrap_unchecked() } {
+                    Ok((remote_send, remote_recv)) => {
+                        self.handle_connect(remote_send, remote_recv).await?;
+
+                        return Ok(());
                     }
-
-                    return Ok(());
+                    Err(err) => err,
                 }
-                Ok(Err(err)) => {
-                    let reply = match err {
-                        TuicConnectionError::Tuic(err) => Socks5Error::from(err).as_reply(),
-                        _ => Reply::GeneralFailure,
-                    };
-
-                    let socks5_res =
-                        Response::new(reply, SocketAddr::from(([0, 0, 0, 0], 0)).into());
-                    socks5_res.write_to(&mut self.stream).await?;
-
-                    return Ok(());
-                }
-                _ => {}
             }
-        }
+            protocol::Command::Associate => {
+                let (req, res_receiver) = ConnectionRequest::new_associate();
 
-        let socks5_res = Response::new(
-            Reply::GeneralFailure,
-            SocketAddr::from(([0, 0, 0, 0], 0)).into(),
-        );
+                unsafe {
+                    self.request_sender.send(req).await.unwrap_unchecked();
+                }
+
+                match unsafe { res_receiver.await.unwrap_unchecked() } {
+                    Ok((remote_send, remote_recv)) => {
+                        self.handle_associate(socks5_req.address, remote_send, remote_recv)
+                            .await?;
+
+                        return Ok(());
+                    }
+                    Err(err) => err,
+                }
+            }
+        };
+
+        let reply = match err {
+            TuicConnectionError::Tuic(err) => Socks5Error::from(err).as_reply(),
+            _ => Reply::GeneralFailure,
+        };
+
+        let socks5_res = Response::new(reply, SocketAddr::from(([0, 0, 0, 0], 0)).into());
         socks5_res.write_to(&mut self.stream).await?;
 
-        Err(Socks5ConnectionError::ConnectionManager)
+        Ok(())
     }
 
     async fn handshake(&mut self) -> Result<bool, Socks5Error> {
@@ -197,10 +202,26 @@ impl Socks5Connection {
 
     async fn handle_associate(
         &mut self,
+        _dst_addr: Address,
         mut _remote_send: QuinnSendStream,
         mut _remote_recv: QuinnRecvStream,
     ) -> Result<(), Socks5Error> {
-        todo!()
+        if let Ok(assoc_socket) = UdpSocket::bind(SocketAddr::from(([0, 0, 0, 0], 0))).await {
+            if let Ok(assoc_addr) = assoc_socket.local_addr() {
+                let socks5_res = Response::new(Reply::Succeeded, assoc_addr.into());
+                socks5_res.write_to(&mut self.stream).await?;
+
+                return Ok(());
+            }
+        }
+
+        let socks5_failure_res = Response::new(
+            Reply::GeneralFailure,
+            SocketAddr::from(([0, 0, 0, 0], 0)).into(),
+        );
+        socks5_failure_res.write_to(&mut self.stream).await?;
+
+        Ok(())
     }
 }
 
@@ -210,6 +231,4 @@ pub enum Socks5ConnectionError {
     Io(#[from] IoError),
     #[error(transparent)]
     Socks5(#[from] Socks5Error),
-    #[error("Failed to communicate with the connection manager")]
-    ConnectionManager,
 }
