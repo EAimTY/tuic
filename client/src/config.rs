@@ -179,12 +179,12 @@ impl<'cfg> ConfigBuilder<'cfg> {
 
         let certificate_path = matches.opt_str("cert");
 
-        let socks5_authentication = match (
+        let socks5_auth = match (
             matches.opt_str("socks5-username"),
             matches.opt_str("socks5-password"),
         ) {
-            (None, None) => Socks5AuthenticationConfig::None,
-            (Some(username), Some(password)) => Socks5AuthenticationConfig::Password {
+            (None, None) => Socks5AuthConfig::None,
+            (Some(username), Some(password)) => Socks5AuthConfig::Password {
                 username: username.into_bytes(),
                 password: password.into_bytes(),
             },
@@ -209,7 +209,7 @@ impl<'cfg> ConfigBuilder<'cfg> {
             token,
             number_of_retries,
             local_addr,
-            socks5_authentication,
+            socks5_auth,
             certificate_path,
             log_level,
         })
@@ -221,7 +221,7 @@ pub struct Config {
     pub token: u64,
     pub number_of_retries: usize,
     pub local_addr: SocketAddr,
-    pub socks5_authentication: Socks5AuthenticationConfig,
+    pub socks5_auth: Socks5AuthConfig,
     pub certificate_path: Option<String>,
     pub log_level: Option<LogLevel>,
 }
@@ -238,9 +238,9 @@ pub enum ServerAddr {
     },
 }
 
-pub enum Socks5AuthenticationConfig {
+pub enum Socks5AuthConfig {
     None,
-    // GSSAPI,
+    Gssapi,
     Password {
         username: Vec<u8>,
         password: Vec<u8>,

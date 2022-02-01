@@ -1,4 +1,4 @@
-use super::SOCKS5_VERSION;
+use super::{HandshakeMethod, SOCKS5_VERSION};
 use bytes::{BufMut, BytesMut};
 use std::io;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
@@ -14,12 +14,12 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
 /// ```
 #[derive(Clone, Debug)]
 pub struct HandshakeResponse {
-    pub chosen_method: u8,
+    pub method: HandshakeMethod,
 }
 
 impl HandshakeResponse {
-    pub fn new(cm: u8) -> Self {
-        Self { chosen_method: cm }
+    pub fn new(method: HandshakeMethod) -> Self {
+        Self { method }
     }
 
     pub async fn write_to<W>(&self, w: &mut W) -> io::Result<()>
@@ -33,7 +33,7 @@ impl HandshakeResponse {
 
     pub fn write_to_buf<B: BufMut>(&self, buf: &mut B) {
         buf.put_u8(SOCKS5_VERSION);
-        buf.put_u8(self.chosen_method);
+        buf.put_u8(self.method.as_u8());
     }
 
     pub fn serialized_len(&self) -> usize {
