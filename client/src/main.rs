@@ -1,10 +1,11 @@
-use crate::{config::ConfigBuilder, connection::ConnectionGuard, socks5::Socks5Server};
+use crate::{config::ConfigBuilder, connection::Connection, relay::Relay, socks5::Socks5Server};
 use std::env;
 
 mod certificate;
 mod config;
 mod connection;
 mod error;
+mod relay;
 mod socks5;
 
 pub use crate::{config::Config, error::ClientError};
@@ -33,21 +34,23 @@ async fn main() {
         }
     }
 
-    let (conn_guard, req_sender) = match ConnectionGuard::new(&config) {
+    let (conn, stream_req_tx) = match Connection::init(&config) {
         Ok(res) => res,
         Err(err) => {
             log::error!("{err}");
             return;
         }
     };
-    conn_guard.run().await;
 
-    let socks5_server = Socks5Server::new(config, req_sender);
+    let (relay, relay_req_tx) = Relay::init(config.token, stream_req_tx);
 
-    match socks5_server.run().await {
-        Ok(()) => {}
+    let socks5_server = match Socks5Server::init(config, relay_req_tx).await {
+        Ok(res) => res,
         Err(err) => {
             log::error!("{err}");
+            return;
         }
-    }
+    };
+
+    let _ = tokio::join!(conn, relay, socks5_server);
 }

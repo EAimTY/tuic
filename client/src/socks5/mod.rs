@@ -7,11 +7,7 @@ use self::protocol::{
     },
     Address, Error as Socks5Error, HandshakeRequest, HandshakeResponse, Reply, Request, Response,
 };
-use crate::{
-    config::Socks5AuthenticationConfig,
-    connection::{ConnectionError as TuicConnectionError, ConnectionRequest},
-    ClientError, Config,
-};
+use crate::{config::Socks5AuthenticationConfig, relay::RelayRequest, Config};
 use quinn::{RecvStream as QuinnRecvStream, SendStream as QuinnSendStream};
 use std::{io::Error as IoError, net::SocketAddr, sync::Arc};
 use thiserror::Error;
@@ -19,19 +15,23 @@ use tokio::{
     io,
     net::{TcpListener, TcpStream, UdpSocket},
     sync::mpsc::Sender as MpscSender,
+    task::JoinHandle,
 };
 
 mod convert;
 mod protocol;
 
 pub struct Socks5Server {
-    request_sender: MpscSender<ConnectionRequest>,
+    relay_req_tx: MpscSender<RelayRequest>,
     local_addr: SocketAddr,
-    authentication: Arc<Authentication>,
+    auth: Arc<Authentication>,
 }
 
 impl Socks5Server {
-    pub fn new(config: Config, sender: MpscSender<ConnectionRequest>) -> Self {
+    pub async fn init(
+        config: Config,
+        relay_req_tx: MpscSender<RelayRequest>,
+    ) -> Result<JoinHandle<()>, IoError> {
         let auth = match config.socks5_authentication {
             Socks5AuthenticationConfig::None => Authentication::None,
             Socks5AuthenticationConfig::Password { username, password } => {
@@ -39,76 +39,67 @@ impl Socks5Server {
             }
         };
 
-        Self {
-            request_sender: sender,
+        let server = Self {
+            relay_req_tx,
             local_addr: config.local_addr,
-            authentication: Arc::new(auth),
-        }
-    }
+            auth: Arc::new(auth),
+        };
 
-    pub async fn run(self) -> Result<(), ClientError> {
-        let socks5_listener = TcpListener::bind(self.local_addr).await?;
+        let listener = TcpListener::bind(server.local_addr).await?;
 
-        while let Ok((stream, source_addr)) = socks5_listener.accept().await {
-            let mut socks5_conn = Socks5Connection::new(
-                stream,
-                source_addr,
-                &self.request_sender,
-                &self.authentication,
-            );
+        Ok(tokio::spawn(async move {
+            while let Ok((stream, from_addr)) = listener.accept().await {
+                let mut socks5_conn =
+                    Socks5Connection::new(stream, from_addr, &server.relay_req_tx, &server.auth);
 
-            tokio::spawn(async move {
-                if let Err(err) = socks5_conn.process().await {
-                    log::debug!("{err}");
-                }
-            });
-        }
-
-        Ok(())
+                tokio::spawn(async move {
+                    if let Err(err) = socks5_conn.process().await {
+                        log::debug!("{err}");
+                    }
+                });
+            }
+        }))
     }
 }
 
 struct Socks5Connection {
     stream: TcpStream,
-    source_addr: SocketAddr,
-    request_sender: MpscSender<ConnectionRequest>,
-    authentication: Arc<Authentication>,
+    from_addr: SocketAddr,
+    relay_req_tx: MpscSender<RelayRequest>,
+    auth: Arc<Authentication>,
 }
 
 impl Socks5Connection {
     fn new(
         stream: TcpStream,
-        source_addr: SocketAddr,
-        request_sender: &MpscSender<ConnectionRequest>,
-        authentication: &Arc<Authentication>,
+        from_addr: SocketAddr,
+        relay_req_tx: &MpscSender<RelayRequest>,
+        auth: &Arc<Authentication>,
     ) -> Self {
         Self {
             stream,
-            source_addr,
-            request_sender: request_sender.clone(),
-            authentication: authentication.clone(),
+            from_addr,
+            relay_req_tx: relay_req_tx.clone(),
+            auth: auth.clone(),
         }
     }
 
     async fn process(&mut self) -> Result<(), Socks5ConnectionError> {
         if !self.handshake().await? {
-            log::info!("[local][denied]{}", self.source_addr);
+            log::info!("[local][denied]{}", self.from_addr);
             return Ok(());
         }
 
         let socks5_req = Request::read_from(&mut self.stream).await?;
 
-        log::info!("[local][accepted]{} {:?}", self.source_addr, &socks5_req);
+        log::info!("[local][accepted]{} {:?}", self.from_addr, &socks5_req);
 
         let err = match socks5_req.command {
             protocol::Command::Connect => {
-                let (req, res_receiver) = ConnectionRequest::new_connect(socks5_req.address.into());
+                let (req, relay_res_rx) = RelayRequest::new_connect(socks5_req.address.into());
+                let _ = self.relay_req_tx.send(req).await;
 
-                unsafe {
-                    self.request_sender.send(req).await.unwrap_unchecked();
-                }
-
-                match unsafe { res_receiver.await.unwrap_unchecked() } {
+                match unsafe { relay_res_rx.await.unwrap_unchecked() } {
                     Ok((remote_send, remote_recv)) => {
                         self.handle_connect(remote_send, remote_recv).await?;
 
@@ -118,50 +109,36 @@ impl Socks5Connection {
                 }
             }
             protocol::Command::Associate => {
-                let (req, res_receiver) = ConnectionRequest::new_associate();
-
-                unsafe {
-                    self.request_sender.send(req).await.unwrap_unchecked();
-                }
-
-                match unsafe { res_receiver.await.unwrap_unchecked() } {
-                    Ok((remote_send, remote_recv)) => {
-                        self.handle_associate(socks5_req.address, remote_send, remote_recv)
-                            .await?;
-
-                        return Ok(());
-                    }
-                    Err(err) => err,
-                }
+                let (req, _relay_res_rx) = RelayRequest::new_associate();
+                let _ = self.relay_req_tx.send(req).await;
+                todo!()
             }
         };
 
-        let reply = match err {
-            TuicConnectionError::Tuic(err) => Socks5Error::from(err).as_reply(),
-            _ => Reply::GeneralFailure,
-        };
-
-        let socks5_res = Response::new(reply, SocketAddr::from(([0, 0, 0, 0], 0)).into());
+        let socks5_res = Response::new(
+            Socks5Error::from(err).as_reply(),
+            SocketAddr::from(([0, 0, 0, 0], 0)).into(),
+        );
         socks5_res.write_to(&mut self.stream).await?;
 
         Ok(())
     }
 
     async fn handshake(&mut self) -> Result<bool, Socks5Error> {
-        let chosen_method = self.authentication.as_u8();
+        let chosen_method = self.auth.as_u8();
         let hs_req = HandshakeRequest::read_from(&mut self.stream).await?;
 
         if hs_req.methods.contains(&chosen_method) {
             let hs_res = HandshakeResponse::new(chosen_method);
             hs_res.write_to(&mut self.stream).await?;
 
-            match self.authentication.as_ref() {
+            match self.auth.as_ref() {
                 Authentication::None => Ok(true),
                 Authentication::Password { username, password } => {
                     let pwd_req =
                         PasswordAuthenticationRequest::read_from(&mut self.stream).await?;
 
-                    if &pwd_req.username == username && &pwd_req.password == password {
+                    if (&pwd_req.username, &pwd_req.password) == (username, password) {
                         let pwd_res = PasswordAuthenticationResponse::new(true);
                         pwd_res.write_to(&mut self.stream).await?;
 
@@ -188,10 +165,6 @@ impl Socks5Connection {
         mut remote_send: QuinnSendStream,
         mut remote_recv: QuinnRecvStream,
     ) -> Result<(), Socks5Error> {
-        let socks5_res =
-            Response::new(Reply::Succeeded, SocketAddr::from(([0, 0, 0, 0], 0)).into());
-        socks5_res.write_to(&mut self.stream).await?;
-
         let (mut local_recv, mut local_send) = self.stream.split();
         let remote_to_local = io::copy(&mut remote_recv, &mut local_send);
         let local_to_remote = io::copy(&mut local_recv, &mut remote_send);
@@ -200,9 +173,9 @@ impl Socks5Connection {
         Ok(())
     }
 
-    async fn handle_associate(
+    async fn _handle_associate(
         &mut self,
-        _dst_addr: Address,
+        _input_addr: Address,
         mut _remote_send: QuinnSendStream,
         mut _remote_recv: QuinnRecvStream,
     ) -> Result<(), Socks5Error> {
