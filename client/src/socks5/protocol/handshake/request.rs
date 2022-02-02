@@ -1,4 +1,5 @@
-use super::{Error, SOCKS5_VERSION};
+use super::{Error, HandshakeMethod, SOCKS5_VERSION};
+use std::mem;
 use tokio::io::{AsyncRead, AsyncReadExt};
 
 /// SOCKS5 handshake request packet
@@ -12,7 +13,7 @@ use tokio::io::{AsyncRead, AsyncReadExt};
 /// ```
 #[derive(Clone, Debug)]
 pub struct HandshakeRequest {
-    pub methods: Vec<u8>,
+    pub methods: Vec<HandshakeMethod>,
 }
 
 impl HandshakeRequest {
@@ -30,8 +31,12 @@ impl HandshakeRequest {
             return Err(Error::UnsupportedSocks5Version(ver));
         }
 
-        let mut methods = vec![0u8; nmet as usize];
-        r.read_exact(&mut methods).await?;
+        let methods = {
+            let mut m = vec![0u8; nmet as usize];
+            r.read_exact(&mut m).await?;
+
+            unsafe { mem::transmute::<Vec<u8>, Vec<HandshakeMethod>>(m) }
+        };
 
         Ok(Self { methods })
     }

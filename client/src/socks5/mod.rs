@@ -73,11 +73,11 @@ enum Authentication {
 }
 
 impl Authentication {
-    fn as_u8(&self) -> u8 {
+    fn as_handshake_method(&self) -> HandshakeMethod {
         match self {
-            Self::None => 0x00,
-            Self::Gssapi => 0x01,
-            Self::Password { .. } => 0x02,
+            Authentication::None => HandshakeMethod::NONE,
+            Authentication::Gssapi => HandshakeMethod::GSSAPI,
+            Authentication::Password { .. } => HandshakeMethod::PASSWORD,
         }
     }
 }
@@ -145,19 +145,18 @@ impl Socks5Connection {
     }
 
     async fn handshake(&mut self) -> Result<bool, Socks5Error> {
-        let method = self.auth.as_u8();
+        let chosen_method = self.auth.as_handshake_method();
         let hs_req = HandshakeRequest::read_from(&mut self.stream).await?;
 
-        if hs_req.methods.contains(&method) {
-            let hs_res = HandshakeResponse::new(HandshakeMethod::from_u8(method));
+        if hs_req.methods.contains(&chosen_method) {
+            let hs_res = HandshakeResponse::new(chosen_method);
             hs_res.write_to(&mut self.stream).await?;
 
             match self.auth.as_ref() {
                 Authentication::None => Ok(true),
                 Authentication::Gssapi => {
-                    let hs_res = HandshakeResponse::new(HandshakeMethod::Unacceptable);
+                    let hs_res = HandshakeResponse::new(HandshakeMethod::UNACCEPTABLE);
                     hs_res.write_to(&mut self.stream).await?;
-
                     Ok(false)
                 }
                 Authentication::Password { username, password } => {
@@ -167,20 +166,17 @@ impl Socks5Connection {
                     if (&pwd_req.username, &pwd_req.password) == (username, password) {
                         let pwd_res = PasswordAuthenticationResponse::new(true);
                         pwd_res.write_to(&mut self.stream).await?;
-
                         Ok(true)
                     } else {
                         let pwd_res = PasswordAuthenticationResponse::new(false);
                         pwd_res.write_to(&mut self.stream).await?;
-
                         Ok(false)
                     }
                 }
             }
         } else {
-            let hs_res = HandshakeResponse::new(HandshakeMethod::Unacceptable);
+            let hs_res = HandshakeResponse::new(HandshakeMethod::UNACCEPTABLE);
             hs_res.write_to(&mut self.stream).await?;
-
             Ok(false)
         }
     }
