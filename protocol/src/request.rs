@@ -71,8 +71,8 @@ impl Request {
 
     pub fn write_to_buf<B: BufMut>(&self, buf: &mut B) {
         buf.put_u8(TUIC_PROTOCOL_VERSION);
-        buf.put_u64(self.token);
         buf.put_u8(self.command.as_u8());
+        buf.put_u64(self.token);
         self.address.write_to_buf(buf);
     }
 
