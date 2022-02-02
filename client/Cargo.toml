@@ -20,7 +20,7 @@ log = "0.4"
 quinn = "0.8"
 rustls = { version = "0.20", features = ["quic"], default-features = false }
 seahash = { version = "4.1", features = ["use_std"] }
-simple_logger = { version = "1.16", features = ["timestamps", "stderr"], default-features = false }
+simple_logger = { version = "2.1", features = ["timestamps", "stderr"], default-features = false }
 thiserror = "1.0"
-tokio = { version = "1.15", features = ["io-util", "macros", "rt-multi-thread", "sync"] }
+tokio = { version = "1.16", features = ["io-util", "macros", "rt-multi-thread", "sync"] }
 webpki = "0.22"
