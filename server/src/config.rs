@@ -38,10 +38,11 @@ impl<'cfg> ConfigBuilder<'cfg> {
             "PRIVATE_KEY",
         );
 
-        opts.optflag(
+        opts.optopt(
             "",
             "log-level",
             "Set the log level. 0 - off, 1 - error, 2 - warn (default), 3 - info, 4 - debug",
+            "LOG_LEVEL",
         );
 
         opts.optflag("v", "version", "Print the version");
