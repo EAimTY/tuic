@@ -47,9 +47,7 @@ impl Request {
             None => return Err(Error::UnsupportedCommand(cmd)),
         };
 
-        let mut tkn = [0u8; 8];
-        r.read_exact(&mut tkn).await?;
-        let token = u64::from_le_bytes(tkn);
+        let token = r.read_u64().await?;
 
         let address = Address::read_from(r).await?;
 
