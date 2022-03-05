@@ -1,9 +1,9 @@
-use crate::{Error, Reply, TUIC_PROTOCOL_VERSION};
+use crate::{Error, TUIC_PROTOCOL_VERSION};
 use bytes::{BufMut, BytesMut};
 use std::io;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
-/// Response
+/// Response for `Command::Connect` and `Command::Bind`
 ///
 /// ```plain
 /// +-----+-----+
@@ -13,17 +13,18 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 /// +-----+-----+
 /// ```
 #[derive(Clone, Debug)]
-pub struct Response {
-    pub reply: Reply,
-}
+pub struct Response(bool);
 
 impl Response {
-    pub fn new(reply: Reply) -> Self {
-        Self { reply }
+    const REPLY_SUCCEEDED: u8 = 0x00;
+    const REPLY_FAILED: u8 = 0x01;
+
+    pub fn new(reply: bool) -> Self {
+        Self(reply)
     }
 
     pub fn is_succeeded(&self) -> bool {
-        self.reply == Reply::Succeeded
+        self.0
     }
 
     pub async fn read_from<R>(r: &mut R) -> Result<Self, Error>
@@ -36,12 +37,14 @@ impl Response {
         let ver = buf[0];
         let rep = buf[1];
 
-        let reply = Reply::from_u8(rep);
-
         if ver != TUIC_PROTOCOL_VERSION {
-            Err(Error::UnsupportedVersion(ver))
-        } else {
-            Ok(Self { reply })
+            return Err(Error::UnsupportedVersion(ver));
+        }
+
+        match rep {
+            Self::REPLY_SUCCEEDED => Ok(Self(true)),
+            Self::REPLY_FAILED => Ok(Self(false)),
+            _ => Err(Error::UnsupportedReply(rep)),
         }
     }
 
@@ -56,10 +59,10 @@ impl Response {
 
     pub fn write_to_buf<B: BufMut>(&self, buf: &mut B) {
         buf.put_u8(TUIC_PROTOCOL_VERSION);
-        buf.put_u8(self.reply.as_u8());
+        buf.put_u8(self.0 as u8);
     }
 
     pub fn serialized_len(&self) -> usize {
-        1 + 1
+        2
     }
 }

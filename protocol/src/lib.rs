@@ -1,15 +1,10 @@
-//! The custom protocol for TUIC
+//! The TUIC protocol
 
 mod address;
 mod command;
 mod error;
-mod reply;
-mod request;
 mod response;
 
-pub const TUIC_PROTOCOL_VERSION: u8 = 0x01;
+pub const TUIC_PROTOCOL_VERSION: u8 = 0x02;
 
-pub use crate::{
-    address::Address, command::Command, error::Error, reply::Reply, request::Request,
-    response::Response,
-};
+pub use crate::{address::Address, command::Command, error::Error, response::Response};

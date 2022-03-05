@@ -1,27 +1,122 @@
-#[derive(Clone, Copy, Debug)]
+use crate::{Address, Error, TUIC_PROTOCOL_VERSION};
+use bytes::{BufMut, BytesMut};
+use std::io::Result as IoResult;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+
+/// Command
+///
+/// ```plain
+/// +-----+-----+----------+
+/// | VER | CMD |   OPT    |
+/// +-----+-----+----------+
+/// |  1  |  1  | Variable |
+/// +-----+-----+----------+
+/// ```
+#[derive(Clone, Debug)]
 pub enum Command {
-    Connect,
-    Associate,
+    Authenticate { token: u64 },
+    Connect { addr: Address },
+    Bind { addr: Address },
+    Udp { assoc_id: u32, addr: Address },
 }
 
 impl Command {
+    const CMD_AUTHENTICATE: u8 = 0x00;
     const CMD_CONNECT: u8 = 0x01;
-    const CMD_ASSOCIATE: u8 = 0x03;
+    const CMD_BIND: u8 = 0x02;
+    const CMD_UDP: u8 = 0x03;
 
-    #[inline]
-    pub(crate) fn as_u8(self) -> u8 {
+    pub fn new_authenticate(token: u64) -> Self {
+        Self::Authenticate { token }
+    }
+
+    pub fn new_connect(addr: Address) -> Self {
+        Self::Connect { addr }
+    }
+
+    pub fn new_bind(addr: Address) -> Self {
+        Self::Bind { addr }
+    }
+
+    pub fn new_udp(assoc_id: u32, addr: Address) -> Self {
+        Self::Udp { assoc_id, addr }
+    }
+
+    pub async fn read_from<R>(r: &mut R) -> Result<Self, Error>
+    where
+        R: AsyncRead + Unpin,
+    {
+        let mut buf = [0u8; 2];
+        r.read_exact(&mut buf).await?;
+
+        let ver = buf[0];
+        let cmd = buf[1];
+
+        if ver != TUIC_PROTOCOL_VERSION {
+            return Err(Error::UnsupportedVersion(ver));
+        }
+
+        match cmd {
+            Self::CMD_AUTHENTICATE => {
+                let token = r.read_u64().await?;
+                Ok(Self::new_authenticate(token))
+            }
+            Self::CMD_CONNECT => {
+                let addr = Address::read_from(r).await?;
+                Ok(Self::new_connect(addr))
+            }
+            Self::CMD_BIND => {
+                let addr = Address::read_from(r).await?;
+                Ok(Self::new_bind(addr))
+            }
+            Self::CMD_UDP => {
+                let assoc_id = r.read_u32().await?;
+                let addr = Address::read_from(r).await?;
+                Ok(Self::new_udp(assoc_id, addr))
+            }
+            _ => return Err(Error::UnsupportedCommand(cmd)),
+        }
+    }
+
+    pub async fn write_to<W>(&self, w: &mut W) -> IoResult<()>
+    where
+        W: AsyncWrite + Unpin,
+    {
+        let mut buf = BytesMut::with_capacity(self.serialized_len());
+        self.write_to_buf(&mut buf);
+        w.write_all(&buf).await
+    }
+
+    pub fn write_to_buf<B: BufMut>(&self, buf: &mut B) {
+        buf.put_u8(TUIC_PROTOCOL_VERSION);
         match self {
-            Self::Connect => Self::CMD_CONNECT,
-            Self::Associate => Self::CMD_ASSOCIATE,
+            Self::Authenticate { token } => {
+                buf.put_u8(Self::CMD_AUTHENTICATE);
+                buf.put_u64(*token);
+            }
+            Self::Connect { addr } => {
+                buf.put_u8(Self::CMD_CONNECT);
+                addr.write_to_buf(buf);
+            }
+            Self::Bind { addr } => {
+                buf.put_u8(Self::CMD_BIND);
+                addr.write_to_buf(buf);
+            }
+            Self::Udp { assoc_id, addr } => {
+                buf.put_u8(Self::CMD_UDP);
+                buf.put_u32(*assoc_id);
+                addr.write_to_buf(buf);
+            }
         }
     }
 
     #[inline]
-    pub(crate) fn from_u8(code: u8) -> Option<Self> {
-        match code {
-            Self::CMD_CONNECT => Some(Command::Connect),
-            Self::CMD_ASSOCIATE => Some(Command::Associate),
-            _ => None,
+    pub fn serialized_len(&self) -> usize {
+        2 + match self {
+            Self::Authenticate { .. } => 8,
+            Self::Connect { addr } => addr.serialized_len(),
+            Self::Bind { addr } => addr.serialized_len(),
+            Self::Udp { addr, .. } => 4 + addr.serialized_len(),
         }
     }
 }
