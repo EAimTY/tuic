@@ -17,8 +17,8 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 /// ```
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum Address {
-    SocketAddress(SocketAddr),
     HostnameAddress(String, u16),
+    SocketAddress(SocketAddr),
 }
 
 impl Address {

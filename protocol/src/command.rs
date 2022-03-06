@@ -14,10 +14,10 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 /// ```
 #[derive(Clone, Debug)]
 pub enum Command {
-    Authenticate { token: u64 },
+    Authenticate { digest: [u8; 32] },
     Connect { addr: Address },
     Bind { addr: Address },
-    Udp { assoc_id: u32, addr: Address },
+    Udp { assoc_id: u16, addr: Address },
 }
 
 impl Command {
@@ -26,8 +26,8 @@ impl Command {
     const CMD_BIND: u8 = 0x02;
     const CMD_UDP: u8 = 0x03;
 
-    pub fn new_authenticate(token: u64) -> Self {
-        Self::Authenticate { token }
+    pub fn new_authenticate(digest: [u8; 32]) -> Self {
+        Self::Authenticate { digest }
     }
 
     pub fn new_connect(addr: Address) -> Self {
@@ -38,7 +38,7 @@ impl Command {
         Self::Bind { addr }
     }
 
-    pub fn new_udp(assoc_id: u32, addr: Address) -> Self {
+    pub fn new_udp(assoc_id: u16, addr: Address) -> Self {
         Self::Udp { assoc_id, addr }
     }
 
@@ -58,8 +58,9 @@ impl Command {
 
         match cmd {
             Self::CMD_AUTHENTICATE => {
-                let token = r.read_u64().await?;
-                Ok(Self::new_authenticate(token))
+                let mut digest = [0; 32];
+                r.read_exact(&mut digest).await?;
+                Ok(Self::new_authenticate(digest))
             }
             Self::CMD_CONNECT => {
                 let addr = Address::read_from(r).await?;
@@ -70,7 +71,7 @@ impl Command {
                 Ok(Self::new_bind(addr))
             }
             Self::CMD_UDP => {
-                let assoc_id = r.read_u32().await?;
+                let assoc_id = r.read_u16().await?;
                 let addr = Address::read_from(r).await?;
                 Ok(Self::new_udp(assoc_id, addr))
             }
@@ -90,9 +91,9 @@ impl Command {
     pub fn write_to_buf<B: BufMut>(&self, buf: &mut B) {
         buf.put_u8(TUIC_PROTOCOL_VERSION);
         match self {
-            Self::Authenticate { token } => {
+            Self::Authenticate { digest } => {
                 buf.put_u8(Self::CMD_AUTHENTICATE);
-                buf.put_u64(*token);
+                buf.put_slice(digest);
             }
             Self::Connect { addr } => {
                 buf.put_u8(Self::CMD_CONNECT);
@@ -104,7 +105,7 @@ impl Command {
             }
             Self::Udp { assoc_id, addr } => {
                 buf.put_u8(Self::CMD_UDP);
-                buf.put_u32(*assoc_id);
+                buf.put_u16(*assoc_id);
                 addr.write_to_buf(buf);
             }
         }
