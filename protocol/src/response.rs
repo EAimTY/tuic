@@ -1,6 +1,6 @@
 use crate::{Error, TUIC_PROTOCOL_VERSION};
 use bytes::{BufMut, BytesMut};
-use std::io;
+use std::io::Result as IoResult;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 /// Response for `Command::Connect` and `Command::Bind`
@@ -17,7 +17,7 @@ pub struct Response(bool);
 
 impl Response {
     const REPLY_SUCCEEDED: u8 = 0x00;
-    const REPLY_FAILED: u8 = 0x01;
+    const REPLY_FAILED: u8 = 0xFF;
 
     pub fn new(reply: bool) -> Self {
         Self(reply)
@@ -31,7 +31,7 @@ impl Response {
     where
         R: AsyncRead + Unpin,
     {
-        let mut buf = [0u8; 2];
+        let mut buf = [0; 2];
         r.read_exact(&mut buf).await?;
 
         let ver = buf[0];
@@ -48,7 +48,7 @@ impl Response {
         }
     }
 
-    pub async fn write_to<W>(&self, w: &mut W) -> io::Result<()>
+    pub async fn write_to<W>(&self, w: &mut W) -> IoResult<()>
     where
         W: AsyncWrite + Unpin,
     {
@@ -59,7 +59,12 @@ impl Response {
 
     pub fn write_to_buf<B: BufMut>(&self, buf: &mut B) {
         buf.put_u8(TUIC_PROTOCOL_VERSION);
-        buf.put_u8(self.0 as u8);
+
+        if self.is_succeeded() {
+            buf.put_u8(Self::REPLY_SUCCEEDED);
+        } else {
+            buf.put_u8(Self::REPLY_FAILED);
+        }
     }
 
     pub fn serialized_len(&self) -> usize {

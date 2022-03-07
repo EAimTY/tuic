@@ -46,7 +46,7 @@ impl Command {
     where
         R: AsyncRead + Unpin,
     {
-        let mut buf = [0u8; 2];
+        let mut buf = [0; 2];
         r.read_exact(&mut buf).await?;
 
         let ver = buf[0];

@@ -1,7 +1,7 @@
 use crate::Error;
 use bytes::{BufMut, BytesMut};
 use std::{
-    io,
+    io::Result as IoResult,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr},
 };
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -48,7 +48,7 @@ impl Address {
                 Ok(Self::HostnameAddress(addr, port))
             }
             Self::TYPE_IPV4 => {
-                let mut buf = [0u8; 6];
+                let mut buf = [0; 6];
                 stream.read_exact(&mut buf).await?;
 
                 let port = unsafe { u16::from_be(*(buf.as_ptr().add(4) as *const u16)) };
@@ -57,7 +57,7 @@ impl Address {
                 Ok(Self::SocketAddress(SocketAddr::from((addr, port))))
             }
             Self::TYPE_IPV6 => {
-                let mut buf = [0u8; 18];
+                let mut buf = [0; 18];
                 stream.read_exact(&mut buf).await?;
                 let buf = unsafe { *(buf.as_ptr() as *const [u16; 9]) };
 
@@ -81,7 +81,7 @@ impl Address {
     }
 
     #[inline]
-    pub async fn write_to<W>(&self, writer: &mut W) -> io::Result<()>
+    pub async fn write_to<W>(&self, writer: &mut W) -> IoResult<()>
     where
         W: AsyncWrite + Unpin,
     {
