@@ -80,7 +80,6 @@ impl Address {
         }
     }
 
-    #[inline]
     pub async fn write_to<W>(&self, writer: &mut W) -> IoResult<()>
     where
         W: AsyncWrite + Unpin,
@@ -90,7 +89,6 @@ impl Address {
         writer.write_all(&buf).await
     }
 
-    #[inline]
     pub fn write_to_buf<B: BufMut>(&self, buf: &mut B) {
         match self {
             Self::HostnameAddress(addr, port) => {
@@ -118,7 +116,6 @@ impl Address {
         }
     }
 
-    #[inline]
     pub fn serialized_len(&self) -> usize {
         1 + match self {
             Address::HostnameAddress(addr, _) => 1 + addr.len() + 2,

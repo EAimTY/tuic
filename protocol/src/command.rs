@@ -111,7 +111,6 @@ impl Command {
         }
     }
 
-    #[inline]
     pub fn serialized_len(&self) -> usize {
         2 + match self {
             Self::Authenticate { .. } => 8,
