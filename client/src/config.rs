@@ -1,10 +1,9 @@
-use getopts::{Fail, Options};
-use log::Level as LogLevel;
-use std::{
-    net::{AddrParseError, SocketAddr},
-    num::ParseIntError,
-};
-use thiserror::Error;
+use crate::{cert, socks5::Authentication as Socks5Auth};
+use anyhow::{bail, Result};
+use blake3::Hash;
+use getopts::Options;
+use rustls::Certificate;
+use std::net::SocketAddr;
 
 pub struct ConfigBuilder<'cfg> {
     opts: Options,
@@ -49,13 +48,6 @@ impl<'cfg> ConfigBuilder<'cfg> {
 
         opts.optopt(
             "",
-            "number-of-retries",
-            "Set the number of retries for TUIC connection establishment (default: 3)",
-            "NUMBER_OF_RETRIES",
-        );
-
-        opts.optopt(
-            "",
             "socks5-username",
             "Set the username of the local socks5 server authentication",
             "SOCKS5_USERNAME",
@@ -80,13 +72,6 @@ impl<'cfg> ConfigBuilder<'cfg> {
             "Allow external connections to the local socks5 server",
         );
 
-        opts.optopt(
-            "",
-            "log-level",
-            "Set the log level. 0 - off, 1 - error, 2 - warn (default), 3 - info, 4 - debug",
-            "LOG_LEVEL",
-        );
-
         opts.optflag("v", "version", "Print the version");
         opts.optflag("h", "help", "Print this help menu");
 
@@ -99,44 +84,34 @@ impl<'cfg> ConfigBuilder<'cfg> {
     pub fn get_usage(&self) -> String {
         self.opts.usage(&format!(
             "Usage: {} [options]",
-            self.program.unwrap_or("tuic-client")
+            self.program.unwrap_or(env!("CARGO_PKG_NAME"))
         ))
     }
 
-    pub fn parse(&mut self, args: &'cfg [String]) -> Result<Config, ConfigError> {
+    pub fn parse(&mut self, args: &'cfg [String]) -> Result<Config> {
         self.program = Some(&args[0]);
 
-        let matches = self
-            .opts
-            .parse(&args[1..])
-            .map_err(|err| ConfigError::Parse(err, self.get_usage()))?;
+        let matches = self.opts.parse(&args[1..])?;
 
         if !matches.free.is_empty() {
-            return Err(ConfigError::UnexpectedArgument(
-                matches.free.join(", "),
-                self.get_usage(),
-            ));
+            bail!("Unexpected argument: {}", matches.free.join(", "),);
         }
 
         if matches.opt_present("v") {
-            return Err(ConfigError::Version(env!("CARGO_PKG_VERSION")));
+            bail!("{}", env!("CARGO_PKG_VERSION"));
         }
 
         if matches.opt_present("h") {
-            return Err(ConfigError::Help(self.get_usage()));
+            bail!("{}", self.get_usage());
         }
 
         let server_addr = {
             let server_name = unsafe { matches.opt_str("s").unwrap_unchecked() };
 
-            let server_port = unsafe { matches.opt_str("p").unwrap_unchecked() }
-                .parse()
-                .map_err(|err| ConfigError::ParsePort(err, self.get_usage()))?;
+            let server_port = unsafe { matches.opt_str("p").unwrap_unchecked().parse()? };
 
             if let Some(server_ip) = matches.opt_str("server-ip") {
-                let server_ip = server_ip
-                    .parse()
-                    .map_err(|err| ConfigError::ParseServerIp(err, self.get_usage()))?;
+                let server_ip = server_ip.parse()?;
 
                 let server_addr = SocketAddr::new(server_ip, server_port);
 
@@ -152,24 +127,13 @@ impl<'cfg> ConfigBuilder<'cfg> {
             }
         };
 
-        let token = {
-            let token = unsafe { matches.opt_str("t").unwrap_unchecked() };
-            seahash::hash(&token.into_bytes())
+        let token_digest = {
+            let token_digest = unsafe { matches.opt_str("t").unwrap_unchecked() };
+            blake3::hash(&token_digest.into_bytes())
         };
 
-        let number_of_retries =
-            if let Some(number_of_retries) = matches.opt_str("number-of-retries") {
-                number_of_retries
-                    .parse()
-                    .map_err(|err| ConfigError::ParseNumberOfRetries(err, self.get_usage()))?
-            } else {
-                3
-            };
-
         let local_addr = {
-            let local_port = unsafe { matches.opt_str("l").unwrap_unchecked() }
-                .parse()
-                .map_err(|err| ConfigError::ParsePort(err, self.get_usage()))?;
+            let local_port = unsafe { matches.opt_str("l").unwrap_unchecked().parse()? };
 
             if matches.opt_present("allow-external-connection") {
                 SocketAddr::from(([0, 0, 0, 0], local_port))
@@ -178,53 +142,43 @@ impl<'cfg> ConfigBuilder<'cfg> {
             }
         };
 
-        let certificate_path = matches.opt_str("cert");
-
         let socks5_auth = match (
             matches.opt_str("socks5-username"),
             matches.opt_str("socks5-password"),
         ) {
-            (None, None) => Socks5AuthConfig::None,
-            (Some(username), Some(password)) => Socks5AuthConfig::Password {
+            (None, None) => Socks5Auth::None,
+            (Some(username), Some(password)) => Socks5Auth::Password {
                 username: username.into_bytes(),
                 password: password.into_bytes(),
             },
-            _ => return Err(ConfigError::Socks5UsernameAndPassword(self.get_usage())),
+            _ => bail!(
+                "socks5 server username and password should be set together\n\n{}",
+                self.get_usage()
+            ),
         };
 
-        let log_level = if let Some(level) = matches.opt_str("log-level") {
-            match level.parse() {
-                Ok(0) => None,
-                Ok(1) => Some(LogLevel::Error),
-                Ok(2) => Some(LogLevel::Warn),
-                Ok(3) => Some(LogLevel::Info),
-                Ok(4) => Some(LogLevel::Debug),
-                _ => return Err(ConfigError::ParseLogLevel(level, self.get_usage())),
-            }
+        let certificate = if let Some(path) = matches.opt_str("cert") {
+            Some(cert::load_cert(&path)?)
         } else {
-            Some(LogLevel::Warn)
+            None
         };
 
         Ok(Config {
             server_addr,
-            token,
-            number_of_retries,
+            token_digest,
             local_addr,
             socks5_auth,
-            certificate_path,
-            log_level,
+            certificate,
         })
     }
 }
 
 pub struct Config {
     pub server_addr: ServerAddr,
-    pub token: u64,
-    pub number_of_retries: usize,
+    pub token_digest: Hash,
     pub local_addr: SocketAddr,
-    pub socks5_auth: Socks5AuthConfig,
-    pub certificate_path: Option<String>,
-    pub log_level: Option<LogLevel>,
+    pub socks5_auth: Socks5Auth,
+    pub certificate: Option<Certificate>,
 }
 
 #[derive(Clone)]
@@ -237,35 +191,4 @@ pub enum ServerAddr {
         hostname: String,
         server_port: u16,
     },
-}
-
-pub enum Socks5AuthConfig {
-    None,
-    Gssapi,
-    Password {
-        username: Vec<u8>,
-        password: Vec<u8>,
-    },
-}
-
-#[derive(Debug, Error)]
-pub enum ConfigError {
-    #[error("{0}\n\n{1}")]
-    Parse(Fail, String),
-    #[error("Unexpected urgument: {0}\n\n{1}")]
-    UnexpectedArgument(String, String),
-    #[error("Failed to parse the port: {0}\n\n{1}")]
-    ParsePort(ParseIntError, String),
-    #[error("Failed to parse the server IP: {0}\n\n{1}")]
-    ParseServerIp(AddrParseError, String),
-    #[error("Failed to parse the number of retries: {0}\n\n{1}")]
-    ParseNumberOfRetries(ParseIntError, String),
-    #[error("Socks5 username and password must be set together\n\n{0}")]
-    Socks5UsernameAndPassword(String),
-    #[error("Failed to parse the log level: {0}\n\n{1}")]
-    ParseLogLevel(String, String),
-    #[error("{0}")]
-    Version(&'static str),
-    #[error("{0}")]
-    Help(String),
 }

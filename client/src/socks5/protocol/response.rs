@@ -1,6 +1,6 @@
 use super::{Address, Reply, SOCKS5_VERSION};
 use bytes::{BufMut, BytesMut};
-use std::io;
+use std::io::Result as IoResult;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 /// Response
@@ -23,7 +23,7 @@ impl Response {
         Self { reply, address }
     }
 
-    pub async fn write_to<W>(&self, w: &mut W) -> io::Result<()>
+    pub async fn write_to<W>(&self, w: &mut W) -> IoResult<()>
     where
         W: AsyncWrite + Unpin,
     {
@@ -39,8 +39,7 @@ impl Response {
         self.address.write_to_buf(buf);
     }
 
-    #[inline]
     pub fn serialized_len(&self) -> usize {
-        self.address.serialized_len() + 3
+        3 + self.address.serialized_len()
     }
 }

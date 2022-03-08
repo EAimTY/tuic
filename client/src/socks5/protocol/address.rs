@@ -1,9 +1,9 @@
 use super::Error;
 use bytes::{BufMut, BytesMut};
 use std::{
-    io,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs},
-    slice, vec,
+    io::Result as IoResult,
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr},
+    vec,
 };
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
@@ -22,33 +22,26 @@ impl Address {
     where
         R: AsyncRead + Unpin,
     {
-        let mut atyp_buf = [0u8; 1];
-        stream.read_exact(&mut atyp_buf).await?;
+        let atyp = stream.read_u8().await?;
 
-        let atyp = atyp_buf[0];
         match atyp {
             Self::ATYP_IPV4 => {
-                let mut buf = [0u8; 6];
+                let mut buf = [0; 6];
                 stream.read_exact(&mut buf).await?;
 
-                let v4addr = Ipv4Addr::new(buf[0], buf[1], buf[2], buf[3]);
-                let port = unsafe {
-                    let raw_port = &buf[4..];
-                    u16::from_be(*(raw_port.as_ptr() as *const _))
-                };
+                let port = unsafe { u16::from_be(*(buf.as_ptr().add(4) as *const u16)) };
+                let addr = Ipv4Addr::new(buf[0], buf[1], buf[2], buf[3]);
 
-                Ok(Self::SocketAddress(SocketAddr::new(
-                    IpAddr::V4(v4addr),
-                    port,
-                )))
+                Ok(Self::SocketAddress(SocketAddr::from((addr, port))))
             }
             Self::ATYP_IPV6 => {
-                let mut buf = [0u8; 18];
+                let mut buf = [0; 18];
                 stream.read_exact(&mut buf).await?;
+                let buf = unsafe { *(buf.as_ptr() as *const [u16; 9]) };
 
-                let buf: &[u16] = unsafe { slice::from_raw_parts(buf.as_ptr() as *const _, 9) };
+                let port = buf[8];
 
-                let v6addr = Ipv6Addr::new(
+                let addr = Ipv6Addr::new(
                     u16::from_be(buf[0]),
                     u16::from_be(buf[1]),
                     u16::from_be(buf[2]),
@@ -58,41 +51,28 @@ impl Address {
                     u16::from_be(buf[6]),
                     u16::from_be(buf[7]),
                 );
-                let port = u16::from_be(buf[8]);
 
-                Ok(Self::SocketAddress(SocketAddr::new(
-                    IpAddr::V6(v6addr),
-                    port,
-                )))
+                Ok(Self::SocketAddress(SocketAddr::from((addr, port))))
             }
             Self::ATYP_HOSTNAME => {
-                let mut length_buf = [0u8; 1];
-                stream.read_exact(&mut length_buf).await?;
-                let length = length_buf[0] as usize;
+                let len = stream.read_u8().await? as usize;
 
-                let buf_length = length + 2;
+                let mut buf = vec![0; len + 2];
+                stream.read_exact(&mut buf).await?;
 
-                let mut raw_addr = vec![0u8; buf_length];
-                stream.read_exact(&mut raw_addr).await?;
+                let port = unsafe { u16::from_be(*(buf.as_ptr().add(len) as *const u16)) };
 
-                let raw_port = &raw_addr[length..];
-                let port = unsafe { u16::from_be(*(raw_port.as_ptr() as *const _)) };
+                buf.truncate(len);
 
-                raw_addr.truncate(length);
-
-                let addr = match String::from_utf8(raw_addr) {
-                    Ok(addr) => addr,
-                    Err(..) => return Err(Error::AddressDomainInvalidEncoding),
-                };
+                let addr = String::from_utf8(buf).map_err(|_| Error::AddressInvalidEncoding)?;
 
                 Ok(Self::HostnameAddress(addr, port))
             }
-            _ => Err(Error::AddressTypeNotSupported(atyp)),
+            _ => Err(Error::UnsupportedAddressType(atyp)),
         }
     }
 
-    #[inline]
-    pub async fn write_to<W>(&self, writer: &mut W) -> io::Result<()>
+    pub async fn write_to<W>(&self, writer: &mut W) -> IoResult<()>
     where
         W: AsyncWrite + Unpin,
     {
@@ -101,7 +81,6 @@ impl Address {
         writer.write_all(&buf).await
     }
 
-    #[inline]
     pub fn write_to_buf<B: BufMut>(&self, buf: &mut B) {
         match self {
             Self::SocketAddress(addr) => match addr {
@@ -112,16 +91,14 @@ impl Address {
                 }
                 SocketAddr::V6(addr) => {
                     buf.put_u8(Self::ATYP_IPV6);
-                    for seg in &addr.ip().segments() {
-                        buf.put_u16(*seg);
+                    for seg in addr.ip().segments() {
+                        buf.put_u16(seg);
                     }
                     buf.put_u16(addr.port());
                 }
             },
             Self::HostnameAddress(addr, port) => {
-                if addr.len() <= u8::MAX as usize {
-                    panic!("domain name length must be smaller than 256");
-                }
+                assert!(addr.len() > u8::MAX as usize);
 
                 buf.put_u8(Self::ATYP_HOSTNAME);
                 buf.put_u8(addr.len() as u8);
@@ -131,58 +108,13 @@ impl Address {
         }
     }
 
-    #[inline]
     pub fn serialized_len(&self) -> usize {
-        match self {
+        1 + match self {
             Address::SocketAddress(addr) => match addr {
-                SocketAddr::V4(_) => 1 + 4 + 2,
-                SocketAddr::V6(_) => 1 + 8 * 2 + 2,
+                SocketAddr::V4(_) => 6,
+                SocketAddr::V6(_) => 18,
             },
-            Address::HostnameAddress(addr, _) => 1 + 1 + addr.len() + 2,
-        }
-    }
-
-    #[inline]
-    pub fn max_serialized_len() -> usize {
-        1 + 1 + u8::MAX as usize + 2
-    }
-
-    pub fn port(&self) -> u16 {
-        match self {
-            Address::SocketAddress(addr) => addr.port(),
-            Address::HostnameAddress(_, port) => *port,
-        }
-    }
-
-    pub fn host(&self) -> String {
-        match self {
-            Address::SocketAddress(addr) => addr.ip().to_string(),
-            Address::HostnameAddress(authority, ..) => authority.to_owned(),
-        }
-    }
-}
-
-impl From<SocketAddr> for Address {
-    fn from(s: SocketAddr) -> Address {
-        Address::SocketAddress(s)
-    }
-}
-
-impl From<(String, u16)> for Address {
-    fn from((authority, port): (String, u16)) -> Address {
-        Address::HostnameAddress(authority, port)
-    }
-}
-
-impl ToSocketAddrs for Address {
-    type Iter = vec::IntoIter<SocketAddr>;
-
-    fn to_socket_addrs(&self) -> io::Result<vec::IntoIter<SocketAddr>> {
-        match self {
-            Address::SocketAddress(addr) => Ok(vec![addr.to_owned()].into_iter()),
-            Address::HostnameAddress(authority, port) => {
-                (authority.as_str(), *port).to_socket_addrs()
-            }
+            Address::HostnameAddress(addr, _) => 1 + addr.len() + 2,
         }
     }
 }

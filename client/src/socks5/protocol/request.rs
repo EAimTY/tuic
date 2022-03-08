@@ -21,7 +21,7 @@ impl Request {
     where
         R: AsyncRead + Unpin,
     {
-        let mut buf = [0u8; 3];
+        let mut buf = [0; 3];
         r.read_exact(&mut buf).await?;
 
         let ver = buf[0];

@@ -22,7 +22,7 @@ impl Request {
     where
         R: AsyncRead + Unpin,
     {
-        let mut buf = [0u8; 2];
+        let mut buf = [0; 2];
         r.read_exact(&mut buf).await?;
 
         let ver = buf[0];
@@ -32,10 +32,13 @@ impl Request {
             return Err(Error::UnsupportedPasswordAuthenticationVersion(ver));
         }
 
-        let mut username = vec![0; ulen as usize];
-        r.read_exact(&mut username).await?;
+        let mut buf = vec![0; ulen as usize + 1];
+        r.read_exact(&mut buf).await?;
 
-        let plen = r.read_u8().await?;
+        let plen = buf[ulen as usize];
+        buf.truncate(ulen as usize);
+        let username = buf;
+
         let mut password = vec![0; plen as usize];
         r.read_exact(&mut password).await?;
 

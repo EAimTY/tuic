@@ -1,18 +1,16 @@
-use crate::{config::ConfigBuilder, connection::Connection, relay::Relay, socks5::Socks5Server};
-use std::env;
+#![allow(unused)]
 
-mod certificate;
+use crate::{client::TuicClient, config::ConfigBuilder, socks5::Socks5Server};
+use std::{env, process};
+
+mod cert;
+mod client;
 mod config;
-mod connection;
-mod error;
-mod relay;
 mod socks5;
-
-pub use crate::{config::Config, error::ClientError};
 
 #[tokio::main]
 async fn main() {
-    let args: Vec<String> = env::args().collect();
+    let args = env::args().collect::<Vec<_>>();
 
     let mut cfg_builder = ConfigBuilder::new();
 
@@ -20,37 +18,27 @@ async fn main() {
         Ok(cfg) => cfg,
         Err(err) => {
             eprintln!("{err}");
-            return;
+            process::exit(1);
         }
     };
 
-    if let Some(log_level) = config.log_level {
-        match simple_logger::init_with_level(log_level) {
-            Ok(()) => {}
+    let (tuic_client, req_tx) =
+        match TuicClient::init(config.server_addr, config.certificate, config.token_digest) {
+            Ok((client, tx)) => (tokio::spawn(client.run()), tx),
             Err(err) => {
-                eprintln!("Failed to initialize logger: {err}");
-                return;
+                eprintln!("{err}");
+                process::exit(1);
             }
-        }
-    }
+        };
 
-    let (conn, stream_req_tx) = match Connection::init(&config) {
-        Ok(res) => res,
-        Err(err) => {
-            log::error!("{err}");
-            return;
-        }
-    };
+    let socks5_server =
+        match Socks5Server::init(config.local_addr, config.socks5_auth, req_tx).await {
+            Ok(server) => tokio::spawn(server.run()),
+            Err(err) => {
+                eprintln!("{err}");
+                process::exit(1);
+            }
+        };
 
-    let (relay, relay_req_tx) = Relay::init(config.token, stream_req_tx);
-
-    let socks5_server = match Socks5Server::init(config, relay_req_tx).await {
-        Ok(res) => res,
-        Err(err) => {
-            log::error!("{err}");
-            return;
-        }
-    };
-
-    let _ = tokio::join!(conn, relay, socks5_server);
+    let _ = tokio::try_join!(tuic_client, socks5_server);
 }

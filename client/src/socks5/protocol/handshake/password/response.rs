@@ -1,6 +1,6 @@
 use super::SUBNEGOTIATION_VERSION;
 use bytes::{BufMut, BytesMut};
-use std::io;
+use std::io::Result as IoResult;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 /// SOCKS5 password handshake response packet
@@ -14,19 +14,21 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
 /// ```
 
 #[derive(Clone, Debug)]
-pub struct Response {
-    pub is_succeed: bool,
-}
+pub struct Response(bool);
 
 impl Response {
-    const STATUS_SUCCEED: u8 = 0x00;
+    const STATUS_SUCCEEDED: u8 = 0x00;
     const STATUS_FAILED: u8 = 0xff;
 
     pub fn new(is_succeed: bool) -> Self {
-        Self { is_succeed }
+        Self(is_succeed)
     }
 
-    pub async fn write_to<W>(&self, w: &mut W) -> io::Result<()>
+    pub fn is_succeed(&self) -> bool {
+        self.0
+    }
+
+    pub async fn write_to<W>(&self, w: &mut W) -> IoResult<()>
     where
         W: AsyncWrite + Unpin,
     {
@@ -38,8 +40,8 @@ impl Response {
     pub fn write_to_buf<B: BufMut>(&self, buf: &mut B) {
         buf.put_u8(SUBNEGOTIATION_VERSION);
 
-        if self.is_succeed {
-            buf.put_u8(Self::STATUS_SUCCEED);
+        if self.is_succeed() {
+            buf.put_u8(Self::STATUS_SUCCEEDED);
         } else {
             buf.put_u8(Self::STATUS_FAILED);
         }

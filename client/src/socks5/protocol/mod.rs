@@ -13,7 +13,7 @@ pub use self::{
     address::Address,
     command::Command,
     error::Error,
-    handshake::{HandshakeRequest, HandshakeResponse},
+    handshake::{HandshakeMethod, HandshakeRequest, HandshakeResponse},
     reply::Reply,
     request::Request,
     response::Response,

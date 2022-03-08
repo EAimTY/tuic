@@ -1,6 +1,6 @@
 use super::{Address, Error};
 use bytes::{BufMut, BytesMut};
-use std::io;
+use std::io::Result as IoResult;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 /// UDP Associate header
@@ -13,12 +13,12 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 /// +-----+------+------+----------+----------+----------+
 /// ```
 #[derive(Clone, Debug)]
-pub struct Header {
+pub struct UdpHeader {
     pub frag: u8,
     pub address: Address,
 }
 
-impl Header {
+impl UdpHeader {
     pub fn new(frag: u8, address: Address) -> Self {
         Self { frag, address }
     }
@@ -27,7 +27,7 @@ impl Header {
     where
         R: AsyncRead + Unpin,
     {
-        let mut buf = [0u8; 3];
+        let mut buf = [0; 3];
         r.read_exact(&mut buf).await?;
 
         let frag = buf[2];
@@ -36,7 +36,7 @@ impl Header {
         Ok(Self { frag, address })
     }
 
-    pub async fn write_to<W>(&self, w: &mut W) -> io::Result<()>
+    pub async fn write_to<W>(&self, w: &mut W) -> IoResult<()>
     where
         W: AsyncWrite + Unpin,
     {
@@ -51,8 +51,7 @@ impl Header {
         self.address.write_to_buf(buf);
     }
 
-    #[inline]
     pub fn serialized_len(&self) -> usize {
-        2 + 1 + self.address.serialized_len()
+        3 + self.address.serialized_len()
     }
 }

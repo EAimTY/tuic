@@ -1,6 +1,6 @@
 use super::{HandshakeMethod, SOCKS5_VERSION};
 use bytes::{BufMut, BytesMut};
-use std::io;
+use std::io::Result as IoResult;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 /// SOCKS5 handshake response packet
@@ -22,7 +22,7 @@ impl HandshakeResponse {
         Self { method }
     }
 
-    pub async fn write_to<W>(&self, w: &mut W) -> io::Result<()>
+    pub async fn write_to<W>(&self, w: &mut W) -> IoResult<()>
     where
         W: AsyncWrite + Unpin,
     {
