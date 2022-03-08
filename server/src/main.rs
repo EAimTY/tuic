@@ -1,17 +1,13 @@
-use crate::config::ConfigBuilder;
-use std::env;
+use crate::{config::ConfigBuilder, server::Server};
+use std::{env, process};
 
-mod certificate;
+mod cert;
 mod config;
-mod connection;
-mod error;
 mod server;
-
-pub use crate::{config::Config, connection::Connection, error::ServerError};
 
 #[tokio::main]
 async fn main() {
-    let args: Vec<String> = env::args().collect();
+    let args = env::args().collect::<Vec<_>>();
 
     let mut cfg_builder = ConfigBuilder::new();
 
@@ -19,22 +15,22 @@ async fn main() {
         Ok(cfg) => cfg,
         Err(err) => {
             eprintln!("{err}");
-            return;
+            process::exit(1);
         }
     };
 
-    if let Some(log_level) = config.log_level {
-        match simple_logger::init_with_level(log_level) {
-            Ok(()) => {}
-            Err(err) => {
-                eprintln!("Failed to initialize logger: {err}");
-                return;
-            }
+    let server = match Server::init(
+        config.port,
+        config.token_digest,
+        config.certificate,
+        config.private_key,
+    ) {
+        Ok(server) => server,
+        Err(err) => {
+            eprintln!("{err}");
+            process::exit(1);
         }
-    }
+    };
 
-    match server::start(config).await {
-        Ok(()) => {}
-        Err(err) => log::error!("{err}"),
-    }
+    server.run().await;
 }
