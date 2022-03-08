@@ -1,11 +1,10 @@
 use super::Error;
-use bytes::{BufMut, BytesMut};
+use bytes::BufMut;
 use std::{
-    io::Result as IoResult,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr},
     vec,
 };
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt};
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum Address {
@@ -70,15 +69,6 @@ impl Address {
             }
             _ => Err(Error::UnsupportedAddressType(atyp)),
         }
-    }
-
-    pub async fn write_to<W>(&self, writer: &mut W) -> IoResult<()>
-    where
-        W: AsyncWrite + Unpin,
-    {
-        let mut buf = BytesMut::with_capacity(self.serialized_len());
-        self.write_to_buf(&mut buf);
-        writer.write_all(&buf).await
     }
 
     pub fn write_to_buf<B: BufMut>(&self, buf: &mut B) {

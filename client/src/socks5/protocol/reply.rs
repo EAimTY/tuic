@@ -37,19 +37,4 @@ impl Reply {
             Self::Other(c) => c,
         }
     }
-
-    pub fn from_u8(code: u8) -> Self {
-        match code {
-            Self::REPLY_SUCCEEDED => Self::Succeeded,
-            Self::REPLY_GENERAL_FAILURE => Self::GeneralFailure,
-            Self::REPLY_CONNECTION_NOT_ALLOWED => Self::ConnectionNotAllowed,
-            Self::REPLY_NETWORK_UNREACHABLE => Self::NetworkUnreachable,
-            Self::REPLY_HOST_UNREACHABLE => Self::HostUnreachable,
-            Self::REPLY_CONNECTION_REFUSED => Self::ConnectionRefused,
-            Self::REPLY_TTL_EXPIRED => Self::TtlExpired,
-            Self::REPLY_COMMAND_NOT_SUPPORTED => Self::CommandNotSupported,
-            Self::REPLY_ADDRESS_TYPE_NOT_SUPPORTED => Self::AddressTypeNotSupported,
-            _ => Self::Other(code),
-        }
-    }
 }

@@ -99,7 +99,7 @@ impl Connection {
                 Authentication::Password { username, password } => {
                     let req = PasswordAuthRequest::read_from(&mut self.stream).await?;
 
-                    if matches!((&req.username, &req.password), (username, password)) {
+                    if (&req.username, &req.password) == (username, password) {
                         let resp = PasswordAuthResponse::new(true);
                         resp.write_to(&mut self.stream).await?;
                     } else {
@@ -155,11 +155,11 @@ impl Connection {
         Ok(())
     }
 
-    async fn handle_bind(mut self, addr: Address) -> Result<()> {
+    async fn handle_bind(self, _addr: Address) -> Result<()> {
         Ok(())
     }
 
-    async fn handle_associate(mut self, addr: Address) -> Result<()> {
+    async fn handle_associate(self, _addr: Address) -> Result<()> {
         Ok(())
     }
 }

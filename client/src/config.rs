@@ -128,8 +128,8 @@ impl<'cfg> ConfigBuilder<'cfg> {
         };
 
         let token_digest = {
-            let token_digest = unsafe { matches.opt_str("t").unwrap_unchecked() };
-            blake3::hash(&token_digest.into_bytes())
+            let token = unsafe { matches.opt_str("t").unwrap_unchecked() };
+            blake3::hash(&token.into_bytes())
         };
 
         let local_addr = {

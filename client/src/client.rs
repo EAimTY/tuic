@@ -20,7 +20,7 @@ use tuic_protocol::{Address as TuicAddress, Command as TuicCommand, Response as 
 pub struct TuicClient {
     endpoint: Endpoint,
     server_addr: ServerAddr,
-    token: Hash,
+    token_digest: Hash,
     req_rx: MpscReceiver<Request>,
 }
 
@@ -28,7 +28,7 @@ impl TuicClient {
     pub fn init(
         server_addr: ServerAddr,
         certificate: Option<Certificate>,
-        token: Hash,
+        token_digest: Hash,
     ) -> Result<(Self, MpscSender<Request>)> {
         let quinn_config = if let Some(cert) = certificate {
             let mut root_cert_store = RootCertStore::empty();
@@ -47,7 +47,7 @@ impl TuicClient {
             Self {
                 endpoint,
                 server_addr,
-                token,
+                token_digest,
                 req_rx,
             },
             req_tx,
@@ -84,10 +84,7 @@ impl TuicClient {
 
     async fn establish_conn(&self) -> Connection {
         let (mut addrs, server_name) = match &self.server_addr {
-            ServerAddr::HostnameAddr {
-                hostname,
-                server_port,
-            } => (
+            ServerAddr::HostnameAddr { hostname, .. } => (
                 unsafe { mem::transmute(MaybeUninit::<IntoIter<SocketAddr>>::uninit()) },
                 hostname,
             ),
@@ -120,7 +117,14 @@ impl TuicClient {
                             uni_streams,
                             datagrams,
                             ..
-                        }) => return Connection::new(&self.token, conn, uni_streams, datagrams),
+                        }) => {
+                            return Connection::new(
+                                &self.token_digest,
+                                conn,
+                                uni_streams,
+                                datagrams,
+                            )
+                        }
                         Err(err) => eprintln!("{err}"),
                     },
                     Err(err) => eprintln!("{err}"),
@@ -138,12 +142,12 @@ pub struct Connection {
 
 impl Connection {
     fn new(
-        token: &Hash,
+        token_digest: &Hash,
         conn: QuinnConnection,
         uni_streams: QuinnUniStreams,
         datagrams: QuinnDatagrams,
     ) -> Self {
-        let token = TuicCommand::new_authenticate(token.as_bytes().to_owned());
+        let token = TuicCommand::new_authenticate(token_digest.as_bytes().to_owned());
         let uni = conn.open_uni();
 
         tokio::spawn(async move {

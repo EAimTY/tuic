@@ -1,5 +1,3 @@
-#![allow(unused)]
-
 use crate::{client::TuicClient, config::ConfigBuilder, socks5::Socks5Server};
 use std::{env, process};
 
