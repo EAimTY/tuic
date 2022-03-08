@@ -2,7 +2,8 @@ use crate::Error;
 use bytes::{BufMut, BytesMut};
 use std::{
     io::Result as IoResult,
-    net::{Ipv4Addr, Ipv6Addr, SocketAddr},
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs},
+    vec::IntoIter,
 };
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
@@ -124,5 +125,16 @@ impl Address {
                 SocketAddr::V6(_) => 18,
             },
         }
+    }
+}
+
+impl ToSocketAddrs for Address {
+    type Iter = IntoIter<SocketAddr>;
+
+    fn to_socket_addrs(&self) -> IoResult<Self::Iter> {
+        Ok(match self {
+            Self::HostnameAddress(addr, port) => (addr.as_str(), *port).to_socket_addrs()?,
+            Self::SocketAddress(addr) => vec![addr.to_owned()].into_iter(),
+        })
     }
 }
