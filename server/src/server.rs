@@ -49,17 +49,14 @@ impl Server {
                         datagrams,
                         ..
                     }) => {
-                        let conn = Connection::new(
+                        process_conn(
                             conn,
                             bi_streams,
                             uni_streams,
                             datagrams,
                             self.expected_token_digest,
-                        );
-                        match conn.process().await {
-                            Ok(()) => (),
-                            Err(err) => eprintln!("{err}"),
-                        }
+                        )
+                        .await
                     }
                     Err(err) => eprintln!("{err}"),
                 }
@@ -68,104 +65,177 @@ impl Server {
     }
 }
 
-struct Connection {
+async fn process_conn(
     conn: QuinnConnection,
     bi_streams: QuinnBiStreams,
     uni_streams: QuinnUniStreams,
     datagrams: QuinnDatagrams,
     expected_token_digest: [u8; 32],
-    is_authenticated: Arc<AtomicBool>,
-    create_time: Instant,
+) {
+    let is_authenticated = Arc::new(AtomicBool::new(false));
+    let create_time = Instant::now();
+
+    let listen_uni_streams = listen_uni_streams(
+        conn.clone(),
+        uni_streams,
+        expected_token_digest,
+        is_authenticated.clone(),
+        create_time,
+    );
+
+    let listen_bi_streams = listen_bi_streams(
+        conn.clone(),
+        bi_streams,
+        is_authenticated.clone(),
+        create_time,
+    );
+
+    tokio::join!(listen_uni_streams, listen_bi_streams);
 }
 
-impl Connection {
-    fn new(
-        conn: QuinnConnection,
-        bi_streams: QuinnBiStreams,
-        uni_streams: QuinnUniStreams,
-        datagrams: QuinnDatagrams,
-        expected_token_digest: [u8; 32],
-    ) -> Self {
-        Self {
-            conn,
-            bi_streams,
-            uni_streams,
-            datagrams,
-            expected_token_digest,
-            is_authenticated: Arc::new(AtomicBool::new(false)),
-            create_time: Instant::now(),
+async fn listen_uni_streams(
+    conn: QuinnConnection,
+    mut uni_streams: QuinnUniStreams,
+    expected_token_digest: [u8; 32],
+    is_authenticated: Arc<AtomicBool>,
+    create_time: Instant,
+) {
+    while let Some(stream) = uni_streams.next().await {
+        match stream {
+            Ok(stream) => {
+                tokio::spawn(handle_uni_stream(
+                    stream,
+                    conn.clone(),
+                    expected_token_digest,
+                    is_authenticated.clone(),
+                    create_time,
+                ));
+            }
+            Err(err) => {
+                match err {
+                    ConnectionError::ConnectionClosed(_) | ConnectionError::TimedOut => {}
+                    err => eprintln!("{err}"),
+                }
+                continue;
+            }
         }
     }
+}
 
-    async fn process(mut self) -> Result<()> {
-        while let Some(stream) = self.bi_streams.next().await {
-            match stream {
-                Ok((send, recv)) => self.handle_bi_stream(send, recv),
-                Err(err) => {
-                    match err {
-                        ConnectionError::ConnectionClosed(_) | ConnectionError::TimedOut => {}
-                        err => eprintln!("{err}"),
+async fn listen_bi_streams(
+    conn: QuinnConnection,
+    mut bi_streams: QuinnBiStreams,
+    is_authenticated: Arc<AtomicBool>,
+    create_time: Instant,
+) {
+    while let Some(stream) = bi_streams.next().await {
+        match stream {
+            Ok((send, recv)) => {
+                tokio::spawn(handle_bi_stream(
+                    send,
+                    recv,
+                    conn.clone(),
+                    is_authenticated.clone(),
+                    create_time,
+                ));
+            }
+            Err(err) => {
+                match err {
+                    ConnectionError::ConnectionClosed(_) | ConnectionError::TimedOut => {}
+                    err => eprintln!("{err}"),
+                }
+                continue;
+            }
+        }
+    }
+}
+
+async fn handle_uni_stream(
+    mut stream: RecvStream,
+    conn: QuinnConnection,
+    expected_token_digest: [u8; 32],
+    is_authenticated: Arc<AtomicBool>,
+    create_time: Instant,
+) {
+    let cmd = match Command::read_from(&mut stream).await {
+        Ok(cmd) => cmd,
+        Err(err) => {
+            eprintln!("{err}");
+            conn.close(VarInt::MAX, b"Bad command");
+            return;
+        }
+    };
+
+    match cmd {
+        Command::Authenticate { digest } => {
+            if digest == expected_token_digest {
+                is_authenticated.store(true, Ordering::Release);
+            } else {
+                eprintln!("Authentication failed");
+                conn.close(VarInt::MAX, b"Authentication failed");
+            }
+        }
+        cmd => {
+            let mut interval = time::interval(Duration::from_millis(100));
+
+            loop {
+                if is_authenticated.load(Ordering::Acquire) {
+                    match cmd {
+                        Command::Authenticate { .. } => unreachable!(),
+                        Command::Connect { .. } => unreachable!(),
+                        Command::Bind { .. } => unreachable!(),
+                        Command::Udp { assoc_id, addr } => todo!(),
                     }
-                    continue;
+                    break;
+                } else if create_time.elapsed() > Duration::from_secs(3) {
+                    eprintln!("Authentication timeout");
+                    conn.close(VarInt::MAX, b"Authentication timeout");
+                    break;
+                } else {
+                    interval.tick().await;
                 }
             }
         }
-
-        Ok(())
     }
+}
 
-    fn handle_bi_stream(&self, send: SendStream, mut recv: RecvStream) {
-        let conn = self.conn.clone();
-        let expected_token_digest = self.expected_token_digest;
-        let is_authenticated = self.is_authenticated.clone();
-        let create_time = self.create_time;
+async fn handle_bi_stream(
+    send: SendStream,
+    mut recv: RecvStream,
+    conn: QuinnConnection,
+    is_authenticated: Arc<AtomicBool>,
+    create_time: Instant,
+) {
+    let cmd = match Command::read_from(&mut recv).await {
+        Ok(cmd) => cmd,
+        Err(err) => {
+            eprintln!("{err}");
+            conn.close(VarInt::MAX, b"Bad command");
+            return;
+        }
+    };
 
-        tokio::spawn(async move {
-            let cmd = match Command::read_from(&mut recv).await {
-                Ok(cmd) => cmd,
-                Err(err) => {
-                    eprintln!("{err}");
-                    return;
-                }
-            };
+    let mut interval = time::interval(Duration::from_millis(100));
 
+    loop {
+        if is_authenticated.load(Ordering::Acquire) {
             match cmd {
-                Command::Authenticate { digest } => {
-                    if digest == expected_token_digest {
-                        is_authenticated.store(true, Ordering::Release);
-                    } else {
-                        eprintln!("Authentication failed");
-                        conn.close(VarInt::MAX, b"Authentication failed");
-                    }
-                }
-                cmd => {
-                    let mut interval = time::interval(Duration::from_millis(100));
-
-                    loop {
-                        if is_authenticated.load(Ordering::Acquire) {
-                            match cmd {
-                                Command::Authenticate { .. } => unreachable!(),
-                                Command::Connect { addr } => {
-                                    match handle_connect(send, recv, addr).await {
-                                        Ok(()) => {}
-                                        Err(err) => eprintln!("{err}"),
-                                    }
-                                }
-                                Command::Bind { addr } => todo!(),
-                                Command::Udp { assoc_id, addr } => todo!(),
-                            }
-                            break;
-                        } else if create_time.elapsed() > Duration::from_secs(3) {
-                            eprintln!("Authentication timeout");
-                            conn.close(VarInt::MAX, b"Authentication timeout");
-                            break;
-                        } else {
-                            interval.tick().await;
-                        }
-                    }
-                }
+                Command::Authenticate { .. } => unreachable!(),
+                Command::Connect { addr } => match handle_connect(send, recv, addr).await {
+                    Ok(()) => {}
+                    Err(err) => eprintln!("{err}"),
+                },
+                Command::Bind { addr } => todo!(),
+                Command::Udp { .. } => unreachable!(),
             }
-        });
+            break;
+        } else if create_time.elapsed() > Duration::from_secs(3) {
+            eprintln!("Authentication timeout");
+            conn.close(VarInt::MAX, b"Authentication timeout");
+            break;
+        } else {
+            interval.tick().await;
+        }
     }
 }
 
