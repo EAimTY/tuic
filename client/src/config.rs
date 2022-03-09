@@ -1,5 +1,5 @@
 use crate::{cert, socks5::Authentication as Socks5Auth};
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use blake3::Hash;
 use getopts::Options;
 use rustls::Certificate;
@@ -14,25 +14,25 @@ impl<'cfg> ConfigBuilder<'cfg> {
     pub fn new() -> Self {
         let mut opts = Options::new();
 
-        opts.reqopt(
+        opts.optopt(
             "s",
             "server",
             "Set the server address. This address is supposed to be in the certificate(Required)",
             "SERVER",
         );
-        opts.reqopt(
+        opts.optopt(
             "p",
             "server-port",
             "Set the server port(Required)",
             "SERVER_PORT",
         );
-        opts.reqopt(
+        opts.optopt(
             "t",
             "token",
             "Set the TUIC token for the server authentication(Required)",
             "TOKEN",
         );
-        opts.reqopt(
+        opts.optopt(
             "l",
             "local-port",
             "Set the listening port of the local socks5 server(Required)",
@@ -93,22 +93,27 @@ impl<'cfg> ConfigBuilder<'cfg> {
 
         let matches = self.opts.parse(&args[1..])?;
 
-        if !matches.free.is_empty() {
-            bail!("Unexpected argument: {}", matches.free.join(", "),);
+        if matches.opt_present("h") {
+            bail!("{}", self.get_usage());
         }
 
         if matches.opt_present("v") {
             bail!("{}", env!("CARGO_PKG_VERSION"));
         }
 
-        if matches.opt_present("h") {
-            bail!("{}", self.get_usage());
+        if !matches.free.is_empty() {
+            bail!("Unexpected argument: {}", matches.free.join(", "),);
         }
 
         let server_addr = {
-            let server_name = unsafe { matches.opt_str("s").unwrap_unchecked() };
+            let server_name = matches
+                .opt_str("s")
+                .context("Required option 'server' missing")?;
 
-            let server_port = unsafe { matches.opt_str("p").unwrap_unchecked().parse()? };
+            let server_port = matches
+                .opt_str("p")
+                .context("Required option 'port' missing")?
+                .parse()?;
 
             if let Some(server_ip) = matches.opt_str("server-ip") {
                 let server_ip = server_ip.parse()?;
@@ -128,12 +133,17 @@ impl<'cfg> ConfigBuilder<'cfg> {
         };
 
         let token_digest = {
-            let token = unsafe { matches.opt_str("t").unwrap_unchecked() };
+            let token = matches
+                .opt_str("t")
+                .context("Required option 'token' missing")?;
             blake3::hash(&token.into_bytes())
         };
 
         let local_addr = {
-            let local_port = unsafe { matches.opt_str("l").unwrap_unchecked().parse()? };
+            let local_port = matches
+                .opt_str("l")
+                .context("Required option 'local-port' missing")?
+                .parse()?;
 
             if matches.opt_present("allow-external-connection") {
                 SocketAddr::from(([0, 0, 0, 0], local_port))
