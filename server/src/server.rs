@@ -116,7 +116,7 @@ async fn listen_uni_streams(
                     ConnectionError::ConnectionClosed(_) | ConnectionError::TimedOut => {}
                     err => eprintln!("{err}"),
                 }
-                continue;
+                break;
             }
         }
     }
@@ -144,7 +144,7 @@ async fn listen_bi_streams(
                     ConnectionError::ConnectionClosed(_) | ConnectionError::TimedOut => {}
                     err => eprintln!("{err}"),
                 }
-                continue;
+                break;
             }
         }
     }
