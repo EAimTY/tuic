@@ -20,18 +20,21 @@ impl<'cfg> ConfigBuilder<'cfg> {
             "Set the server address. This address is supposed to be in the certificate(Required)",
             "SERVER",
         );
+
         opts.optopt(
             "p",
             "server-port",
             "Set the server port(Required)",
             "SERVER_PORT",
         );
+
         opts.optopt(
             "t",
             "token",
             "Set the TUIC token for the server authentication(Required)",
             "TOKEN",
         );
+
         opts.optopt(
             "l",
             "local-port",
@@ -52,6 +55,7 @@ impl<'cfg> ConfigBuilder<'cfg> {
             "Set the username of the local socks5 server authentication",
             "SOCKS5_USERNAME",
         );
+
         opts.optopt(
             "",
             "socks5-password",
@@ -70,6 +74,13 @@ impl<'cfg> ConfigBuilder<'cfg> {
             "",
             "allow-external-connection",
             "Allow external connections to the local socks5 server",
+        );
+
+        opts.optopt(
+            "",
+            "congestion-controller",
+            r#"Set the congestion controller. Available: "cubic" (default), "new_reno", "bbr""#,
+            "CONGESTION_CONTROLLER",
         );
 
         opts.optflag("v", "version", "Print the version");
@@ -173,12 +184,25 @@ impl<'cfg> ConfigBuilder<'cfg> {
             None
         };
 
+        let congestion_controller =
+            if let Some(controller) = matches.opt_str("congestion-controller") {
+                match controller.as_str() {
+                    "cubic" => CongestionController::Cubic,
+                    "new_reno" => CongestionController::NewReno,
+                    "bbr" => CongestionController::Bbr,
+                    _ => bail!("Unknown congestion controller: {}", controller),
+                }
+            } else {
+                CongestionController::Cubic
+            };
+
         Ok(Config {
             server_addr,
             token_digest,
             local_addr,
             socks5_auth,
             certificate,
+            congestion_controller,
         })
     }
 }
@@ -189,6 +213,7 @@ pub struct Config {
     pub local_addr: SocketAddr,
     pub socks5_auth: Socks5Auth,
     pub certificate: Option<Certificate>,
+    pub congestion_controller: CongestionController,
 }
 
 #[derive(Clone)]
@@ -201,4 +226,10 @@ pub enum ServerAddr {
         hostname: String,
         server_port: u16,
     },
+}
+
+pub enum CongestionController {
+    Cubic,
+    NewReno,
+    Bbr,
 }

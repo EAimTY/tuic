@@ -20,14 +20,18 @@ async fn main() {
         }
     };
 
-    let (tuic_client, req_tx) =
-        match TuicClient::init(config.server_addr, config.certificate, config.token_digest) {
-            Ok((client, tx)) => (tokio::spawn(client.run()), tx),
-            Err(err) => {
-                eprintln!("{err}");
-                process::exit(1);
-            }
-        };
+    let (tuic_client, req_tx) = match TuicClient::init(
+        config.server_addr,
+        config.certificate,
+        config.token_digest,
+        config.congestion_controller,
+    ) {
+        Ok((client, tx)) => (tokio::spawn(client.run()), tx),
+        Err(err) => {
+            eprintln!("{err}");
+            process::exit(1);
+        }
+    };
 
     let socks5_server =
         match Socks5Server::init(config.local_addr, config.socks5_auth, req_tx).await {

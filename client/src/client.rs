@@ -1,14 +1,17 @@
-use crate::config::ServerAddr;
+use crate::config::{CongestionController, ServerAddr};
 use anyhow::Result;
 use blake3::Hash;
 use quinn::{
+    congestion::{BbrConfig, CubicConfig, NewRenoConfig},
     ClientConfig, Connection as QuinnConnection, ConnectionError, Datagrams as QuinnDatagrams,
     Endpoint, IncomingUniStreams as QuinnUniStreams, NewConnection, RecvStream, SendStream,
+    TransportConfig,
 };
 use rustls::{Certificate, RootCertStore};
 use std::{
     mem::{self, MaybeUninit},
     net::{SocketAddr, ToSocketAddrs},
+    sync::Arc,
     vec::IntoIter,
 };
 use tokio::sync::{
@@ -29,17 +32,38 @@ impl TuicClient {
         server_addr: ServerAddr,
         certificate: Option<Certificate>,
         token_digest: Hash,
+        congestion_controller: CongestionController,
     ) -> Result<(Self, MpscSender<Request>)> {
-        let quinn_config = if let Some(cert) = certificate {
-            let mut root_cert_store = RootCertStore::empty();
-            root_cert_store.add(&cert)?;
-            ClientConfig::with_root_certificates(root_cert_store)
-        } else {
-            ClientConfig::with_native_roots()
+        let config = {
+            let mut config = if let Some(cert) = certificate {
+                let mut root_cert_store = RootCertStore::empty();
+                root_cert_store.add(&cert)?;
+                ClientConfig::with_root_certificates(root_cert_store)
+            } else {
+                ClientConfig::with_native_roots()
+            };
+
+            let mut transport = TransportConfig::default();
+
+            match congestion_controller {
+                CongestionController::Cubic => {
+                    transport.congestion_controller_factory(Arc::new(CubicConfig::default()))
+                }
+                CongestionController::NewReno => {
+                    transport.congestion_controller_factory(Arc::new(NewRenoConfig::default()))
+                }
+                CongestionController::Bbr => {
+                    transport.congestion_controller_factory(Arc::new(BbrConfig::default()))
+                }
+            };
+
+            config.transport = Arc::new(transport);
+
+            config
         };
 
         let mut endpoint = Endpoint::client(SocketAddr::from(([0, 0, 0, 0], 0)))?;
-        endpoint.set_default_client_config(quinn_config);
+        endpoint.set_default_client_config(config);
 
         let (req_tx, req_rx) = mpsc::channel(1);
 
