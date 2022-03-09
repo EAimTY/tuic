@@ -1,5 +1,5 @@
 use crate::cert;
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use getopts::Options;
 use rustls::{Certificate, PrivateKey};
 
@@ -12,26 +12,26 @@ impl<'cfg> ConfigBuilder<'cfg> {
     pub fn new() -> Self {
         let mut opts = Options::new();
 
-        opts.reqopt(
+        opts.optopt(
             "p",
             "port",
             "Set the listening port(Required)",
             "SERVER_PORT",
         );
-        opts.reqopt(
+        opts.optopt(
             "t",
             "token",
             "Set the TUIC token for the authentication(Required)",
             "TOKEN",
         );
 
-        opts.reqopt(
+        opts.optopt(
             "c",
             "cert",
             "Set the certificate for QUIC handshake(Required)",
             "CERTIFICATE",
         );
-        opts.reqopt(
+        opts.optopt(
             "k",
             "priv-key",
             "Set the private key for QUIC handshake(Required)",
@@ -59,32 +59,41 @@ impl<'cfg> ConfigBuilder<'cfg> {
 
         let matches = self.opts.parse(&args[1..])?;
 
-        if !matches.free.is_empty() {
-            bail!("Unexpected argument: {}", matches.free.join(", "),);
+        if matches.opt_present("h") {
+            bail!("{}", self.get_usage());
         }
 
         if matches.opt_present("v") {
             bail!("{}", env!("CARGO_PKG_VERSION"));
         }
 
-        if matches.opt_present("h") {
-            bail!("{}", self.get_usage());
+        if !matches.free.is_empty() {
+            bail!("Unexpected argument: {}", matches.free.join(", "),);
         }
 
-        let port = unsafe { matches.opt_str("p").unwrap_unchecked() }.parse()?;
+        let port = matches
+            .opt_str("p")
+            .context("Required option 'port' missing")?
+            .parse()?;
 
         let token_digest = {
-            let token = unsafe { matches.opt_str("t").unwrap_unchecked() };
+            let token = matches
+                .opt_str("t")
+                .context("Required option 'token' missing")?;
             *blake3::hash(&token.into_bytes()).as_bytes()
         };
 
         let certificate = {
-            let path = unsafe { matches.opt_str("c").unwrap_unchecked() };
+            let path = matches
+                .opt_str("c")
+                .context("Required option 'cert' missing")?;
             cert::load_cert(&path)?
         };
 
         let private_key = {
-            let path = unsafe { matches.opt_str("k").unwrap_unchecked() };
+            let path = matches
+                .opt_str("k")
+                .context("Required option 'priv-key' missing")?;
             cert::load_priv_key(&path)?
         };
 
