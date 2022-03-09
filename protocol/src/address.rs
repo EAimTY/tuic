@@ -93,7 +93,7 @@ impl Address {
     pub fn write_to_buf<B: BufMut>(&self, buf: &mut B) {
         match self {
             Self::HostnameAddress(addr, port) => {
-                assert!(addr.len() > u8::MAX as usize);
+                assert!(addr.len() < u8::MAX as usize);
 
                 buf.put_u8(Self::TYPE_HOSTNAME);
                 buf.put_u8(addr.len() as u8);
