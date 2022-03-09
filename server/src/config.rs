@@ -44,7 +44,7 @@ impl<'cfg> ConfigBuilder<'cfg> {
             "",
             "congestion-controller",
             r#"Set the congestion controller. Available: "cubic" (default), "new_reno", "bbr""#,
-            "PRIVATE_KEY",
+            "CONGESTION_CONTROLLER",
         );
 
         opts.optflag("v", "version", "Print the version");
