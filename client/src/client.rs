@@ -1,6 +1,5 @@
 use crate::config::{CongestionController, ServerAddr};
 use anyhow::Result;
-use blake3::Hash;
 use quinn::{
     congestion::{BbrConfig, CubicConfig, NewRenoConfig},
     ClientConfig, Connection as QuinnConnection, ConnectionError, Datagrams as QuinnDatagrams,
@@ -23,7 +22,7 @@ use tuic_protocol::{Address as TuicAddress, Command as TuicCommand, Response as 
 pub struct TuicClient {
     endpoint: Endpoint,
     server_addr: ServerAddr,
-    token_digest: Hash,
+    token_digest: [u8; 32],
     req_rx: MpscReceiver<Request>,
 }
 
@@ -31,7 +30,7 @@ impl TuicClient {
     pub fn init(
         server_addr: ServerAddr,
         certificate: Option<Certificate>,
-        token_digest: Hash,
+        token_digest: [u8; 32],
         congestion_controller: CongestionController,
     ) -> Result<(Self, MpscSender<Request>)> {
         let config = {
@@ -142,12 +141,7 @@ impl TuicClient {
                             datagrams,
                             ..
                         }) => {
-                            return Connection::new(
-                                &self.token_digest,
-                                conn,
-                                uni_streams,
-                                datagrams,
-                            )
+                            return Connection::new(self.token_digest, conn, uni_streams, datagrams)
                         }
                         Err(err) => eprintln!("{err}"),
                     },
@@ -166,12 +160,12 @@ pub struct Connection {
 
 impl Connection {
     fn new(
-        token_digest: &Hash,
+        token_digest: [u8; 32],
         conn: QuinnConnection,
         uni_streams: QuinnUniStreams,
         datagrams: QuinnDatagrams,
     ) -> Self {
-        let token = TuicCommand::new_authenticate(token_digest.as_bytes().to_owned());
+        let token = TuicCommand::new_authenticate(token_digest);
         let uni = conn.open_uni();
 
         tokio::spawn(async move {

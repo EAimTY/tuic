@@ -1,6 +1,5 @@
 use crate::{cert, socks5::Authentication as Socks5Auth};
 use anyhow::{bail, Context, Result};
-use blake3::Hash;
 use getopts::Options;
 use rustls::Certificate;
 use std::net::SocketAddr;
@@ -147,7 +146,7 @@ impl<'cfg> ConfigBuilder<'cfg> {
             let token = matches
                 .opt_str("t")
                 .context("Required option 'token' missing")?;
-            blake3::hash(&token.into_bytes())
+            *blake3::hash(&token.into_bytes()).as_bytes()
         };
 
         let local_addr = {
@@ -209,7 +208,7 @@ impl<'cfg> ConfigBuilder<'cfg> {
 
 pub struct Config {
     pub server_addr: ServerAddr,
-    pub token_digest: Hash,
+    pub token_digest: [u8; 32],
     pub local_addr: SocketAddr,
     pub socks5_auth: Socks5Auth,
     pub certificate: Option<Certificate>,
