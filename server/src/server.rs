@@ -1,9 +1,11 @@
+use crate::config::CongestionController;
 use anyhow::{bail, Result};
 use futures_util::StreamExt;
 use quinn::{
+    congestion::{BbrConfig, CubicConfig, NewRenoConfig},
     Connection as QuinnConnection, ConnectionError, Datagrams as QuinnDatagrams, Endpoint,
     Incoming, IncomingBiStreams as QuinnBiStreams, IncomingUniStreams as QuinnUniStreams,
-    NewConnection, RecvStream, SendStream, ServerConfig, VarInt,
+    NewConnection, RecvStream, SendStream, ServerConfig, TransportConfig, VarInt,
 };
 use rustls::{Certificate, PrivateKey};
 use std::{
@@ -28,8 +30,30 @@ impl Server {
         expected_token_digest: [u8; 32],
         cert: Certificate,
         priv_key: PrivateKey,
+        congestion_controller: CongestionController,
     ) -> Result<Self> {
-        let config = ServerConfig::with_single_cert(vec![cert], priv_key)?;
+        let config = {
+            let mut config = ServerConfig::with_single_cert(vec![cert], priv_key)?;
+
+            let mut transport = TransportConfig::default();
+
+            match congestion_controller {
+                CongestionController::Cubic => {
+                    transport.congestion_controller_factory(Arc::new(CubicConfig::default()))
+                }
+                CongestionController::NewReno => {
+                    transport.congestion_controller_factory(Arc::new(NewRenoConfig::default()))
+                }
+                CongestionController::Bbr => {
+                    transport.congestion_controller_factory(Arc::new(BbrConfig::default()))
+                }
+            };
+
+            config.transport = Arc::new(transport);
+
+            config
+        };
+
         let (_, incoming) = Endpoint::server(config, SocketAddr::from(([0, 0, 0, 0], port)))?;
 
         Ok(Self {

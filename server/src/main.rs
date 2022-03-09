@@ -24,6 +24,7 @@ async fn main() {
         config.token_digest,
         config.certificate,
         config.private_key,
+        config.congestion_controller,
     ) {
         Ok(server) => server,
         Err(err) => {

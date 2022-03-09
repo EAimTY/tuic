@@ -18,6 +18,7 @@ impl<'cfg> ConfigBuilder<'cfg> {
             "Set the listening port(Required)",
             "SERVER_PORT",
         );
+
         opts.optopt(
             "t",
             "token",
@@ -31,10 +32,18 @@ impl<'cfg> ConfigBuilder<'cfg> {
             "Set the certificate for QUIC handshake(Required)",
             "CERTIFICATE",
         );
+
         opts.optopt(
             "k",
             "priv-key",
             "Set the private key for QUIC handshake(Required)",
+            "PRIVATE_KEY",
+        );
+
+        opts.optopt(
+            "",
+            "congestion-controller",
+            r#"Set the congestion controller. Available: "cubic" (default), "new_reno", "bbr""#,
             "PRIVATE_KEY",
         );
 
@@ -97,11 +106,24 @@ impl<'cfg> ConfigBuilder<'cfg> {
             cert::load_priv_key(&path)?
         };
 
+        let congestion_controller =
+            if let Some(controller) = matches.opt_str("congestion-controller") {
+                match controller.as_str() {
+                    "cubic" => CongestionController::Cubic,
+                    "new_reno" => CongestionController::NewReno,
+                    "bbr" => CongestionController::Bbr,
+                    _ => bail!("Unknown congestion controller: {}", controller),
+                }
+            } else {
+                CongestionController::Cubic
+            };
+
         Ok(Config {
             port,
             token_digest,
             certificate,
             private_key,
+            congestion_controller,
         })
     }
 }
@@ -111,4 +133,11 @@ pub struct Config {
     pub token_digest: [u8; 32],
     pub certificate: Certificate,
     pub private_key: PrivateKey,
+    pub congestion_controller: CongestionController,
+}
+
+pub enum CongestionController {
+    Cubic,
+    NewReno,
+    Bbr,
 }
