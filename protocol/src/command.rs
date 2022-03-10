@@ -113,7 +113,7 @@ impl Command {
 
     pub fn serialized_len(&self) -> usize {
         2 + match self {
-            Self::Authenticate { .. } => 8,
+            Self::Authenticate { .. } => 32,
             Self::Connect { addr } => addr.serialized_len(),
             Self::Bind { addr } => addr.serialized_len(),
             Self::Udp { addr, .. } => 4 + addr.serialized_len(),
