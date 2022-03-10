@@ -1,6 +1,6 @@
 # TUIC
 
-Delicately-TUIC'ed high-performance proxy built on top of [QUIC](https://en.wikipedia.org/wiki/QUIC) protocol
+Delicately-TUIC'ed high-performance proxy built on top of the [QUIC](https://en.wikipedia.org/wiki/QUIC) protocol
 
 ## Features
 
@@ -102,6 +102,16 @@ tuic-client \
     --congestion-controller bbr \
     --reduce-rtt
 ```
+
+## Further Development Plan
+
+TUIC is usable, but still lacking a lot of features.
+Features below are under development:
+
+- Two 0-RTT UDP relay mode: UDP over QUIC (UDP packets parallelly sends in a exclusive stream) and unreliable UDP
+- Multi user support
+- `Bind` Command
+- ...
 
 ## License
 GNU General Public License v3.0
