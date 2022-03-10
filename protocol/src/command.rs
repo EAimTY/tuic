@@ -17,7 +17,7 @@ pub enum Command {
     Authenticate { digest: [u8; 32] },
     Connect { addr: Address },
     Bind { addr: Address },
-    Udp { assoc_id: u16, addr: Address },
+    Udp { assoc_id: u32, addr: Address },
 }
 
 impl Command {
@@ -38,7 +38,7 @@ impl Command {
         Self::Bind { addr }
     }
 
-    pub fn new_udp(assoc_id: u16, addr: Address) -> Self {
+    pub fn new_udp(assoc_id: u32, addr: Address) -> Self {
         Self::Udp { assoc_id, addr }
     }
 
@@ -71,7 +71,7 @@ impl Command {
                 Ok(Self::new_bind(addr))
             }
             Self::CMD_UDP => {
-                let assoc_id = r.read_u16().await?;
+                let assoc_id = r.read_u32().await?;
                 let addr = Address::read_from(r).await?;
                 Ok(Self::new_udp(assoc_id, addr))
             }
@@ -105,7 +105,7 @@ impl Command {
             }
             Self::Udp { assoc_id, addr } => {
                 buf.put_u8(Self::CMD_UDP);
-                buf.put_u16(*assoc_id);
+                buf.put_u32(*assoc_id);
                 addr.write_to_buf(buf);
             }
         }
