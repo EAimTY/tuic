@@ -1,0 +1,81 @@
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+name: build-and-release
+
+jobs:
+  build-and-release:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            arch-name: x86_64-linux
+            file-ext:
+          - os: windows-latest
+            arch-name: x86_64-windows
+            file-ext: .exe
+          - os: macos-latest
+            arch-name: x86_64-macos
+            file-ext:
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Get the latest tag
+        id: tag
+        uses: "WyriHaximus/github-action-get-previous-tag@v1"
+
+      - name: Install toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          override: true
+
+      - name: Build server
+        run: cargo build --release -p tuic-server
+
+      - name: Build client
+        run: cargo build --release -p tuic-client
+
+      - name: Move binaries
+        run: |
+          mkdir artifacts/
+          mv target/release/tuic-server${{ matrix.file-ext }} artifacts/tuic-server-${{ steps.tag.outputs.tag }}-${{ matrix.arch-name }}${{ matrix.file-ext }}
+          mv target/release/tuic-client${{ matrix.file-ext }} artifacts/tuic-client-${{ steps.tag.outputs.tag }}-${{ matrix.arch-name }}${{ matrix.file-ext }}
+
+      - name: Compress server binary
+        uses: svenstaro/upx-action@v2
+        with:
+          file: artifacts/tuic-server-${{ steps.tag.outputs.tag }}-${{ matrix.arch-name }}${{ matrix.file-ext }}
+          args: --best
+          strip: false
+
+      - name: Compress client binary
+        uses: svenstaro/upx-action@v2
+        with:
+          file: artifacts/tuic-client-${{ steps.tag.outputs.tag }}-${{ matrix.arch-name }}${{ matrix.file-ext }}
+          args: --best
+          strip: false
+
+      - name: Calculate SHA256
+        run: |
+          cd artifacts/
+          openssl dgst -sha256 -r tuic-server-${{ steps.tag.outputs.tag }}-${{ matrix.arch-name }}${{ matrix.file-ext }} > tuic-server-${{ steps.tag.outputs.tag }}-${{ matrix.arch-name }}${{ matrix.file-ext }}.sha256sum
+          openssl dgst -sha256 -r tuic-client-${{ steps.tag.outputs.tag }}-${{ matrix.arch-name }}${{ matrix.file-ext }} > tuic-client-${{ steps.tag.outputs.tag }}-${{ matrix.arch-name }}${{ matrix.file-ext }}.sha256sum
+
+      - name: Release binaries
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "artifacts/*"
+          tag: ${{ steps.tag.outputs.tag }}
+          name: ${{ steps.tag.outputs.tag }}
+          allowUpdates: true
+          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
