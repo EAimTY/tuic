@@ -69,17 +69,23 @@ impl<'cfg> ConfigBuilder<'cfg> {
             "CERTIFICATE",
         );
 
-        opts.optflag(
-            "",
-            "allow-external-connection",
-            "Allow external connections to the local socks5 server",
-        );
-
         opts.optopt(
             "",
             "congestion-controller",
             r#"Set the congestion controller. Available: "cubic" (default), "new_reno", "bbr""#,
             "CONGESTION_CONTROLLER",
+        );
+
+        opts.optflag(
+            "",
+            "reduce-rtt",
+            "Enable 0-RTT for QUIC handshake at the cost of weakened security",
+        );
+
+        opts.optflag(
+            "",
+            "allow-external-connection",
+            "Allow external connections to the local socks5 server",
         );
 
         opts.optflag("v", "version", "Print the version");
@@ -183,6 +189,8 @@ impl<'cfg> ConfigBuilder<'cfg> {
             None
         };
 
+        let reduce_rtt = matches.opt_present("reduce-rtt");
+
         let congestion_controller =
             if let Some(controller) = matches.opt_str("congestion-controller") {
                 match controller.as_str() {
@@ -201,6 +209,7 @@ impl<'cfg> ConfigBuilder<'cfg> {
             local_addr,
             socks5_auth,
             certificate,
+            reduce_rtt,
             congestion_controller,
         })
     }
@@ -212,6 +221,7 @@ pub struct Config {
     pub local_addr: SocketAddr,
     pub socks5_auth: Socks5Auth,
     pub certificate: Option<Certificate>,
+    pub reduce_rtt: bool,
     pub congestion_controller: CongestionController,
 }
 

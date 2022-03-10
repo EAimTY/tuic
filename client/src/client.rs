@@ -2,9 +2,9 @@ use crate::config::{CongestionController, ServerAddr};
 use anyhow::Result;
 use quinn::{
     congestion::{BbrConfig, CubicConfig, NewRenoConfig},
-    ClientConfig, Connection as QuinnConnection, ConnectionError, Datagrams as QuinnDatagrams,
-    Endpoint, IncomingUniStreams as QuinnUniStreams, NewConnection, RecvStream, SendStream,
-    TransportConfig,
+    ClientConfig, Connecting, Connection as QuinnConnection, ConnectionError,
+    Datagrams as QuinnDatagrams, Endpoint, IncomingUniStreams as QuinnUniStreams, NewConnection,
+    RecvStream, SendStream, TransportConfig,
 };
 use rustls::{Certificate, RootCertStore};
 use std::{
@@ -23,6 +23,7 @@ pub struct TuicClient {
     endpoint: Endpoint,
     server_addr: ServerAddr,
     token_digest: [u8; 32],
+    reduce_rtt: bool,
     req_rx: MpscReceiver<Request>,
 }
 
@@ -31,6 +32,7 @@ impl TuicClient {
         server_addr: ServerAddr,
         certificate: Option<Certificate>,
         token_digest: [u8; 32],
+        reduce_rtt: bool,
         congestion_controller: CongestionController,
     ) -> Result<(Self, MpscSender<Request>)> {
         let config = {
@@ -71,6 +73,7 @@ impl TuicClient {
                 endpoint,
                 server_addr,
                 token_digest,
+                reduce_rtt,
                 req_rx,
             },
             req_tx,
@@ -92,7 +95,7 @@ impl TuicClient {
 
     async fn get_bi_stream(&self, conn_ref: &mut Connection) -> (SendStream, RecvStream) {
         loop {
-            match conn_ref.conn.open_bi().await {
+            match conn_ref.connection.open_bi().await {
                 Ok(res) => return res,
                 Err(err) => {
                     match err {
@@ -134,17 +137,12 @@ impl TuicClient {
 
             for addr in addrs.as_ref() {
                 match self.endpoint.connect(*addr, server_name) {
-                    Ok(connecting) => match connecting.await {
-                        Ok(NewConnection {
-                            connection: conn,
-                            uni_streams,
-                            datagrams,
-                            ..
-                        }) => {
-                            return Connection::new(self.token_digest, conn, uni_streams, datagrams)
+                    Ok(conn) => {
+                        match process_conn(conn, self.token_digest, self.reduce_rtt).await {
+                            Ok(conn) => return conn,
+                            Err(err) => eprintln!("{err}"),
                         }
-                        Err(err) => eprintln!("{err}"),
-                    },
+                    }
                     Err(err) => eprintln!("{err}"),
                 }
             }
@@ -152,57 +150,43 @@ impl TuicClient {
     }
 }
 
-pub struct Connection {
-    conn: QuinnConnection,
-    uni_streams: QuinnUniStreams,
-    datagrams: QuinnDatagrams,
-}
-
-impl Connection {
-    fn new(
-        token_digest: [u8; 32],
-        conn: QuinnConnection,
-        uni_streams: QuinnUniStreams,
-        datagrams: QuinnDatagrams,
-    ) -> Self {
-        let token = TuicCommand::new_authenticate(token_digest);
-        let uni = conn.open_uni();
-
-        tokio::spawn(async move {
-            match uni.await {
-                Ok(mut stream) => match token.write_to(&mut stream).await {
-                    Ok(()) => {}
-                    Err(err) => eprintln!("{err}"),
-                },
-                Err(err) => eprintln!("{err}"),
-            }
-        });
-
-        Self {
-            conn,
-            uni_streams,
-            datagrams,
+async fn process_conn(
+    conn: Connecting,
+    token_digest: [u8; 32],
+    reduce_rtt: bool,
+) -> Result<Connection> {
+    let NewConnection {
+        connection,
+        uni_streams,
+        datagrams,
+        ..
+    } = if reduce_rtt {
+        match conn.into_0rtt() {
+            Ok((conn, _)) => conn,
+            Err(conn) => conn.await?,
         }
-    }
-}
+    } else {
+        conn.await?
+    };
 
-pub enum Request {
-    Connect {
-        addr: Address,
-        tx: OneshotSender<Option<(SendStream, RecvStream)>>,
-    },
-}
+    let token = TuicCommand::new_authenticate(token_digest);
+    let uni = connection.open_uni();
 
-impl Request {
-    pub fn new_connect(addr: Address) -> (Self, OneshotReceiver<Option<(SendStream, RecvStream)>>) {
-        let (tx, rx) = oneshot::channel();
-        (Request::Connect { addr, tx }, rx)
-    }
-}
+    tokio::spawn(async move {
+        match uni.await {
+            Ok(mut stream) => match token.write_to(&mut stream).await {
+                Ok(()) => {}
+                Err(err) => eprintln!("{err}"),
+            },
+            Err(err) => eprintln!("{err}"),
+        }
+    });
 
-pub enum Address {
-    HostnameAddress(String, u16),
-    SocketAddress(SocketAddr),
+    Ok(Connection {
+        connection,
+        uni_streams,
+        datagrams,
+    })
 }
 
 async fn handle_connect(
@@ -231,4 +215,29 @@ async fn handle_connect(
         Err(err) => eprintln!("{err}"),
     }
     let _ = tx.send(None);
+}
+
+pub struct Connection {
+    connection: QuinnConnection,
+    uni_streams: QuinnUniStreams,
+    datagrams: QuinnDatagrams,
+}
+
+pub enum Request {
+    Connect {
+        addr: Address,
+        tx: OneshotSender<Option<(SendStream, RecvStream)>>,
+    },
+}
+
+impl Request {
+    pub fn new_connect(addr: Address) -> (Self, OneshotReceiver<Option<(SendStream, RecvStream)>>) {
+        let (tx, rx) = oneshot::channel();
+        (Request::Connect { addr, tx }, rx)
+    }
+}
+
+pub enum Address {
+    HostnameAddress(String, u16),
+    SocketAddress(SocketAddr),
 }

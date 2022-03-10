@@ -24,6 +24,7 @@ async fn main() {
         config.server_addr,
         config.certificate,
         config.token_digest,
+        config.reduce_rtt,
         config.congestion_controller,
     ) {
         Ok((client, tx)) => (tokio::spawn(client.run()), tx),
