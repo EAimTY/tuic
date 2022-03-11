@@ -17,4 +17,5 @@ pub use self::{
     reply::Reply,
     request::Request,
     response::Response,
+    udp::UdpHeader,
 };

@@ -1,5 +1,6 @@
 use crate::config::{CongestionController, ServerAddr};
 use anyhow::Result;
+use bytes::Bytes;
 use lazy_static::lazy_static;
 use parking_lot::Mutex;
 use quinn::{
@@ -245,8 +246,8 @@ pub enum Request {
     },
     Associate {
         assoc_id: u32,
-        pkt_send_rx: MpscReceiver<()>,
-        pkt_receive_tx: MpscSender<()>,
+        pkt_send_rx: MpscReceiver<(Bytes, Address)>,
+        pkt_receive_tx: MpscSender<(Bytes, Address)>,
     },
 }
 
@@ -256,7 +257,11 @@ impl Request {
         (Request::Connect { addr, tx }, rx)
     }
 
-    pub fn new_associate() -> (Self, MpscSender<()>, MpscReceiver<()>) {
+    pub fn new_associate() -> (
+        Self,
+        MpscSender<(Bytes, Address)>,
+        MpscReceiver<(Bytes, Address)>,
+    ) {
         let assoc_id = get_random_u32();
         let (pkt_send_tx, pkt_send_rx) = mpsc::channel(1);
         let (pkt_receive_tx, pkt_receive_rx) = mpsc::channel(1);
