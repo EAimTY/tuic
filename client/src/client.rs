@@ -1,11 +1,13 @@
 use crate::config::{CongestionController, ServerAddr};
 use anyhow::Result;
+use lazy_static::lazy_static;
+use parking_lot::Mutex;
 use quinn::{
     congestion::{BbrConfig, CubicConfig, NewRenoConfig},
-    ClientConfig, Connecting, Connection as QuinnConnection, ConnectionError,
-    Datagrams as QuinnDatagrams, Endpoint, IncomingUniStreams as QuinnUniStreams, NewConnection,
-    RecvStream, SendStream, TransportConfig,
+    ClientConfig, Connecting, Connection, ConnectionError, Datagrams, Endpoint, IncomingUniStreams,
+    NewConnection, RecvStream, SendStream, TransportConfig,
 };
+use rand::{rngs::StdRng, RngCore, SeedableRng};
 use rustls::{Certificate, RootCertStore};
 use std::{
     mem::{self, MaybeUninit},
@@ -89,13 +91,21 @@ impl TuicClient {
                     let (send, recv) = self.get_bi_stream(&mut conn).await;
                     tokio::spawn(handle_connect(send, recv, addr, tx));
                 }
+                Request::Associate {
+                    assoc_id,
+                    pkt_send_rx,
+                    pkt_receive_tx,
+                } => {}
             }
         }
     }
 
-    async fn get_bi_stream(&self, conn_ref: &mut Connection) -> (SendStream, RecvStream) {
+    async fn get_bi_stream(
+        &self,
+        conn_ref: &mut (Connection, IncomingUniStreams, Datagrams),
+    ) -> (SendStream, RecvStream) {
         loop {
-            match conn_ref.connection.open_bi().await {
+            match conn_ref.0.open_bi().await {
                 Ok(res) => return res,
                 Err(err) => {
                     match err {
@@ -108,7 +118,7 @@ impl TuicClient {
         }
     }
 
-    async fn establish_conn(&self) -> Connection {
+    async fn establish_conn(&self) -> (Connection, IncomingUniStreams, Datagrams) {
         let (mut addrs, server_name) = match &self.server_addr {
             ServerAddr::HostnameAddr { hostname, .. } => (
                 unsafe { mem::transmute(MaybeUninit::<IntoIter<SocketAddr>>::uninit()) },
@@ -154,7 +164,7 @@ async fn process_conn(
     conn: Connecting,
     token_digest: [u8; 32],
     reduce_rtt: bool,
-) -> Result<Connection> {
+) -> Result<(Connection, IncomingUniStreams, Datagrams)> {
     let NewConnection {
         connection,
         uni_streams,
@@ -182,11 +192,7 @@ async fn process_conn(
         }
     });
 
-    Ok(Connection {
-        connection,
-        uni_streams,
-        datagrams,
-    })
+    Ok((connection, uni_streams, datagrams))
 }
 
 async fn handle_connect(
@@ -217,23 +223,50 @@ async fn handle_connect(
     let _ = tx.send(None);
 }
 
-pub struct Connection {
-    connection: QuinnConnection,
-    uni_streams: QuinnUniStreams,
-    datagrams: QuinnDatagrams,
-}
-
 pub enum Request {
     Connect {
         addr: Address,
         tx: OneshotSender<Option<(SendStream, RecvStream)>>,
     },
+    Associate {
+        assoc_id: u32,
+        pkt_send_rx: MpscReceiver<()>,
+        pkt_receive_tx: MpscSender<()>,
+    },
+}
+
+struct Rng(Mutex<StdRng>);
+
+impl Rng {
+    fn get_random(&self) -> u32 {
+        self.0.lock().next_u32()
+    }
+}
+
+lazy_static! {
+    static ref RNG: Rng = Rng(Mutex::new(StdRng::from_entropy()));
 }
 
 impl Request {
     pub fn new_connect(addr: Address) -> (Self, OneshotReceiver<Option<(SendStream, RecvStream)>>) {
         let (tx, rx) = oneshot::channel();
         (Request::Connect { addr, tx }, rx)
+    }
+
+    pub fn new_associate() -> (Self, MpscSender<()>, MpscReceiver<()>) {
+        let assoc_id = RNG.get_random();
+        let (pkt_send_tx, pkt_send_rx) = mpsc::channel(1);
+        let (pkt_receive_tx, pkt_receive_rx) = mpsc::channel(1);
+
+        (
+            Self::Associate {
+                assoc_id,
+                pkt_send_rx,
+                pkt_receive_tx,
+            },
+            pkt_send_tx,
+            pkt_receive_rx,
+        )
     }
 }
 

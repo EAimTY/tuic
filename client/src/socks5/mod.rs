@@ -159,7 +159,18 @@ impl Connection {
         Ok(())
     }
 
-    async fn handle_associate(self, _addr: Address) -> Result<()> {
+    async fn handle_associate(self, addr: Address) -> Result<()> {
+        let addr = match addr {
+            Address::SocketAddress(addr) => RelayAddress::SocketAddress(addr),
+            Address::HostnameAddress(hostname, port) => {
+                RelayAddress::HostnameAddress(hostname, port)
+            }
+        };
+
+        let (relay_req, pkt_send_tx, pkt_receive_rx) = RelayRequest::new_associate();
+
+        todo!();
+
         Ok(())
     }
 }
