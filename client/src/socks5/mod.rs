@@ -5,6 +5,7 @@ use tokio::{
     io,
     net::{TcpListener, TcpStream},
     sync::mpsc::Sender as MpscSender,
+    task::JoinHandle,
 };
 
 pub use self::auth::Authentication;
@@ -16,39 +17,24 @@ use self::protocol::{
 mod auth;
 mod protocol;
 
-pub struct Socks5Server {
+pub async fn init(
+    local_addr: SocketAddr,
+    auth: Authentication,
+    req_tx: MpscSender<RelayRequest>,
+) -> Result<JoinHandle<()>> {
+    let listener = TcpListener::bind(local_addr).await?;
+    let auth = Arc::new(auth);
+
+    Ok(tokio::spawn(listen_socks5_request(listener, auth, req_tx)))
+}
+
+async fn listen_socks5_request(
     listener: TcpListener,
     auth: Arc<Authentication>,
     req_tx: MpscSender<RelayRequest>,
-}
-
-impl Socks5Server {
-    pub async fn init(
-        local_addr: SocketAddr,
-        auth: Authentication,
-        req_tx: MpscSender<RelayRequest>,
-    ) -> Result<Self> {
-        let listener = TcpListener::bind(local_addr).await?;
-        let auth = Arc::new(auth);
-
-        Ok(Self {
-            listener,
-            auth,
-            req_tx,
-        })
-    }
-
-    pub async fn run(self) {
-        while let Ok((stream, _)) = self.listener.accept().await {
-            let conn = Connection::new(stream, &self.auth, &self.req_tx);
-
-            tokio::spawn(async move {
-                match conn.process().await {
-                    Ok(()) => {}
-                    Err(err) => eprintln!("{err}"),
-                }
-            });
-        }
+) {
+    while let Ok((stream, _)) = listener.accept().await {
+        tokio::spawn(Connection::new(stream, auth.clone(), req_tx.clone()));
     }
 }
 
@@ -59,15 +45,16 @@ struct Connection {
 }
 
 impl Connection {
-    fn new(
-        stream: TcpStream,
-        auth: &Arc<Authentication>,
-        req_tx: &MpscSender<RelayRequest>,
-    ) -> Self {
-        Self {
+    async fn new(stream: TcpStream, auth: Arc<Authentication>, req_tx: MpscSender<RelayRequest>) {
+        let conn = Connection {
             stream,
-            auth: auth.clone(),
-            req_tx: req_tx.clone(),
+            auth,
+            req_tx,
+        };
+
+        match conn.process().await {
+            Ok(()) => (),
+            Err(err) => eprintln!("{err}"),
         }
     }
 

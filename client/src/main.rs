@@ -1,4 +1,4 @@
-use crate::{client::TuicClient, config::ConfigBuilder, socks5::Socks5Server};
+use crate::config::ConfigBuilder;
 use std::{env, process};
 
 mod cert;
@@ -20,28 +20,27 @@ async fn main() {
         }
     };
 
-    let (tuic_client, req_tx) = match TuicClient::init(
+    let (tuic_client, req_tx) = match client::init(
         config.server_addr,
         config.certificate,
         config.token_digest,
         config.reduce_rtt,
         config.congestion_controller,
     ) {
-        Ok((client, tx)) => (tokio::spawn(client.run()), tx),
+        Ok(res) => res,
         Err(err) => {
             eprintln!("{err}");
             process::exit(1);
         }
     };
 
-    let socks5_server =
-        match Socks5Server::init(config.local_addr, config.socks5_auth, req_tx).await {
-            Ok(server) => tokio::spawn(server.run()),
-            Err(err) => {
-                eprintln!("{err}");
-                process::exit(1);
-            }
-        };
+    let socks5_server = match socks5::init(config.local_addr, config.socks5_auth, req_tx).await {
+        Ok(res) => res,
+        Err(err) => {
+            eprintln!("{err}");
+            process::exit(1);
+        }
+    };
 
-    let _ = tokio::try_join!(tuic_client, socks5_server);
+    let _ = tokio::join!(tuic_client, socks5_server);
 }
