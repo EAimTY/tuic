@@ -9,16 +9,10 @@ use tokio::io;
 
 impl Connection {
     pub async fn handle_connect(mut self, addr: Address) -> Result<()> {
-        let addr = match addr {
-            Address::SocketAddress(addr) => RelayAddress::SocketAddress(addr),
-            Address::HostnameAddress(hostname, port) => {
-                RelayAddress::HostnameAddress(hostname, port)
-            }
-        };
-
+        let addr = RelayAddress::from(addr);
         let (relay_req, relay_resp_rx) = RelayRequest::new_connect(addr);
-        let _ = self.req_tx.send(relay_req).await;
 
+        let _ = self.req_tx.send(relay_req).await;
         let relay_resp = relay_resp_rx.await?;
 
         if let Some((mut remote_send, mut remote_recv)) = relay_resp {

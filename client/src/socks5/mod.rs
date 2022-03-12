@@ -8,6 +8,7 @@ pub use self::auth::Authentication;
 
 mod auth;
 mod connection;
+mod convert;
 mod protocol;
 
 pub async fn init(

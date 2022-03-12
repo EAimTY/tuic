@@ -18,8 +18,9 @@ use tokio::sync::{
 };
 use tuic_protocol::{Address as TuicAddress, Command as TuicCommand, Response as TuicResponse};
 
-pub use self::request::Request;
+pub use self::{address::Address, request::Request};
 
+mod address;
 mod connection;
 mod request;
 
@@ -163,11 +164,7 @@ async fn handle_command_connect(
     addr: Address,
     tx: OneshotSender<Option<(SendStream, RecvStream)>>,
 ) {
-    let addr = match addr {
-        Address::HostnameAddress(hostname, port) => TuicAddress::HostnameAddress(hostname, port),
-        Address::SocketAddress(addr) => TuicAddress::SocketAddress(addr),
-    };
-
+    let addr = TuicAddress::from(addr);
     let cmd = TuicCommand::new_connect(addr);
 
     match cmd.write_to(&mut send).await {
@@ -184,9 +181,4 @@ async fn handle_command_connect(
     }
 
     let _ = tx.send(None);
-}
-
-pub enum Address {
-    HostnameAddress(String, u16),
-    SocketAddress(SocketAddr),
 }

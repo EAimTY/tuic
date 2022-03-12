@@ -87,12 +87,7 @@ async fn listen_receive(
     mut pkt_receive_rx: MpscReceiver<(Bytes, RelayAddress)>,
 ) -> Result<()> {
     while let Some((packet, addr)) = pkt_receive_rx.recv().await {
-        let addr = match addr {
-            RelayAddress::SocketAddress(addr) => Address::SocketAddress(addr),
-            RelayAddress::HostnameAddress(hostname, port) => {
-                Address::HostnameAddress(hostname, port)
-            }
-        };
+        let addr = Address::from(addr);
 
         let udp_header = UdpHeader::new(0, addr);
 
@@ -122,11 +117,7 @@ async fn send_packet(buf: Vec<u8>, pkt_send_tx: &MpscSender<(Bytes, RelayAddress
     }
 
     let packet = Bytes::from(buf).slice(udp_header.serialized_len()..);
-
-    let dst_addr = match udp_header.address {
-        Address::SocketAddress(addr) => RelayAddress::SocketAddress(addr),
-        Address::HostnameAddress(hostname, port) => RelayAddress::HostnameAddress(hostname, port),
-    };
+    let dst_addr = RelayAddress::from(udp_header.address);
 
     let _ = pkt_send_tx.send((packet, dst_addr)).await;
 
