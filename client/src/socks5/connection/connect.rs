@@ -1,6 +1,6 @@
 use super::Connection;
 use crate::{
-    client::{Address as RelayAddress, Request as RelayRequest},
+    relay::{Address as RelayAddress, Request as RelayRequest},
     socks5::protocol::{Address, Reply, Response},
 };
 use anyhow::Result;

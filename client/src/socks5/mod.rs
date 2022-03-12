@@ -1,5 +1,5 @@
 use self::connection::Connection;
-use crate::client::Request as RelayRequest;
+use crate::relay::Request as RelayRequest;
 use anyhow::Result;
 use std::{net::SocketAddr, sync::Arc};
 use tokio::{net::TcpListener, sync::mpsc::Sender as MpscSender, task::JoinHandle};

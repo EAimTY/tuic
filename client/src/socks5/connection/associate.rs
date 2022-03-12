@@ -1,6 +1,6 @@
 use super::Connection;
 use crate::{
-    client::{Address as RelayAddress, Request as RelayRequest},
+    relay::{Address as RelayAddress, Request as RelayRequest},
     socks5::protocol::{Address, Reply, Response, UdpHeader},
 };
 use anyhow::{bail, Result};
@@ -103,7 +103,7 @@ async fn listen_receive(
         socket.send(&buf).await?;
     }
 
-    bail!("UDP packet channel closed")
+    bail!("UDP packet channel closed");
 }
 
 async fn listen_termination(mut stream: TcpStream) -> Result<()> {

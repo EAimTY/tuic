@@ -5,7 +5,7 @@ use super::{
     },
     Authentication,
 };
-use crate::client::Request as RelayRequest;
+use crate::relay::Request as RelayRequest;
 use anyhow::{bail, Result};
 use std::sync::Arc;
 use tokio::{net::TcpStream, sync::mpsc::Sender as MpscSender};

@@ -197,7 +197,7 @@ impl<'cfg> ConfigBuilder<'cfg> {
                     "cubic" => CongestionController::Cubic,
                     "new_reno" => CongestionController::NewReno,
                     "bbr" => CongestionController::Bbr,
-                    _ => bail!("Unknown congestion controller: {}", controller),
+                    _ => bail!("Unknown congestion controller: {controller}"),
                 }
             } else {
                 CongestionController::Cubic

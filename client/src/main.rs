@@ -1,9 +1,12 @@
-use crate::config::ConfigBuilder;
+#![feature(once_cell)]
+#![feature(try_blocks)]
+
+use crate::{config::ConfigBuilder, relay::Relay};
 use std::{env, process};
 
 mod cert;
-mod client;
 mod config;
+mod relay;
 mod socks5;
 
 #[tokio::main]
@@ -20,14 +23,14 @@ async fn main() {
         }
     };
 
-    let (tuic_client, req_tx) = match client::init(
+    let (relay, req_tx) = match Relay::init(
         config.server_addr,
         config.certificate,
         config.token_digest,
         config.reduce_rtt,
         config.congestion_controller,
     ) {
-        Ok(res) => res,
+        Ok((relay, tx)) => (tokio::spawn(relay.run()), tx),
         Err(err) => {
             eprintln!("{err}");
             process::exit(1);
@@ -42,5 +45,5 @@ async fn main() {
         }
     };
 
-    let _ = tokio::join!(tuic_client, socks5_server);
+    let _ = tokio::join!(relay, socks5_server);
 }
