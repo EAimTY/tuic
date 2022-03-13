@@ -3,7 +3,7 @@ use crate::config::{CongestionController, ServerAddr};
 use anyhow::Result;
 use quinn::{
     congestion::{BbrConfig, CubicConfig, NewRenoConfig},
-    ClientConfig, ConnectionError, Endpoint, RecvStream, SendStream, TransportConfig,
+    ClientConfig, Endpoint, TransportConfig,
 };
 use rustls::{Certificate, RootCertStore};
 use std::{
@@ -12,11 +12,7 @@ use std::{
     sync::Arc,
     vec::IntoIter,
 };
-use tokio::sync::{
-    mpsc::{self, Receiver as MpscReceiver, Sender as MpscSender},
-    oneshot::Sender as OneshotSender,
-};
-use tuic_protocol::{Address as TuicAddress, Command as TuicCommand, Response as TuicResponse};
+use tokio::sync::mpsc::{self, Receiver as MpscReceiver, Sender as MpscSender};
 
 pub use self::{address::Address, request::Request};
 
@@ -87,16 +83,21 @@ impl Relay {
         let mut conn = self.establish_connection().await;
 
         while let Some(req) = self.req_rx.recv().await {
+            if conn.is_closed().await {
+                conn = self.establish_connection().await;
+            }
+
             match req {
                 Request::Connect { addr, tx } => {
-                    let (send, recv) = self.new_bi_stream(&mut conn).await;
-                    tokio::spawn(handle_command_connect(send, recv, addr, tx));
+                    conn.handle_connect(addr, tx);
                 }
                 Request::Associate {
                     assoc_id,
                     pkt_send_rx,
                     pkt_receive_tx,
-                } => {}
+                } => {
+                    conn.handle_associate(assoc_id, pkt_send_rx, pkt_receive_tx);
+                }
             }
         }
     }
@@ -110,7 +111,7 @@ impl Relay {
             ServerAddr::SocketAddr {
                 server_addr,
                 server_name,
-            } => (vec![server_addr.to_owned()].into_iter(), server_name),
+            } => (vec![*server_addr].into_iter(), server_name),
         };
 
         loop {
@@ -141,44 +142,4 @@ impl Relay {
             }
         }
     }
-
-    async fn new_bi_stream(&self, conn: &mut Connection) -> (SendStream, RecvStream) {
-        loop {
-            match conn.controller.open_bi().await {
-                Ok(res) => return res,
-                Err(err) => {
-                    match err {
-                        ConnectionError::ConnectionClosed(_) | ConnectionError::TimedOut => {}
-                        err => eprintln!("{err}"),
-                    }
-                    *conn = self.establish_connection().await
-                }
-            }
-        }
-    }
-}
-
-async fn handle_command_connect(
-    mut send: SendStream,
-    mut recv: RecvStream,
-    addr: Address,
-    tx: OneshotSender<Option<(SendStream, RecvStream)>>,
-) {
-    let addr = TuicAddress::from(addr);
-    let cmd = TuicCommand::new_connect(addr);
-
-    match cmd.write_to(&mut send).await {
-        Ok(()) => match TuicResponse::read_from(&mut recv).await {
-            Ok(res) => {
-                if res.is_succeeded() {
-                    let _ = tx.send(Some((send, recv)));
-                    return;
-                }
-            }
-            Err(err) => eprintln!("{err}"),
-        },
-        Err(err) => eprintln!("{err}"),
-    }
-
-    let _ = tx.send(None);
 }
