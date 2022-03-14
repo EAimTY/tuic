@@ -2,8 +2,8 @@ use super::Connection;
 use anyhow::{bail, Result};
 use futures_util::StreamExt;
 use quinn::{
-    Connection as QuinnConnection, ConnectionError, IncomingBiStreams, IncomingUniStreams,
-    RecvStream, SendStream, VarInt,
+    Connection as QuinnConnection, ConnectionError, IncomingBiStreams, RecvStream, SendStream,
+    VarInt,
 };
 use std::{
     net::ToSocketAddrs,

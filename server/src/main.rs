@@ -1,3 +1,5 @@
+#![feature(try_blocks)]
+
 use crate::{config::ConfigBuilder, server::Server};
 use std::{env, process};
 

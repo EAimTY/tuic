@@ -1,4 +1,4 @@
-use super::Connection;
+use super::{AssociateMap, Connection};
 use futures_util::StreamExt;
 use quinn::{
     Connection as QuinnConnection, ConnectionError, IncomingUniStreams, RecvStream, VarInt,
@@ -11,7 +11,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::time;
-use tuic_protocol::Command;
+use tuic_protocol::{Address, Command};
 
 impl Connection {
     pub async fn listen_uni_streams(
@@ -25,6 +25,7 @@ impl Connection {
                     tokio::spawn(handle_uni_stream(
                         stream,
                         self.controller.clone(),
+                        self.assoc_map.clone(),
                         expected_token_digest,
                         self.is_authenticated.clone(),
                         self.create_time,
@@ -45,6 +46,7 @@ impl Connection {
 async fn handle_uni_stream(
     mut stream: RecvStream,
     conn: QuinnConnection,
+    assoc_map: Arc<AssociateMap>,
     expected_token_digest: [u8; 32],
     is_authenticated: Arc<AtomicBool>,
     create_time: Instant,
@@ -80,8 +82,16 @@ async fn handle_uni_stream(
                             assoc_id,
                             len,
                             addr,
-                        } => todo!(),
-                        Command::Dissociate { assoc_id } => todo!(),
+                        } => {
+                            tokio::spawn(handle_packet(
+                                stream,
+                                assoc_map.clone(),
+                                assoc_id,
+                                len,
+                                addr,
+                            ));
+                        }
+                        Command::Dissociate { assoc_id } => assoc_map.dissociate(assoc_id),
                     }
                     break;
                 } else if create_time.elapsed() > Duration::from_secs(3) {
@@ -93,5 +103,20 @@ async fn handle_uni_stream(
                 }
             }
         }
+    }
+}
+
+async fn handle_packet(
+    mut stream: RecvStream,
+    assoc_map: Arc<AssociateMap>,
+    assoc_id: u32,
+    len: u16,
+    addr: Address,
+) {
+    let mut buf = vec![0; len as usize];
+
+    match stream.read_exact(&mut buf).await {
+        Ok(()) => assoc_map.send(assoc_id, buf, addr).await,
+        Err(err) => eprintln!("{err}"),
     }
 }

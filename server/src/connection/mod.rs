@@ -1,11 +1,15 @@
-use parking_lot::Mutex;
+use anyhow::Result;
 use quinn::{Connecting, Connection as QuinnConnection, NewConnection};
 use std::{
-    collections::HashMap,
     sync::{atomic::AtomicBool, Arc},
     time::Instant,
 };
+use tokio::sync::mpsc::Receiver as MpscReceiver;
+use tuic_protocol::{Address, Command};
 
+pub use self::associate::AssociateMap;
+
+mod associate;
 mod bi_stream;
 mod datagram;
 mod uni_stream;
@@ -27,9 +31,11 @@ impl Connection {
                 datagrams,
                 ..
             }) => {
+                let (assoc_map, packet_receive_rx) = AssociateMap::new();
+
                 let conn = Self {
                     controller: connection,
-                    assoc_map: Arc::new(AssociateMap::new()),
+                    assoc_map: Arc::new(assoc_map),
                     is_authenticated: Arc::new(AtomicBool::new(false)),
                     create_time: Instant::now(),
                 };
@@ -37,7 +43,8 @@ impl Connection {
                 tokio::join!(
                     conn.listen_uni_streams(uni_streams, expected_token_digest),
                     conn.listen_bi_streams(bi_streams),
-                    conn.listen_datagrams(datagrams)
+                    conn.listen_datagrams(datagrams),
+                    listen_packet_receive(conn.controller.clone(), packet_receive_rx)
                 );
             }
             Err(err) => eprintln!("{err}"),
@@ -45,10 +52,30 @@ impl Connection {
     }
 }
 
-pub struct AssociateMap(Mutex<HashMap<(), ()>>);
+async fn listen_packet_receive(
+    conn: QuinnConnection,
+    mut packet_receive_rx: MpscReceiver<(u32, Vec<u8>, Address)>,
+) {
+    while let Some((assoc_id, packet, addr)) = packet_receive_rx.recv().await {
+        tokio::spawn(send_received_packet(conn.clone(), assoc_id, packet, addr));
+    }
+}
 
-impl AssociateMap {
-    pub fn new() -> Self {
-        Self(Mutex::new(HashMap::new()))
+async fn send_received_packet(
+    conn: QuinnConnection,
+    assoc_id: u32,
+    packet: Vec<u8>,
+    addr: Address,
+) {
+    let res: Result<()> = try {
+        let mut stream = conn.open_uni().await?;
+        let cmd = Command::new_packet(assoc_id, packet.len() as u16, addr);
+        cmd.write_to(&mut stream).await?;
+        stream.write_all(&packet).await?;
+    };
+
+    match res {
+        Ok(()) => {}
+        Err(err) => eprintln!("{err}"),
     }
 }
