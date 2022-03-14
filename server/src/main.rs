@@ -3,6 +3,7 @@ use std::{env, process};
 
 mod cert;
 mod config;
+mod connection;
 mod server;
 
 #[tokio::main]
