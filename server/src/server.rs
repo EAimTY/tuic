@@ -53,7 +53,10 @@ impl Server {
 
     pub async fn run(mut self) {
         while let Some(conn) = self.incoming.next().await {
-            tokio::spawn(Connection::handle(conn, self.expected_token_digest));
+            tokio::spawn(Connection::handle_connection(
+                conn,
+                self.expected_token_digest,
+            ));
         }
     }
 }
