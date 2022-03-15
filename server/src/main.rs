@@ -3,7 +3,7 @@
 use crate::{config::ConfigBuilder, server::Server};
 use std::{env, process};
 
-mod cert;
+mod certificate;
 mod config;
 mod connection;
 mod server;

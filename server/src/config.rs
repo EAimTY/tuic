@@ -1,4 +1,4 @@
-use crate::cert;
+use crate::certificate;
 use anyhow::{bail, Context, Result};
 use getopts::Options;
 use rustls::{Certificate, PrivateKey};
@@ -96,14 +96,14 @@ impl<'cfg> ConfigBuilder<'cfg> {
             let path = matches
                 .opt_str("c")
                 .context("Required option 'cert' missing")?;
-            cert::load_cert(&path)?
+            certificate::load_certificate(&path)?
         };
 
         let private_key = {
             let path = matches
                 .opt_str("k")
                 .context("Required option 'priv-key' missing")?;
-            cert::load_priv_key(&path)?
+            certificate::load_private_key(&path)?
         };
 
         let congestion_controller =
