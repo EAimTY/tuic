@@ -1,4 +1,4 @@
-use crate::{cert, socks5::Authentication as Socks5Auth};
+use crate::{certificate, socks5::Authentication as Socks5Auth};
 use anyhow::{bail, Context, Result};
 use getopts::Options;
 use rustls::Certificate;
@@ -184,7 +184,7 @@ impl<'cfg> ConfigBuilder<'cfg> {
         };
 
         let certificate = if let Some(path) = matches.opt_str("cert") {
-            Some(cert::load_cert(&path)?)
+            Some(certificate::load_certificate(&path)?)
         } else {
             None
         };

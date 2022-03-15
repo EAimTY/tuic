@@ -4,7 +4,7 @@
 use crate::{config::ConfigBuilder, relay::Relay};
 use std::{env, process};
 
-mod cert;
+mod certificate;
 mod config;
 mod relay;
 mod socks5;
