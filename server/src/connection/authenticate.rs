@@ -18,12 +18,17 @@ pub struct IsAuthenticated {
 }
 
 impl IsAuthenticated {
-    pub fn new(conn: QuinnConnection, auth_bcast: Arc<AuthenticateBroadcast>) -> Self {
-        Self {
-            connection: conn,
-            is_authenticated: Arc::new(AtomicBool::new(false)),
-            authenticate_broadcast: auth_bcast,
-        }
+    pub fn new(conn: QuinnConnection) -> (Self, Arc<AuthenticateBroadcast>) {
+        let auth_bcast = Arc::new(AuthenticateBroadcast::new());
+
+        (
+            Self {
+                connection: conn,
+                is_authenticated: Arc::new(AtomicBool::new(false)),
+                authenticate_broadcast: auth_bcast.clone(),
+            },
+            auth_bcast,
+        )
     }
 
     pub fn set_authenticated(&self) {
@@ -53,10 +58,6 @@ impl Future for IsAuthenticated {
 pub struct AuthenticateBroadcast(Mutex<Vec<Waker>>);
 
 impl AuthenticateBroadcast {
-    pub fn new() -> Self {
-        Self(Mutex::new(Vec::new()))
-    }
-
     pub fn register(&self, waker: Waker) {
         let mut bcast = self.0.lock();
         bcast.push(waker);
@@ -68,5 +69,9 @@ impl AuthenticateBroadcast {
         for waker in bcast.drain(..) {
             waker.wake();
         }
+    }
+
+    fn new() -> Self {
+        Self(Mutex::new(Vec::new()))
     }
 }

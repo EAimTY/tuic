@@ -40,13 +40,13 @@ impl Connection {
                 ..
             }) => {
                 let (udp_sessions, recv_pkt_rx) = UdpSessionMap::new();
-                let auth_bcast = Arc::new(AuthenticateBroadcast::new());
+                let (is_authed, auth_bcast) = IsAuthenticated::new(connection.clone());
 
                 let conn = Self {
-                    controller: connection.clone(),
+                    controller: connection,
                     udp_sessions: Arc::new(udp_sessions),
                     expected_token_digest: exp_token_dgst,
-                    is_authenticated: IsAuthenticated::new(connection, auth_bcast.clone()),
+                    is_authenticated: is_authed,
                     authenticate_broadcast: auth_bcast,
                 };
 
