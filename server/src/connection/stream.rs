@@ -39,13 +39,17 @@ impl Connection {
                     len,
                     addr,
                 } => {
-                    tokio::spawn(handler::packet(
-                        stream,
-                        self.udp_sessions.clone(),
-                        assoc_id,
-                        len,
-                        addr,
-                    ));
+                    if self.udp_packet_from.uni_stream() {
+                        tokio::spawn(handler::packet_from_uni_stream(
+                            stream,
+                            self.udp_sessions.clone(),
+                            assoc_id,
+                            len,
+                            addr,
+                        ));
+                    } else {
+                        self.controller.close(VarInt::MAX, b"Bad command")
+                    }
                 }
                 Command::Dissociate { assoc_id } => {
                     tokio::spawn(handler::dissociate(self.udp_sessions.clone(), assoc_id));
@@ -79,9 +83,42 @@ impl Connection {
         }
     }
 
-    pub async fn process_datagram(self, _datagram: Bytes) {
-        if self.is_authenticated.await {}
-        todo!()
+    pub async fn process_datagram(self, datagram: Bytes) {
+        let cmd = match Command::read_from(&mut datagram.as_ref()).await {
+            Ok(cmd) => cmd,
+            Err(err) => {
+                eprintln!("{err}");
+                self.controller.close(VarInt::MAX, b"Bad command");
+                return;
+            }
+        };
+        let cmd_len = cmd.serialized_len();
+
+        if self.is_authenticated.await {
+            match cmd {
+                Command::Authenticate { .. } => self.controller.close(VarInt::MAX, b"Bad command"),
+                Command::Connect { .. } => self.controller.close(VarInt::MAX, b"Bad command"),
+                Command::Bind { .. } => self.controller.close(VarInt::MAX, b"Bad command"),
+                Command::Packet {
+                    assoc_id,
+                    len,
+                    addr,
+                } => {
+                    if self.udp_packet_from.datagram() {
+                        tokio::spawn(handler::packet_from_datagram(
+                            datagram.slice(cmd_len..),
+                            self.udp_sessions.clone(),
+                            assoc_id,
+                            len,
+                            addr,
+                        ));
+                    } else {
+                        self.controller.close(VarInt::MAX, b"Bad command")
+                    }
+                }
+                Command::Dissociate { .. } => self.controller.close(VarInt::MAX, b"Bad command"),
+            }
+        }
     }
 
     pub async fn process_received_udp_packet(self, assoc_id: u32, packet: Vec<u8>, addr: Address) {

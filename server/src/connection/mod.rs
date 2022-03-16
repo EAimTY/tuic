@@ -11,7 +11,8 @@ use tuic_protocol::Address;
 pub use self::{
     authenticate::{AuthenticateBroadcast, IsAuthenticated},
     udp::{
-        RecvPacketReceiver, RecvPacketSender, SendPacketReceiver, SendPacketSender, UdpSessionMap,
+        RecvPacketReceiver, RecvPacketSender, SendPacketReceiver, SendPacketSender, UdpPacketFrom,
+        UdpSessionMap,
     },
 };
 
@@ -23,6 +24,7 @@ mod udp;
 #[derive(Clone)]
 pub struct Connection {
     controller: QuinnConnection,
+    udp_packet_from: UdpPacketFrom,
     udp_sessions: Arc<UdpSessionMap>,
     expected_token_digest: [u8; 32],
     is_authenticated: IsAuthenticated,
@@ -44,6 +46,7 @@ impl Connection {
 
                 let conn = Self {
                     controller: connection,
+                    udp_packet_from: UdpPacketFrom::new(),
                     udp_sessions: Arc::new(udp_sessions),
                     expected_token_digest: exp_token_dgst,
                     is_authenticated: is_authed,

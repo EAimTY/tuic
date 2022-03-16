@@ -1,5 +1,6 @@
 use super::UdpSessionMap;
 use anyhow::{anyhow, Result};
+use bytes::Bytes;
 use quinn::{RecvStream, SendStream};
 use std::{net::ToSocketAddrs, sync::Arc};
 use tokio::{io, net::TcpStream};
@@ -41,7 +42,7 @@ pub async fn bind(_send: SendStream, _recv: RecvStream, _addr: Address) {
     todo!()
 }
 
-pub async fn packet(
+pub async fn packet_from_uni_stream(
     mut stream: RecvStream,
     udp_sessions: Arc<UdpSessionMap>,
     assoc_id: u32,
@@ -54,6 +55,16 @@ pub async fn packet(
         Ok(()) => udp_sessions.send(assoc_id, buf, addr).await,
         Err(err) => eprintln!("{err}"),
     }
+}
+
+pub async fn packet_from_datagram(
+    packet: Bytes,
+    udp_sessions: Arc<UdpSessionMap>,
+    assoc_id: u32,
+    len: u16,
+    addr: Address,
+) {
+    todo!()
 }
 
 pub async fn dissociate(udp_sessions: Arc<UdpSessionMap>, assoc_id: u32) {

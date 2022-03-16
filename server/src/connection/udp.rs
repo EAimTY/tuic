@@ -1,4 +1,5 @@
 use anyhow::{bail, Result};
+use crossbeam_utils::atomic::AtomicCell;
 use parking_lot::Mutex;
 use std::{
     collections::{hash_map::Entry, HashMap},
@@ -11,6 +12,33 @@ use tokio::{
     sync::mpsc::{self, Receiver, Sender},
 };
 use tuic_protocol::Address;
+
+#[derive(Clone)]
+pub struct UdpPacketFrom(Arc<AtomicCell<Option<UdpPacketFromInner>>>);
+
+impl UdpPacketFrom {
+    pub fn new() -> Self {
+        Self(Arc::new(AtomicCell::new(None)))
+    }
+
+    pub fn uni_stream(&self) -> bool {
+        self.0
+            .compare_exchange(None, Some(UdpPacketFromInner::UniStream))
+            .map_or_else(|from| from == Some(UdpPacketFromInner::UniStream), |_| true)
+    }
+
+    pub fn datagram(&self) -> bool {
+        self.0
+            .compare_exchange(None, Some(UdpPacketFromInner::Datagram))
+            .map_or_else(|from| from == Some(UdpPacketFromInner::Datagram), |_| true)
+    }
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum UdpPacketFromInner {
+    UniStream,
+    Datagram,
+}
 
 pub type SendPacketSender = Sender<(Vec<u8>, Address)>;
 pub type SendPacketReceiver = Receiver<(Vec<u8>, Address)>;
