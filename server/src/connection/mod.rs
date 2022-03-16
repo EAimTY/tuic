@@ -3,25 +3,25 @@ use quinn::{
     Connecting, Connection as QuinnConnection, ConnectionError, Datagrams, IncomingBiStreams,
     IncomingUniStreams, NewConnection,
 };
-use std::{
-    sync::{atomic::AtomicBool, Arc},
-    time::Instant,
-};
+use std::{sync::Arc, time::Duration};
 use tokio::sync::mpsc::Receiver as MpscReceiver;
 use tuic_protocol::Address;
 
-pub use self::udp_session::{
-    RecvPacketReceiver, RecvPacketSender, SendPacketReceiver, SendPacketSender, UdpSessionMap,
+pub use self::{
+    is_authenticated::IsAuthenticated,
+    udp_session::{
+        RecvPacketReceiver, RecvPacketSender, SendPacketReceiver, SendPacketSender, UdpSessionMap,
+    },
 };
 
 mod dispatch;
+mod is_authenticated;
 mod udp_session;
 
 pub struct Connection {
     controller: QuinnConnection,
     udp_sessions: Arc<UdpSessionMap>,
-    is_authenticated: Arc<AtomicBool>,
-    create_time: Instant,
+    is_authenticated: IsAuthenticated,
 }
 
 impl Connection {
@@ -39,8 +39,7 @@ impl Connection {
                 let conn = Self {
                     controller: connection,
                     udp_sessions: Arc::new(udp_sessions),
-                    is_authenticated: Arc::new(AtomicBool::new(false)),
-                    create_time: Instant::now(),
+                    is_authenticated: IsAuthenticated::new(Duration::from_secs(3)),
                 };
 
                 tokio::join!(
@@ -68,7 +67,6 @@ impl Connection {
                         self.udp_sessions.clone(),
                         expected_token_digest,
                         self.is_authenticated.clone(),
-                        self.create_time,
                     ));
                 }
                 Err(err) => {
@@ -91,7 +89,6 @@ impl Connection {
                         recv,
                         self.controller.clone(),
                         self.is_authenticated.clone(),
-                        self.create_time,
                     ));
                 }
                 Err(err) => {
