@@ -1,4 +1,4 @@
-use super::{IsAuthenticated, UdpSessionMap};
+use super::{AuthenticateBroadcast, IsAuthenticated, UdpSessionMap};
 use anyhow::{bail, Result};
 use quinn::{Connection as QuinnConnection, RecvStream, SendStream, VarInt};
 use std::{hint::unreachable_unchecked, net::ToSocketAddrs, sync::Arc};
@@ -16,6 +16,7 @@ pub async fn handle_uni_stream(
     assoc_map: Arc<UdpSessionMap>,
     expected_token_digest: [u8; 32],
     is_authenticated: IsAuthenticated,
+    authenticate_broadcast: Arc<AuthenticateBroadcast>,
 ) {
     let cmd = match Command::read_from(&mut stream).await {
         Ok(cmd) => cmd,
@@ -33,6 +34,8 @@ pub async fn handle_uni_stream(
             eprintln!("Authentication failed");
             conn.close(VarInt::MAX, b"Authentication failed");
         }
+
+        authenticate_broadcast.wake();
 
         return;
     }
