@@ -4,7 +4,7 @@ use crate::{
     socks5::protocol::{Address, Reply, Response, UdpHeader},
 };
 use anyhow::{bail, Result};
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use std::{net::SocketAddr, sync::Arc};
 use tokio::{
     io::AsyncReadExt,
@@ -91,9 +91,9 @@ async fn listen_receive(
 
         let udp_header = UdpHeader::new(0, addr);
 
-        let mut buf = vec![0; udp_header.serialized_len() + packet.len()];
+        let mut buf = BytesMut::with_capacity(udp_header.serialized_len());
         udp_header.write_to_buf(&mut buf);
-        buf[udp_header.serialized_len()..].copy_from_slice(&packet);
+        buf.extend_from_slice(&packet);
 
         socket.send(&buf).await?;
     }
