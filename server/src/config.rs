@@ -2,6 +2,7 @@ use crate::certificate;
 use anyhow::{bail, Context, Result};
 use getopts::Options;
 use rustls::{Certificate, PrivateKey};
+use std::time::Duration;
 
 pub struct ConfigBuilder<'cfg> {
     opts: Options,
@@ -42,8 +43,15 @@ impl<'cfg> ConfigBuilder<'cfg> {
 
         opts.optopt(
             "",
+            "authentication-timeout",
+            "Set the maximum time allowed between connection establishment and authentication packet receipt, in milliseconds. Default: 1000ms",
+            "AUTHENTICATION_TIMEOUT",
+        );
+
+        opts.optopt(
+            "",
             "congestion-controller",
-            r#"Set the congestion controller. Available: "cubic" (default), "new_reno", "bbr""#,
+            r#"Set the congestion controller. Available: "cubic", "new_reno", "bbr". Default: "cubic""#,
             "CONGESTION_CONTROLLER",
         );
 
@@ -106,6 +114,14 @@ impl<'cfg> ConfigBuilder<'cfg> {
             certificate::load_private_key(&path)?
         };
 
+        let authentication_timeout =
+            if let Some(duration) = matches.opt_str("authentication-timeout") {
+                let duration = duration.parse()?;
+                Duration::from_millis(duration)
+            } else {
+                Duration::from_millis(1000)
+            };
+
         let congestion_controller =
             if let Some(controller) = matches.opt_str("congestion-controller") {
                 match controller.as_str() {
@@ -123,6 +139,7 @@ impl<'cfg> ConfigBuilder<'cfg> {
             token_digest,
             certificate,
             private_key,
+            authentication_timeout,
             congestion_controller,
         })
     }
@@ -133,6 +150,7 @@ pub struct Config {
     pub token_digest: [u8; 32],
     pub certificate: Certificate,
     pub private_key: PrivateKey,
+    pub authentication_timeout: Duration,
     pub congestion_controller: CongestionController,
 }
 

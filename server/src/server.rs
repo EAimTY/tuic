@@ -6,27 +6,29 @@ use quinn::{
     Endpoint, Incoming, ServerConfig, TransportConfig,
 };
 use rustls::{Certificate, PrivateKey};
-use std::{net::SocketAddr, sync::Arc};
+use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 pub struct Server {
     incoming: Incoming,
     expected_token_digest: [u8; 32],
+    authentication_timeout: Duration,
 }
 
 impl Server {
     pub fn init(
         port: u16,
-        expected_token_digest: [u8; 32],
+        exp_tkn_dgst: [u8; 32],
         cert: Certificate,
         priv_key: PrivateKey,
-        congestion_controller: CongestionController,
+        auth_timeout: Duration,
+        cgstn_ctrl: CongestionController,
     ) -> Result<Self> {
         let config = {
             let mut config = ServerConfig::with_single_cert(vec![cert], priv_key)?;
 
             let mut transport = TransportConfig::default();
 
-            match congestion_controller {
+            match cgstn_ctrl {
                 CongestionController::Cubic => {
                     transport.congestion_controller_factory(Arc::new(CubicConfig::default()))
                 }
@@ -47,13 +49,18 @@ impl Server {
 
         Ok(Self {
             incoming,
-            expected_token_digest,
+            expected_token_digest: exp_tkn_dgst,
+            authentication_timeout: auth_timeout,
         })
     }
 
     pub async fn run(mut self) {
         while let Some(conn) = self.incoming.next().await {
-            tokio::spawn(Connection::handle(conn, self.expected_token_digest));
+            tokio::spawn(Connection::handle(
+                conn,
+                self.expected_token_digest,
+                self.authentication_timeout,
+            ));
         }
     }
 }

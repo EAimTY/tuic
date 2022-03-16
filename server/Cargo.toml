@@ -21,4 +21,4 @@ getopts = "0.2"
 parking_lot = { version = "0.12", features = ["send_guard"] }
 quinn = { git = "https://github.com/EAimTY/quinn", branch = "0.8.x" }
 rustls = { version = "0.20", features = ["quic"], default-features = false }
-tokio = { version = "1.17", features = ["io-util", "macros", "rt-multi-thread", "time"] }
+tokio = { version = "1.17", features = ["io-util", "macros", "rt-multi-thread", "sync", "time"] }

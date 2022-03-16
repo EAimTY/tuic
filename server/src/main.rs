@@ -27,6 +27,7 @@ async fn main() {
         config.token_digest,
         config.certificate,
         config.private_key,
+        config.authentication_timeout,
         config.congestion_controller,
     ) {
         Ok(server) => server,

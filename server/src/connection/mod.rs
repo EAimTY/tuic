@@ -30,7 +30,7 @@ pub struct Connection {
 }
 
 impl Connection {
-    pub async fn handle(conn: Connecting, exp_token_dgst: [u8; 32]) {
+    pub async fn handle(conn: Connecting, exp_token_dgst: [u8; 32], auth_timeout: Duration) {
         match conn.await {
             Ok(NewConnection {
                 connection,
@@ -58,9 +58,8 @@ impl Connection {
                     tokio::spawn(Self::listen_datagrams(conn.clone(), datagrams));
                 let listen_received_udp_packet =
                     tokio::spawn(Self::listen_received_udp_packet(conn.clone(), recv_pkt_rx));
-                let handle_authentication_timeout = tokio::spawn(
-                    Self::handle_authentication_timeout(conn, Duration::from_secs(3)),
-                );
+                let handle_authentication_timeout =
+                    tokio::spawn(Self::handle_authentication_timeout(conn, auth_timeout));
 
                 let (
                     listen_uni_streams,
