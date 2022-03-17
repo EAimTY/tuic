@@ -12,7 +12,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 /// |  1  |  1  | Variable |
 /// +-----+-----+----------+
 /// ```
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum Command {
     Authenticate {
         digest: [u8; 32],

@@ -1,6 +1,7 @@
 use crate::Error;
 use bytes::{BufMut, BytesMut};
 use std::{
+    fmt::{Display, Formatter, Result as FmtResult},
     io::Result as IoResult,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs},
     vec::IntoIter,
@@ -16,7 +17,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 /// |  1   | Variable |    2     |
 /// +------+----------+----------+
 /// ```
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum Address {
     HostnameAddress(String, u16),
     SocketAddress(SocketAddr),
@@ -136,5 +137,14 @@ impl ToSocketAddrs for Address {
             Self::HostnameAddress(addr, port) => (addr.as_str(), *port).to_socket_addrs()?,
             Self::SocketAddress(addr) => vec![addr.to_owned()].into_iter(),
         })
+    }
+}
+
+impl Display for Address {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        match self {
+            Self::HostnameAddress(addr, port) => write!(f, "{addr}:{port}"),
+            Self::SocketAddress(addr) => write!(f, "{addr}"),
+        }
     }
 }
