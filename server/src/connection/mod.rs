@@ -79,7 +79,6 @@ impl Connection {
                     )
                     .unwrap_unchecked()
                 };
-                println!("here");
 
                 let res = listen_uni_streams
                     .and(listen_bi_streams)

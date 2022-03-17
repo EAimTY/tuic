@@ -175,11 +175,14 @@ impl FromStr for CongestionController {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self> {
-        match s {
-            "cubic" => Ok(CongestionController::Cubic),
-            "new_reno" => Ok(CongestionController::NewReno),
-            "bbr" => Ok(CongestionController::Bbr),
-            _ => bail!("Unknown congestion controller: {s}"),
+        if s.eq_ignore_ascii_case("cubic") {
+            Ok(CongestionController::Cubic)
+        } else if s.eq_ignore_ascii_case("new_reno") {
+            Ok(CongestionController::NewReno)
+        } else if s.eq_ignore_ascii_case("bbr") {
+            Ok(CongestionController::Bbr)
+        } else {
+            bail!("Unknown congestion controller: {s}");
         }
     }
 }
