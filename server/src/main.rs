@@ -43,4 +43,6 @@ async fn main() {
     };
 
     server.run().await;
+
+    process::exit(1);
 }

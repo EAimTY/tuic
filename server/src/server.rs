@@ -11,6 +11,7 @@ use thiserror::Error;
 
 pub struct Server {
     incoming: Incoming,
+    socket_addr: SocketAddr,
     expected_token_digest: [u8; 32],
     authentication_timeout: Duration,
 }
@@ -46,16 +47,22 @@ impl Server {
             config
         };
 
-        let (_, incoming) = Endpoint::server(config, SocketAddr::from(([0, 0, 0, 0], port)))?;
+        let (endpoint, incoming) =
+            Endpoint::server(config, SocketAddr::from(([0, 0, 0, 0], port)))?;
+
+        let socket_addr = endpoint.local_addr()?;
 
         Ok(Self {
             incoming,
+            socket_addr,
             expected_token_digest: exp_tkn_dgst,
             authentication_timeout: auth_timeout,
         })
     }
 
     pub async fn run(mut self) {
+        log::info!("Server started. Listening: {}", self.socket_addr);
+
         while let Some(conn) = self.incoming.next().await {
             tokio::spawn(Connection::handle(
                 conn,
