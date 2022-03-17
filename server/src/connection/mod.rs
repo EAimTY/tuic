@@ -8,7 +8,13 @@ use quinn::{
     Connecting, Connection as QuinnConnection, ConnectionError, Datagrams, IncomingBiStreams,
     IncomingUniStreams, NewConnection,
 };
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 use tokio::time;
 
 mod authenticate;
@@ -24,6 +30,7 @@ pub struct Connection {
     expected_token_digest: [u8; 32],
     is_authenticated: IsAuthenticated,
     authenticate_broadcast: Arc<AuthenticateBroadcast>,
+    is_closed: Arc<AtomicBool>,
 }
 
 impl Connection {
@@ -41,7 +48,8 @@ impl Connection {
                 log::debug!("[{rmt_addr}] [established]");
 
                 let (udp_sessions, recv_pkt_rx) = UdpSessionMap::new();
-                let (is_authed, auth_bcast) = IsAuthenticated::new(connection.clone());
+                let is_closed = Arc::new(AtomicBool::new(false));
+                let (is_authed, auth_bcast) = IsAuthenticated::new(is_closed.clone());
 
                 let conn = Self {
                     controller: connection,
@@ -50,6 +58,7 @@ impl Connection {
                     expected_token_digest: exp_token_dgst,
                     is_authenticated: is_authed,
                     authenticate_broadcast: auth_bcast,
+                    is_closed,
                 };
 
                 let res = tokio::try_join!(
@@ -93,6 +102,7 @@ impl Connection {
             });
         }
 
+        self.is_closed.store(true, Ordering::Release);
         Err(ConnectionError::LocallyClosed)?
     }
 
@@ -118,6 +128,7 @@ impl Connection {
             });
         }
 
+        self.is_closed.store(true, Ordering::Release);
         Err(ConnectionError::LocallyClosed)?
     }
 
@@ -140,6 +151,7 @@ impl Connection {
             });
         }
 
+        self.is_closed.store(true, Ordering::Release);
         Err(ConnectionError::LocallyClosed)?
     }
 

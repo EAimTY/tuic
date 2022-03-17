@@ -1,5 +1,4 @@
 use parking_lot::Mutex;
-use quinn::Connection as QuinnConnection;
 use std::{
     future::Future,
     pin::Pin,
@@ -12,20 +11,20 @@ use std::{
 
 #[derive(Clone)]
 pub struct IsAuthenticated {
-    connection: QuinnConnection,
     is_authenticated: Arc<AtomicBool>,
     authenticate_broadcast: Arc<AuthenticateBroadcast>,
+    is_connection_closed: Arc<AtomicBool>,
 }
 
 impl IsAuthenticated {
-    pub fn new(conn: QuinnConnection) -> (Self, Arc<AuthenticateBroadcast>) {
+    pub fn new(is_closed: Arc<AtomicBool>) -> (Self, Arc<AuthenticateBroadcast>) {
         let auth_bcast = Arc::new(AuthenticateBroadcast::new());
 
         (
             Self {
-                connection: conn,
                 is_authenticated: Arc::new(AtomicBool::new(false)),
                 authenticate_broadcast: auth_bcast.clone(),
+                is_connection_closed: is_closed,
             },
             auth_bcast,
         )
@@ -44,7 +43,7 @@ impl Future for IsAuthenticated {
     type Output = bool;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        if self.connection.is_closed() {
+        if self.is_connection_closed.load(Ordering::Acquire) {
             Poll::Ready(false)
         } else if self.is_authenticated.load(Ordering::Relaxed) {
             Poll::Ready(true)
