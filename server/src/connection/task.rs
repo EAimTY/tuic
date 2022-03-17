@@ -20,6 +20,7 @@ pub async fn connect(
     for addr in addrs {
         if let Ok(tcp_stream) = TcpStream::connect(addr).await {
             stream = Some(tcp_stream);
+            break;
         }
     }
 
@@ -54,7 +55,7 @@ pub async fn packet_from_uni_stream(
     stream.read_exact(&mut buf).await?;
 
     let pkt = Bytes::from(buf);
-    udp_sessions.send(assoc_id, pkt, addr).await;
+    udp_sessions.send(assoc_id, pkt, addr).await?;
 
     Ok(())
 }
@@ -65,7 +66,7 @@ pub async fn packet_from_datagram(
     assoc_id: u32,
     addr: Address,
 ) -> Result<(), TaskError> {
-    udp_sessions.send(assoc_id, pkt, addr).await;
+    udp_sessions.send(assoc_id, pkt, addr).await?;
     Ok(())
 }
 

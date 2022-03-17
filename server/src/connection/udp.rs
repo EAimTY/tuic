@@ -1,11 +1,10 @@
-use anyhow::{bail, Result};
 use bytes::Bytes;
 use crossbeam_utils::atomic::AtomicCell;
 use parking_lot::Mutex;
 use std::{
     collections::{hash_map::Entry, HashMap},
+    io::Error as IoError,
     net::SocketAddr,
-    ops::Deref,
     sync::Arc,
 };
 use tokio::{
@@ -68,22 +67,20 @@ impl UdpSessionMap {
         )
     }
 
-    pub async fn send(&self, assoc_id: u32, pkt: Bytes, addr: Address) {
+    pub async fn send(&self, assoc_id: u32, pkt: Bytes, addr: Address) -> Result<(), IoError> {
         let mut map = self.map.lock();
 
         match map.entry(assoc_id) {
             Entry::Occupied(entry) => {
-                let _ = entry.get().send((pkt, addr)).await;
+                let _ = entry.get().0.send((pkt, addr)).await;
             }
             Entry::Vacant(entry) => {
-                match UdpSession::new(assoc_id, self.recv_pkt_tx_for_clone.clone()).await {
-                    Ok(assoc) => {
-                        let _ = entry.insert(assoc).send((pkt, addr)).await;
-                    }
-                    Err(err) => eprintln!("{err}"),
-                }
+                let assoc = UdpSession::new(assoc_id, self.recv_pkt_tx_for_clone.clone()).await?;
+                let _ = entry.insert(assoc).0.send((pkt, addr)).await;
             }
         }
+
+        Ok(())
     }
 
     pub fn dissociate(&self, assoc_id: u32) {
@@ -94,27 +91,24 @@ impl UdpSessionMap {
 struct UdpSession(SendPacketSender);
 
 impl UdpSession {
-    async fn new(assoc_id: u32, recv_pkt_tx: RecvPacketSender) -> Result<Self> {
+    async fn new(assoc_id: u32, recv_pkt_tx: RecvPacketSender) -> Result<Self, IoError> {
         let socket = Arc::new(UdpSocket::bind(SocketAddr::from(([0, 0, 0, 0], 0))).await?);
         let (send_pkt_tx, send_pkt_rx) = mpsc::channel(1);
 
         tokio::spawn(async move {
-            match tokio::try_join!(
-                Self::listen_send(socket.clone(), send_pkt_rx),
-                Self::listen_receive(socket, assoc_id, recv_pkt_tx)
-            ) {
-                Ok(((), ())) => {}
-                Err(err) => eprintln!("{err}"),
-            }
+            tokio::select!(
+                _ = Self::listen_send_packet(socket.clone(), send_pkt_rx) => {}
+                _ = Self::listen_receive_packet(socket, assoc_id, recv_pkt_tx) => {}
+            );
         });
 
         Ok(Self(send_pkt_tx))
     }
 
-    async fn listen_send(
+    async fn listen_send_packet(
         socket: Arc<UdpSocket>,
         mut send_pkt_rx: SendPacketReceiver,
-    ) -> Result<()> {
+    ) -> Result<(), IoError> {
         while let Some((pkt, addr)) = send_pkt_rx.recv().await {
             let socket = socket.clone();
 
@@ -133,36 +127,23 @@ impl UdpSession {
             });
         }
 
-        bail!("Dissociated");
+        Ok(())
     }
 
-    async fn listen_receive(
+    async fn listen_receive_packet(
         socket: Arc<UdpSocket>,
         assoc_id: u32,
         recv_pkt_tx: RecvPacketSender,
-    ) -> Result<()> {
+    ) -> Result<(), IoError> {
         loop {
             let mut buf = vec![0; 1536];
+            let (len, addr) = socket.recv_from(&mut buf).await?;
+            buf.truncate(len);
 
-            match socket.recv_from(&mut buf).await {
-                Ok((len, addr)) => {
-                    buf.truncate(len);
-                    let pkt = Bytes::from(buf);
-
-                    let _ = recv_pkt_tx
-                        .send((assoc_id, pkt, Address::SocketAddress(addr)))
-                        .await;
-                }
-                Err(err) => eprintln!("{err}"),
-            }
+            let pkt = Bytes::from(buf);
+            let _ = recv_pkt_tx
+                .send((assoc_id, pkt, Address::SocketAddress(addr)))
+                .await;
         }
-    }
-}
-
-impl Deref for UdpSession {
-    type Target = SendPacketSender;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
     }
 }
