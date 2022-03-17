@@ -1,8 +1,9 @@
 use crate::certificate;
 use anyhow::{bail, Context, Result};
 use getopts::Options;
+use log::LevelFilter;
 use rustls::{Certificate, PrivateKey};
-use std::time::Duration;
+use std::{str::FromStr, time::Duration};
 
 pub struct ConfigBuilder<'cfg> {
     opts: Options,
@@ -53,6 +54,13 @@ impl<'cfg> ConfigBuilder<'cfg> {
             "congestion-controller",
             r#"Set the congestion controller. Available: "cubic", "new_reno", "bbr". Default: "cubic""#,
             "CONGESTION_CONTROLLER",
+        );
+
+        opts.optopt(
+            "",
+            "log-level",
+            r#"Set the log level. Available: "off", "error", "warn", "info", "debug", "trace". Default: "info""#,
+            "LOG_LEVEL",
         );
 
         opts.optflag("v", "version", "Print the version");
@@ -124,15 +132,16 @@ impl<'cfg> ConfigBuilder<'cfg> {
 
         let congestion_controller =
             if let Some(controller) = matches.opt_str("congestion-controller") {
-                match controller.as_str() {
-                    "cubic" => CongestionController::Cubic,
-                    "new_reno" => CongestionController::NewReno,
-                    "bbr" => CongestionController::Bbr,
-                    _ => bail!("Unknown congestion controller: {}", controller),
-                }
+                controller.parse()?
             } else {
                 CongestionController::Cubic
             };
+
+        let log_level = if let Some(level) = matches.opt_str("log-level") {
+            level.parse()?
+        } else {
+            LevelFilter::Info
+        };
 
         Ok(Config {
             port,
@@ -141,6 +150,7 @@ impl<'cfg> ConfigBuilder<'cfg> {
             private_key,
             authentication_timeout,
             congestion_controller,
+            log_level,
         })
     }
 }
@@ -152,10 +162,24 @@ pub struct Config {
     pub private_key: PrivateKey,
     pub authentication_timeout: Duration,
     pub congestion_controller: CongestionController,
+    pub log_level: LevelFilter,
 }
 
 pub enum CongestionController {
     Cubic,
     NewReno,
     Bbr,
+}
+
+impl FromStr for CongestionController {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        match s {
+            "cubic" => Ok(CongestionController::Cubic),
+            "new_reno" => Ok(CongestionController::NewReno),
+            "bbr" => Ok(CongestionController::Bbr),
+            _ => bail!("Unknown congestion controller: {s}"),
+        }
+    }
 }

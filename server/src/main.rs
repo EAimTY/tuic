@@ -20,6 +20,8 @@ async fn main() {
         }
     };
 
+    env_logger::builder().filter_level(config.log_level).init();
+
     let server = match Server::init(
         config.port,
         config.token_digest,
