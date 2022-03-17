@@ -38,7 +38,7 @@ impl Connection {
                 datagrams,
                 ..
             }) => {
-                log::info!("[{rmt_addr}] connection established");
+                log::debug!("[{rmt_addr}] [established]");
 
                 let (udp_sessions, recv_pkt_rx) = UdpSessionMap::new();
                 let (is_authed, auth_bcast) = IsAuthenticated::new(connection.clone());
@@ -79,6 +79,7 @@ impl Connection {
                     )
                     .unwrap_unchecked()
                 };
+                println!("here");
 
                 let res = listen_uni_streams
                     .and(listen_bi_streams)
@@ -89,7 +90,7 @@ impl Connection {
                 match res {
                     Ok(())
                     | Err(ConnectionError::LocallyClosed)
-                    | Err(ConnectionError::TimedOut) => log::info!("[{rmt_addr}] disconnected"),
+                    | Err(ConnectionError::TimedOut) => log::debug!("[{rmt_addr}] [disconnected]"),
                     Err(err) => log::error!("[{rmt_addr}] {err}"),
                 }
             }
