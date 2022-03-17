@@ -52,42 +52,16 @@ impl Connection {
                     authenticate_broadcast: auth_bcast,
                 };
 
-                let listen_uni_streams =
-                    tokio::spawn(Self::listen_uni_streams(conn.clone(), uni_streams));
-                let listen_bi_streams =
-                    tokio::spawn(Self::listen_bi_streams(conn.clone(), bi_streams));
-                let listen_datagrams =
-                    tokio::spawn(Self::listen_datagrams(conn.clone(), datagrams));
-                let listen_received_udp_packet =
-                    tokio::spawn(Self::listen_received_udp_packet(conn.clone(), recv_pkt_rx));
-                let handle_authentication_timeout =
-                    tokio::spawn(Self::handle_authentication_timeout(conn, auth_timeout));
-
-                let (
-                    listen_uni_streams,
-                    listen_bi_streams,
-                    listen_datagrams,
-                    listen_received_udp_packet,
-                    handle_authentication_timeout,
-                ) = unsafe {
-                    tokio::try_join!(
-                        listen_uni_streams,
-                        listen_bi_streams,
-                        listen_datagrams,
-                        listen_received_udp_packet,
-                        handle_authentication_timeout
-                    )
-                    .unwrap_unchecked()
-                };
-
-                let res = listen_uni_streams
-                    .and(listen_bi_streams)
-                    .and(listen_datagrams)
-                    .and(listen_received_udp_packet)
-                    .and(handle_authentication_timeout);
+                let res = tokio::try_join!(
+                    Self::listen_uni_streams(conn.clone(), uni_streams),
+                    Self::listen_bi_streams(conn.clone(), bi_streams),
+                    Self::listen_datagrams(conn.clone(), datagrams),
+                    Self::listen_received_udp_packet(conn.clone(), recv_pkt_rx),
+                    Self::handle_authentication_timeout(conn, auth_timeout)
+                );
 
                 match res {
-                    Ok(())
+                    Ok(_)
                     | Err(ConnectionError::LocallyClosed)
                     | Err(ConnectionError::TimedOut) => log::debug!("[{rmt_addr}] [disconnected]"),
                     Err(err) => log::error!("[{rmt_addr}] {err}"),
