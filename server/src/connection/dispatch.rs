@@ -31,7 +31,7 @@ impl Connection {
                     addr,
                 } => {
                     if self.udp_packet_from.uni_stream() {
-                        task::packet_from_uni_stream(
+                        let res = task::packet_from_uni_stream(
                             stream,
                             self.udp_sessions.clone(),
                             assoc_id,
@@ -39,13 +39,25 @@ impl Connection {
                             addr,
                         )
                         .await;
+
+                        match res {
+                            Ok(()) => {}
+                            Err(err) => eprintln!("{err}"),
+                        }
+
                         Ok(())
                     } else {
                         Err(DispatchError::BadCommand)
                     }
                 }
                 Command::Dissociate { assoc_id } => {
-                    task::dissociate(self.udp_sessions.clone(), assoc_id).await;
+                    let res = task::dissociate(self.udp_sessions.clone(), assoc_id).await;
+
+                    match res {
+                        Ok(()) => {}
+                        Err(err) => eprintln!("{err}"),
+                    }
+
                     Ok(())
                 }
             }
@@ -65,11 +77,23 @@ impl Connection {
             match cmd {
                 Command::Authenticate { .. } => Err(DispatchError::BadCommand),
                 Command::Connect { addr } => {
-                    task::connect(send, recv, addr).await;
+                    let res = task::connect(send, recv, addr).await;
+
+                    match res {
+                        Ok(()) => {}
+                        Err(err) => eprintln!("{err}"),
+                    }
+
                     Ok(())
                 }
                 Command::Bind { addr } => {
-                    task::bind(send, recv, addr).await;
+                    let res = task::bind(send, recv, addr).await;
+
+                    match res {
+                        Ok(()) => {}
+                        Err(err) => eprintln!("{err}"),
+                    }
+
                     Ok(())
                 }
                 Command::Packet { .. } => Err(DispatchError::BadCommand),
@@ -91,13 +115,19 @@ impl Connection {
                 Command::Bind { .. } => Err(DispatchError::BadCommand),
                 Command::Packet { assoc_id, addr, .. } => {
                     if self.udp_packet_from.datagram() {
-                        task::packet_from_datagram(
+                        let res = task::packet_from_datagram(
                             datagram.slice(cmd_len..),
                             self.udp_sessions.clone(),
                             assoc_id,
                             addr,
                         )
                         .await;
+
+                        match res {
+                            Ok(()) => {}
+                            Err(err) => eprintln!("{err}"),
+                        }
+
                         Ok(())
                     } else {
                         Err(DispatchError::BadCommand)
@@ -118,10 +148,22 @@ impl Connection {
     ) -> Result<(), DispatchError> {
         match unsafe { self.udp_packet_from.check().unwrap_unchecked() } {
             UdpPacketSource::UniStream => {
-                task::packet_to_uni_stream(self.controller.clone(), assoc_id, pkt, addr).await;
+                let res =
+                    task::packet_to_uni_stream(self.controller.clone(), assoc_id, pkt, addr).await;
+
+                match res {
+                    Ok(()) => {}
+                    Err(err) => eprintln!("{err}"),
+                }
             }
             UdpPacketSource::Datagram => {
-                task::packet_to_datagram(self.controller.clone(), assoc_id, pkt, addr).await;
+                let res =
+                    task::packet_to_datagram(self.controller.clone(), assoc_id, pkt, addr).await;
+
+                match res {
+                    Ok(()) => {}
+                    Err(err) => eprintln!("{err}"),
+                }
             }
         }
 
