@@ -1,10 +1,10 @@
 use super::UdpSessionMap;
 use anyhow::{anyhow, Result};
-use bytes::Bytes;
-use quinn::{RecvStream, SendStream};
+use bytes::{Bytes, BytesMut};
+use quinn::{Connection as QuinnConnection, RecvStream, SendStream};
 use std::{net::ToSocketAddrs, sync::Arc};
 use tokio::{io, net::TcpStream};
-use tuic_protocol::{Address, Response};
+use tuic_protocol::{Address, Command, Response};
 
 pub async fn connect(mut send: SendStream, mut recv: RecvStream, addr: Address) {
     let res: Result<()> = try {
@@ -52,19 +52,52 @@ pub async fn packet_from_uni_stream(
     let mut buf = vec![0; len as usize];
 
     match stream.read_exact(&mut buf).await {
-        Ok(()) => udp_sessions.send(assoc_id, buf, addr).await,
+        Ok(()) => udp_sessions.send(assoc_id, Bytes::from(buf), addr).await,
         Err(err) => eprintln!("{err}"),
     }
 }
 
 pub async fn packet_from_datagram(
-    packet: Bytes,
+    pkt: Bytes,
     udp_sessions: Arc<UdpSessionMap>,
     assoc_id: u32,
-    len: u16,
     addr: Address,
 ) {
-    todo!()
+    udp_sessions.send(assoc_id, pkt, addr).await;
+}
+
+pub async fn packet_to_uni_stream(conn: QuinnConnection, assoc_id: u32, pkt: Bytes, addr: Address) {
+    let res: Result<()> = try {
+        let mut stream = conn.open_uni().await?;
+
+        let cmd = Command::new_packet(assoc_id, pkt.len() as u16, addr);
+        cmd.write_to(&mut stream).await?;
+
+        stream.write_all(&pkt).await?;
+    };
+
+    match res {
+        Ok(()) => {}
+        Err(err) => eprintln!("{err}"),
+    }
+}
+
+pub async fn packet_to_datagram(conn: QuinnConnection, assoc_id: u32, pkt: Bytes, addr: Address) {
+    let res: Result<()> = try {
+        let cmd = Command::new_packet(assoc_id, pkt.len() as u16, addr);
+
+        let mut buf = BytesMut::with_capacity(cmd.serialized_len());
+        cmd.write_to_buf(&mut buf);
+        buf.extend_from_slice(&pkt);
+        let pkt = buf.freeze();
+
+        conn.send_datagram(pkt)?;
+    };
+
+    match res {
+        Ok(()) => {}
+        Err(err) => eprintln!("{err}"),
+    }
 }
 
 pub async fn dissociate(udp_sessions: Arc<UdpSessionMap>, assoc_id: u32) {

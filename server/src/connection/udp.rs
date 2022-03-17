@@ -1,4 +1,5 @@
 use anyhow::{bail, Result};
+use bytes::Bytes;
 use crossbeam_utils::atomic::AtomicCell;
 use parking_lot::Mutex;
 use std::{
@@ -14,36 +15,40 @@ use tokio::{
 use tuic_protocol::Address;
 
 #[derive(Clone)]
-pub struct UdpPacketFrom(Arc<AtomicCell<Option<UdpPacketFromInner>>>);
+pub struct UdpPacketFrom(Arc<AtomicCell<Option<UdpPacketSource>>>);
 
 impl UdpPacketFrom {
     pub fn new() -> Self {
         Self(Arc::new(AtomicCell::new(None)))
     }
 
+    pub fn check(&self) -> Option<UdpPacketSource> {
+        self.0.load()
+    }
+
     pub fn uni_stream(&self) -> bool {
         self.0
-            .compare_exchange(None, Some(UdpPacketFromInner::UniStream))
-            .map_or_else(|from| from == Some(UdpPacketFromInner::UniStream), |_| true)
+            .compare_exchange(None, Some(UdpPacketSource::UniStream))
+            .map_or_else(|from| from == Some(UdpPacketSource::UniStream), |_| true)
     }
 
     pub fn datagram(&self) -> bool {
         self.0
-            .compare_exchange(None, Some(UdpPacketFromInner::Datagram))
-            .map_or_else(|from| from == Some(UdpPacketFromInner::Datagram), |_| true)
+            .compare_exchange(None, Some(UdpPacketSource::Datagram))
+            .map_or_else(|from| from == Some(UdpPacketSource::Datagram), |_| true)
     }
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
-enum UdpPacketFromInner {
+pub enum UdpPacketSource {
     UniStream,
     Datagram,
 }
 
-pub type SendPacketSender = Sender<(Vec<u8>, Address)>;
-pub type SendPacketReceiver = Receiver<(Vec<u8>, Address)>;
-pub type RecvPacketSender = Sender<(u32, Vec<u8>, Address)>;
-pub type RecvPacketReceiver = Receiver<(u32, Vec<u8>, Address)>;
+pub type SendPacketSender = Sender<(Bytes, Address)>;
+pub type SendPacketReceiver = Receiver<(Bytes, Address)>;
+pub type RecvPacketSender = Sender<(u32, Bytes, Address)>;
+pub type RecvPacketReceiver = Receiver<(u32, Bytes, Address)>;
 
 pub struct UdpSessionMap {
     map: Mutex<HashMap<u32, UdpSession>>,
@@ -63,7 +68,7 @@ impl UdpSessionMap {
         )
     }
 
-    pub async fn send(&self, assoc_id: u32, pkt: Vec<u8>, addr: Address) {
+    pub async fn send(&self, assoc_id: u32, pkt: Bytes, addr: Address) {
         let mut map = self.map.lock();
 
         match map.entry(assoc_id) {
@@ -138,12 +143,14 @@ impl UdpSession {
     ) -> Result<()> {
         loop {
             let mut buf = vec![0; 1536];
+
             match socket.recv_from(&mut buf).await {
                 Ok((len, addr)) => {
                     buf.truncate(len);
+                    let pkt = Bytes::from(buf);
 
                     let _ = recv_pkt_tx
-                        .send((assoc_id, buf, Address::SocketAddress(addr)))
+                        .send((assoc_id, pkt, Address::SocketAddress(addr)))
                         .await;
                 }
                 Err(err) => eprintln!("{err}"),

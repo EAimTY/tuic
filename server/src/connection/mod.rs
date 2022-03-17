@@ -5,14 +5,13 @@ use quinn::{
     IncomingUniStreams, NewConnection, VarInt,
 };
 use std::{sync::Arc, time::Duration};
-use tokio::{sync::mpsc::Receiver as MpscReceiver, time};
-use tuic_protocol::Address;
+use tokio::time;
 
 pub use self::{
     authenticate::{AuthenticateBroadcast, IsAuthenticated},
     udp::{
         RecvPacketReceiver, RecvPacketSender, SendPacketReceiver, SendPacketSender, UdpPacketFrom,
-        UdpSessionMap,
+        UdpPacketSource, UdpSessionMap,
     },
 };
 
@@ -123,10 +122,7 @@ impl Connection {
         Err(ConnectionError::LocallyClosed)?
     }
 
-    async fn listen_received_udp_packet(
-        self,
-        mut recv_pkt_rx: MpscReceiver<(u32, Vec<u8>, Address)>,
-    ) -> Result<()> {
+    async fn listen_received_udp_packet(self, mut recv_pkt_rx: RecvPacketReceiver) -> Result<()> {
         while let Some((assoc_id, pkt, addr)) = recv_pkt_rx.recv().await {
             tokio::spawn(Self::process_received_udp_packet(
                 self.clone(),

@@ -1,5 +1,4 @@
-use super::{handler, Connection};
-use anyhow::Result;
+use super::{handler, Connection, UdpPacketSource};
 use bytes::Bytes;
 use quinn::{RecvStream, SendStream, VarInt};
 use std::hint::unreachable_unchecked;
@@ -40,19 +39,20 @@ impl Connection {
                     addr,
                 } => {
                     if self.udp_packet_from.uni_stream() {
-                        tokio::spawn(handler::packet_from_uni_stream(
+                        handler::packet_from_uni_stream(
                             stream,
                             self.udp_sessions.clone(),
                             assoc_id,
                             len,
                             addr,
-                        ));
+                        )
+                        .await;
                     } else {
-                        self.controller.close(VarInt::MAX, b"Bad command")
+                        self.controller.close(VarInt::MAX, b"Bad command");
                     }
                 }
                 Command::Dissociate { assoc_id } => {
-                    tokio::spawn(handler::dissociate(self.udp_sessions.clone(), assoc_id));
+                    handler::dissociate(self.udp_sessions.clone(), assoc_id).await;
                 }
             }
         }
@@ -72,10 +72,10 @@ impl Connection {
             match cmd {
                 Command::Authenticate { .. } => self.controller.close(VarInt::MAX, b"Bad command"),
                 Command::Connect { addr } => {
-                    tokio::spawn(handler::connect(send, recv, addr));
+                    handler::connect(send, recv, addr).await;
                 }
                 Command::Bind { addr } => {
-                    tokio::spawn(handler::bind(send, recv, addr));
+                    handler::bind(send, recv, addr).await;
                 }
                 Command::Packet { .. } => self.controller.close(VarInt::MAX, b"Bad command"),
                 Command::Dissociate { .. } => self.controller.close(VarInt::MAX, b"Bad command"),
@@ -99,19 +99,15 @@ impl Connection {
                 Command::Authenticate { .. } => self.controller.close(VarInt::MAX, b"Bad command"),
                 Command::Connect { .. } => self.controller.close(VarInt::MAX, b"Bad command"),
                 Command::Bind { .. } => self.controller.close(VarInt::MAX, b"Bad command"),
-                Command::Packet {
-                    assoc_id,
-                    len,
-                    addr,
-                } => {
+                Command::Packet { assoc_id, addr, .. } => {
                     if self.udp_packet_from.datagram() {
-                        tokio::spawn(handler::packet_from_datagram(
+                        handler::packet_from_datagram(
                             datagram.slice(cmd_len..),
                             self.udp_sessions.clone(),
                             assoc_id,
-                            len,
                             addr,
-                        ));
+                        )
+                        .await;
                     } else {
                         self.controller.close(VarInt::MAX, b"Bad command")
                     }
@@ -121,19 +117,14 @@ impl Connection {
         }
     }
 
-    pub async fn process_received_udp_packet(self, assoc_id: u32, packet: Vec<u8>, addr: Address) {
-        let res: Result<()> = try {
-            let mut stream = self.controller.open_uni().await?;
-
-            let cmd = Command::new_packet(assoc_id, packet.len() as u16, addr);
-            cmd.write_to(&mut stream).await?;
-
-            stream.write_all(&packet).await?;
-        };
-
-        match res {
-            Ok(()) => {}
-            Err(err) => eprintln!("{err}"),
+    pub async fn process_received_udp_packet(self, assoc_id: u32, pkt: Bytes, addr: Address) {
+        match unsafe { self.udp_packet_from.check().unwrap_unchecked() } {
+            UdpPacketSource::UniStream => {
+                handler::packet_to_uni_stream(self.controller, assoc_id, pkt, addr).await;
+            }
+            UdpPacketSource::Datagram => {
+                handler::packet_to_datagram(self.controller, assoc_id, pkt, addr).await;
+            }
         }
     }
 }
