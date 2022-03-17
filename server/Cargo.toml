@@ -19,6 +19,7 @@ bytes = "1.1"
 crossbeam-utils = { version = "0.8", default-features = false }
 futures-util = { version = "0.3", default-features = false }
 getopts = "0.2"
+log = "0.4"
 parking_lot = { version = "0.12", features = ["send_guard"] }
 quinn = { git = "https://github.com/EAimTY/quinn", branch = "0.8.x" }
 rustls = { version = "0.20", features = ["quic"], default-features = false }

@@ -4,7 +4,11 @@ use quinn::{
     Connection as QuinnConnection, ConnectionError, ReadExactError, RecvStream, SendDatagramError,
     SendStream, WriteError,
 };
-use std::{io::Error as IoError, net::ToSocketAddrs, sync::Arc};
+use std::{
+    io::Error as IoError,
+    net::{SocketAddr, ToSocketAddrs},
+    sync::Arc,
+};
 use thiserror::Error;
 use tokio::{io, net::TcpStream};
 use tuic_protocol::{Address, Command, Response};
@@ -50,12 +54,13 @@ pub async fn packet_from_uni_stream(
     assoc_id: u32,
     len: u16,
     addr: Address,
+    src_addr: SocketAddr,
 ) -> Result<(), TaskError> {
     let mut buf = vec![0; len as usize];
     stream.read_exact(&mut buf).await?;
 
     let pkt = Bytes::from(buf);
-    udp_sessions.send(assoc_id, pkt, addr).await?;
+    udp_sessions.send(assoc_id, pkt, addr, src_addr).await?;
 
     Ok(())
 }
@@ -65,8 +70,9 @@ pub async fn packet_from_datagram(
     udp_sessions: Arc<UdpSessionMap>,
     assoc_id: u32,
     addr: Address,
+    src_addr: SocketAddr,
 ) -> Result<(), TaskError> {
-    udp_sessions.send(assoc_id, pkt, addr).await?;
+    udp_sessions.send(assoc_id, pkt, addr, src_addr).await?;
     Ok(())
 }
 

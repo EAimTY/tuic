@@ -1,12 +1,13 @@
 use crate::{config::CongestionController, connection::Connection};
-use anyhow::Result;
 use futures_util::StreamExt;
 use quinn::{
     congestion::{BbrConfig, CubicConfig, NewRenoConfig},
     Endpoint, Incoming, ServerConfig, TransportConfig,
 };
+use rustls::Error as RustlsError;
 use rustls::{Certificate, PrivateKey};
-use std::{net::SocketAddr, sync::Arc, time::Duration};
+use std::{io::Error as IoError, net::SocketAddr, sync::Arc, time::Duration};
+use thiserror::Error;
 
 pub struct Server {
     incoming: Incoming,
@@ -22,7 +23,7 @@ impl Server {
         priv_key: PrivateKey,
         auth_timeout: Duration,
         cgstn_ctrl: CongestionController,
-    ) -> Result<Self> {
+    ) -> Result<Self, ServerError> {
         let config = {
             let mut config = ServerConfig::with_single_cert(vec![cert], priv_key)?;
 
@@ -63,4 +64,12 @@ impl Server {
             ));
         }
     }
+}
+
+#[derive(Error, Debug)]
+pub enum ServerError {
+    #[error(transparent)]
+    Io(#[from] IoError),
+    #[error(transparent)]
+    Rustls(#[from] RustlsError),
 }

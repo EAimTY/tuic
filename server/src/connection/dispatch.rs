@@ -10,17 +10,25 @@ impl Connection {
         let cmd = Command::read_from(&mut stream).await?;
 
         if let Command::Authenticate { digest } = cmd {
+            let rmt_addr = self.controller.remote_address();
+            log::info!("[{rmt_addr}] [authentication]");
+
             if digest == self.expected_token_digest {
                 self.is_authenticated.set_authenticated();
                 self.authenticate_broadcast.wake();
                 return Ok(());
             } else {
+                let err = DispatchError::AuthenticationFailed;
+                self.controller
+                    .close(err.as_error_code(), err.to_string().as_bytes());
                 self.authenticate_broadcast.wake();
-                return Err(DispatchError::AuthenticationFailed);
+                return Err(err);
             }
         }
 
         if self.is_authenticated.clone().await {
+            let rmt_addr = self.controller.remote_address();
+
             match cmd {
                 Command::Authenticate { .. } => unsafe { unreachable_unchecked() },
                 Command::Connect { .. } => Err(DispatchError::BadCommand),
@@ -31,18 +39,24 @@ impl Connection {
                     addr,
                 } => {
                     if self.udp_packet_from.uni_stream() {
+                        let dst_addr = addr.to_string();
+                        log::info!("[{rmt_addr}] [packet-quic] [{assoc_id}] [{dst_addr}]");
+
                         let res = task::packet_from_uni_stream(
                             stream,
                             self.udp_sessions.clone(),
                             assoc_id,
                             len,
                             addr,
+                            rmt_addr,
                         )
                         .await;
 
                         match res {
                             Ok(()) => {}
-                            Err(err) => eprintln!("{err}"),
+                            Err(err) => log::warn!(
+                                "[{rmt_addr}] [packet-quic] [{assoc_id}] [{dst_addr}] {err}"
+                            ),
                         }
 
                         Ok(())
@@ -55,7 +69,7 @@ impl Connection {
 
                     match res {
                         Ok(()) => {}
-                        Err(err) => eprintln!("{err}"),
+                        Err(err) => log::warn!("[{rmt_addr}] [dissociate] {err}"),
                     }
 
                     Ok(())
@@ -74,24 +88,32 @@ impl Connection {
         let cmd = Command::read_from(&mut recv).await?;
 
         if self.is_authenticated.clone().await {
+            let rmt_addr = self.controller.remote_address();
+
             match cmd {
                 Command::Authenticate { .. } => Err(DispatchError::BadCommand),
                 Command::Connect { addr } => {
+                    let dst_addr = addr.to_string();
+                    log::info!("[{rmt_addr}] [connect] [{dst_addr}]");
+
                     let res = task::connect(send, recv, addr).await;
 
                     match res {
                         Ok(()) => {}
-                        Err(err) => eprintln!("{err}"),
+                        Err(err) => log::warn!("[{rmt_addr}] [connect] [{dst_addr}] {err}"),
                     }
 
                     Ok(())
                 }
                 Command::Bind { addr } => {
+                    let dst_addr = addr.to_string();
+                    log::info!("[{rmt_addr}] [bind] [{dst_addr}]");
+
                     let res = task::bind(send, recv, addr).await;
 
                     match res {
                         Ok(()) => {}
-                        Err(err) => eprintln!("{err}"),
+                        Err(err) => log::warn!("[{rmt_addr}] [bind] [{dst_addr}] {err}"),
                     }
 
                     Ok(())
@@ -109,23 +131,33 @@ impl Connection {
         let cmd_len = cmd.serialized_len();
 
         if self.is_authenticated.clone().await {
+            let rmt_addr = self.controller.remote_address();
+
             match cmd {
                 Command::Authenticate { .. } => Err(DispatchError::BadCommand),
                 Command::Connect { .. } => Err(DispatchError::BadCommand),
                 Command::Bind { .. } => Err(DispatchError::BadCommand),
                 Command::Packet { assoc_id, addr, .. } => {
                     if self.udp_packet_from.datagram() {
+                        let dst_addr = addr.to_string();
+                        log::info!("[{rmt_addr}] [packet-native] [{assoc_id}] [{dst_addr}]");
+
                         let res = task::packet_from_datagram(
                             datagram.slice(cmd_len..),
                             self.udp_sessions.clone(),
                             assoc_id,
                             addr,
+                            rmt_addr,
                         )
                         .await;
 
                         match res {
                             Ok(()) => {}
-                            Err(err) => eprintln!("{err}"),
+                            Err(err) => {
+                                log::warn!(
+                                    "[{rmt_addr}] [packet-native] [{assoc_id}] [{dst_addr}] {err}"
+                                )
+                            }
                         }
 
                         Ok(())
@@ -146,23 +178,38 @@ impl Connection {
         pkt: Bytes,
         addr: Address,
     ) -> Result<(), DispatchError> {
+        let rmt_addr = self.controller.remote_address();
+        let dst_addr = addr.to_string();
+
         match unsafe { self.udp_packet_from.check().unwrap_unchecked() } {
             UdpPacketSource::UniStream => {
+                log::info!("[{rmt_addr}] [received-packet-quic] [{assoc_id}] [{dst_addr}]");
+
                 let res =
                     task::packet_to_uni_stream(self.controller.clone(), assoc_id, pkt, addr).await;
 
                 match res {
                     Ok(()) => {}
-                    Err(err) => eprintln!("{err}"),
+                    Err(err) => {
+                        log::warn!(
+                            "[{rmt_addr}] [received-packet-quic] [{assoc_id}] [{dst_addr}] {err}"
+                        )
+                    }
                 }
             }
             UdpPacketSource::Datagram => {
+                log::info!("[{rmt_addr}] [received-packet-native] [{assoc_id}] [{dst_addr}]");
+
                 let res =
                     task::packet_to_datagram(self.controller.clone(), assoc_id, pkt, addr).await;
 
                 match res {
                     Ok(()) => {}
-                    Err(err) => eprintln!("{err}"),
+                    Err(err) => {
+                        log::warn!(
+                            "[{rmt_addr}] [received-packet-native] [{assoc_id}] [{dst_addr}] {err}"
+                        )
+                    }
                 }
             }
         }
@@ -175,11 +222,11 @@ impl Connection {
 pub enum DispatchError {
     #[error(transparent)]
     Protocol(#[from] ProtocolError),
-    #[error("Authentication failed")]
+    #[error("authentication failed")]
     AuthenticationFailed,
-    #[error("Authentication timeout")]
+    #[error("authentication timeout")]
     AuthenticationTimeout,
-    #[error("Bad command")]
+    #[error("bad command")]
     BadCommand,
 }
 

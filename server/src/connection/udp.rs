@@ -67,7 +67,13 @@ impl UdpSessionMap {
         )
     }
 
-    pub async fn send(&self, assoc_id: u32, pkt: Bytes, addr: Address) -> Result<(), IoError> {
+    pub async fn send(
+        &self,
+        assoc_id: u32,
+        pkt: Bytes,
+        addr: Address,
+        src_addr: SocketAddr,
+    ) -> Result<(), IoError> {
         let mut map = self.map.lock();
 
         match map.entry(assoc_id) {
@@ -75,7 +81,8 @@ impl UdpSessionMap {
                 let _ = entry.get().0.send((pkt, addr)).await;
             }
             Entry::Vacant(entry) => {
-                let assoc = UdpSession::new(assoc_id, self.recv_pkt_tx_for_clone.clone()).await?;
+                let assoc =
+                    UdpSession::new(assoc_id, self.recv_pkt_tx_for_clone.clone(), src_addr).await?;
                 let _ = entry.insert(assoc).0.send((pkt, addr)).await;
             }
         }
@@ -91,15 +98,22 @@ impl UdpSessionMap {
 struct UdpSession(SendPacketSender);
 
 impl UdpSession {
-    async fn new(assoc_id: u32, recv_pkt_tx: RecvPacketSender) -> Result<Self, IoError> {
+    async fn new(
+        assoc_id: u32,
+        recv_pkt_tx: RecvPacketSender,
+        src_addr: SocketAddr,
+    ) -> Result<Self, IoError> {
         let socket = Arc::new(UdpSocket::bind(SocketAddr::from(([0, 0, 0, 0], 0))).await?);
         let (send_pkt_tx, send_pkt_rx) = mpsc::channel(1);
 
         tokio::spawn(async move {
-            tokio::select!(
-                _ = Self::listen_send_packet(socket.clone(), send_pkt_rx) => {}
-                _ = Self::listen_receive_packet(socket, assoc_id, recv_pkt_tx) => {}
-            );
+            match tokio::select!(
+                res = Self::listen_send_packet(socket.clone(), send_pkt_rx) => res,
+                res = Self::listen_receive_packet(socket, assoc_id, recv_pkt_tx) => res,
+            ) {
+                Ok(()) => (),
+                Err(err) => log::warn!("[{src_addr}] [udp-session] [{assoc_id}] {err}"),
+            }
         });
 
         Ok(Self(send_pkt_tx))
@@ -110,21 +124,14 @@ impl UdpSession {
         mut send_pkt_rx: SendPacketReceiver,
     ) -> Result<(), IoError> {
         while let Some((pkt, addr)) = send_pkt_rx.recv().await {
-            let socket = socket.clone();
-
-            tokio::spawn(async move {
-                let res = match addr {
-                    Address::HostnameAddress(hostname, port) => {
-                        socket.send_to(&pkt, (hostname, port)).await
-                    }
-                    Address::SocketAddress(addr) => socket.send_to(&pkt, addr).await,
-                };
-
-                match res {
-                    Ok(_) => {}
-                    Err(err) => eprintln!("{err}"),
+            match addr {
+                Address::HostnameAddress(hostname, port) => {
+                    socket.send_to(&pkt, (hostname, port)).await?;
                 }
-            });
+                Address::SocketAddress(addr) => {
+                    socket.send_to(&pkt, addr).await?;
+                }
+            }
         }
 
         Ok(())
