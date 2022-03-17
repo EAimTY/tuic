@@ -1,23 +1,19 @@
-use anyhow::{bail, Result};
+use self::{
+    authenticate::{AuthenticateBroadcast, IsAuthenticated},
+    dispatch::DispatchError,
+    udp::{RecvPacketReceiver, UdpPacketFrom, UdpPacketSource, UdpSessionMap},
+};
 use futures_util::StreamExt;
 use quinn::{
     Connecting, Connection as QuinnConnection, ConnectionError, Datagrams, IncomingBiStreams,
-    IncomingUniStreams, NewConnection, VarInt,
+    IncomingUniStreams, NewConnection,
 };
 use std::{sync::Arc, time::Duration};
 use tokio::time;
 
-pub use self::{
-    authenticate::{AuthenticateBroadcast, IsAuthenticated},
-    udp::{
-        RecvPacketReceiver, RecvPacketSender, SendPacketReceiver, SendPacketSender, UdpPacketFrom,
-        UdpPacketSource, UdpSessionMap,
-    },
-};
-
 mod authenticate;
-mod handler;
-mod stream;
+mod dispatch;
+mod task;
 mod udp;
 
 #[derive(Clone)]
@@ -88,6 +84,7 @@ impl Connection {
 
                 match res {
                     Ok(()) => {}
+                    Err(ConnectionError::LocallyClosed) => {}
                     Err(err) => eprintln!("{err}"),
                 }
             }
@@ -95,58 +92,107 @@ impl Connection {
         }
     }
 
-    async fn listen_uni_streams(self, mut uni_streams: IncomingUniStreams) -> Result<()> {
+    async fn listen_uni_streams(
+        self,
+        mut uni_streams: IncomingUniStreams,
+    ) -> Result<(), ConnectionError> {
         while let Some(stream) = uni_streams.next().await {
             let stream = stream?;
-            tokio::spawn(Self::process_uni_stream(self.clone(), stream));
+            let conn = self.clone();
+
+            tokio::spawn(async move {
+                match conn.process_uni_stream(stream).await {
+                    Ok(()) => {}
+                    Err(err) => {
+                        conn.controller
+                            .close(err.as_error_code(), err.to_string().as_bytes());
+                        eprintln!("{err}");
+                    }
+                }
+            });
         }
 
         Err(ConnectionError::LocallyClosed)?
     }
 
-    async fn listen_bi_streams(self, mut bi_streams: IncomingBiStreams) -> Result<()> {
+    async fn listen_bi_streams(
+        self,
+        mut bi_streams: IncomingBiStreams,
+    ) -> Result<(), ConnectionError> {
         while let Some(stream) = bi_streams.next().await {
             let (send, recv) = stream?;
-            tokio::spawn(Self::process_bi_stream(self.clone(), send, recv));
+            let conn = self.clone();
+
+            tokio::spawn(async move {
+                match conn.process_bi_stream(send, recv).await {
+                    Ok(()) => {}
+                    Err(err) => {
+                        conn.controller
+                            .close(err.as_error_code(), err.to_string().as_bytes());
+                        eprintln!("{err}");
+                    }
+                }
+            });
         }
 
         Err(ConnectionError::LocallyClosed)?
     }
 
-    async fn listen_datagrams(self, mut datagrams: Datagrams) -> Result<()> {
+    async fn listen_datagrams(self, mut datagrams: Datagrams) -> Result<(), ConnectionError> {
         while let Some(datagram) = datagrams.next().await {
             let datagram = datagram?;
-            tokio::spawn(Self::process_datagram(self.clone(), datagram));
+            let conn = self.clone();
+
+            tokio::spawn(async move {
+                match conn.process_datagram(datagram).await {
+                    Ok(()) => {}
+                    Err(err) => {
+                        conn.controller
+                            .close(err.as_error_code(), err.to_string().as_bytes());
+                        eprintln!("{err}");
+                    }
+                }
+            });
         }
 
         Err(ConnectionError::LocallyClosed)?
     }
 
-    async fn listen_received_udp_packet(self, mut recv_pkt_rx: RecvPacketReceiver) -> Result<()> {
+    async fn listen_received_udp_packet(
+        self,
+        mut recv_pkt_rx: RecvPacketReceiver,
+    ) -> Result<(), ConnectionError> {
         while let Some((assoc_id, pkt, addr)) = recv_pkt_rx.recv().await {
-            tokio::spawn(Self::process_received_udp_packet(
-                self.clone(),
-                assoc_id,
-                pkt,
-                addr,
-            ));
+            let conn = self.clone();
+
+            tokio::spawn(async move {
+                match conn.process_received_udp_packet(assoc_id, pkt, addr).await {
+                    Ok(()) => {}
+                    Err(err) => {
+                        conn.controller
+                            .close(err.as_error_code(), err.to_string().as_bytes());
+                        eprintln!("{err}");
+                    }
+                }
+            });
         }
 
         Ok(())
     }
 
-    async fn handle_authentication_timeout(self, timeout: Duration) -> Result<()> {
+    async fn handle_authentication_timeout(self, timeout: Duration) -> Result<(), ConnectionError> {
         time::sleep(timeout).await;
 
-        if !self.is_authenticated.check() {
-            self.controller
-                .close(VarInt::MAX, b"Authentication timeout");
+        if self.is_authenticated.check() {
+            Ok(())
+        } else {
+            let err = DispatchError::AuthenticationTimeout;
 
+            self.controller
+                .close(err.as_error_code(), err.to_string().as_bytes());
             self.authenticate_broadcast.wake();
 
-            bail!("Authentication timeout");
+            Err(ConnectionError::LocallyClosed)?
         }
-
-        Ok(())
     }
 }
