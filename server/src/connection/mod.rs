@@ -31,10 +31,16 @@ pub struct Connection {
     is_authenticated: IsAuthenticated,
     authenticate_broadcast: Arc<AuthenticateBroadcast>,
     is_closed: Arc<AtomicBool>,
+    max_udp_packet_size: usize,
 }
 
 impl Connection {
-    pub async fn handle(conn: Connecting, exp_token_dgst: [u8; 32], auth_timeout: Duration) {
+    pub async fn handle(
+        conn: Connecting,
+        exp_token_dgst: [u8; 32],
+        auth_timeout: Duration,
+        max_udp_pkt_size: usize,
+    ) {
         let rmt_addr = conn.remote_address();
 
         match conn.await {
@@ -59,6 +65,7 @@ impl Connection {
                     is_authenticated: is_authed,
                     authenticate_broadcast: auth_bcast,
                     is_closed,
+                    max_udp_packet_size: max_udp_pkt_size,
                 };
 
                 let res = tokio::try_join!(

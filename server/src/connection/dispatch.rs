@@ -50,6 +50,7 @@ impl Connection {
                             len,
                             addr,
                             rmt_addr,
+                            self.max_udp_packet_size,
                         )
                         .await;
 
@@ -149,6 +150,7 @@ impl Connection {
                             assoc_id,
                             addr,
                             rmt_addr,
+                            self.max_udp_packet_size,
                         )
                         .await;
 

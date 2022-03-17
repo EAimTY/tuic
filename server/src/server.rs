@@ -14,6 +14,7 @@ pub struct Server {
     socket_addr: SocketAddr,
     expected_token_digest: [u8; 32],
     authentication_timeout: Duration,
+    max_udp_packet_size: usize,
 }
 
 impl Server {
@@ -24,6 +25,7 @@ impl Server {
         priv_key: PrivateKey,
         auth_timeout: Duration,
         cgstn_ctrl: CongestionController,
+        max_udp_pkt_size: usize,
     ) -> Result<Self, ServerError> {
         let config = {
             let mut config = ServerConfig::with_single_cert(vec![cert], priv_key)?;
@@ -57,6 +59,7 @@ impl Server {
             socket_addr,
             expected_token_digest: exp_tkn_dgst,
             authentication_timeout: auth_timeout,
+            max_udp_packet_size: max_udp_pkt_size,
         })
     }
 
@@ -68,6 +71,7 @@ impl Server {
                 conn,
                 self.expected_token_digest,
                 self.authentication_timeout,
+                self.max_udp_packet_size,
             ));
         }
     }

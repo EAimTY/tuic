@@ -55,12 +55,15 @@ pub async fn packet_from_uni_stream(
     len: u16,
     addr: Address,
     src_addr: SocketAddr,
+    max_udp_pkt_size: usize,
 ) -> Result<(), TaskError> {
     let mut buf = vec![0; len as usize];
     stream.read_exact(&mut buf).await?;
 
     let pkt = Bytes::from(buf);
-    udp_sessions.send(assoc_id, pkt, addr, src_addr).await?;
+    udp_sessions
+        .send(assoc_id, pkt, addr, src_addr, max_udp_pkt_size)
+        .await?;
 
     Ok(())
 }
@@ -71,8 +74,11 @@ pub async fn packet_from_datagram(
     assoc_id: u32,
     addr: Address,
     src_addr: SocketAddr,
+    max_udp_pkt_size: usize,
 ) -> Result<(), TaskError> {
-    udp_sessions.send(assoc_id, pkt, addr, src_addr).await?;
+    udp_sessions
+        .send(assoc_id, pkt, addr, src_addr, max_udp_pkt_size)
+        .await?;
     Ok(())
 }
 

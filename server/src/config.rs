@@ -58,6 +58,13 @@ impl<'cfg> ConfigBuilder<'cfg> {
 
         opts.optopt(
             "",
+            "max-udp-packet-size",
+            "Set the maximum UDP packet size. Excess bytes may be discarded. Default: 1536",
+            "MAX_UDP_PACKET_SIZE",
+        );
+
+        opts.optopt(
+            "",
             "log-level",
             r#"Set the log level. Available: "off", "error", "warn", "info", "debug", "trace". Default: "info""#,
             "LOG_LEVEL",
@@ -137,6 +144,12 @@ impl<'cfg> ConfigBuilder<'cfg> {
                 CongestionController::Cubic
             };
 
+        let max_udp_packet_size = if let Some(size) = matches.opt_str("max-udp-packet-size") {
+            size.parse()?
+        } else {
+            1536
+        };
+
         let log_level = if let Some(level) = matches.opt_str("log-level") {
             level.parse()?
         } else {
@@ -150,6 +163,7 @@ impl<'cfg> ConfigBuilder<'cfg> {
             private_key,
             authentication_timeout,
             congestion_controller,
+            max_udp_packet_size,
             log_level,
         })
     }
@@ -162,6 +176,7 @@ pub struct Config {
     pub private_key: PrivateKey,
     pub authentication_timeout: Duration,
     pub congestion_controller: CongestionController,
+    pub max_udp_packet_size: usize,
     pub log_level: LevelFilter,
 }
 

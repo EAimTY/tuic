@@ -73,6 +73,7 @@ impl UdpSessionMap {
         pkt: Bytes,
         addr: Address,
         src_addr: SocketAddr,
+        max_udp_pkt_size: usize,
     ) -> Result<(), IoError> {
         let mut map = self.map.lock();
 
@@ -81,8 +82,13 @@ impl UdpSessionMap {
                 let _ = entry.get().0.send((pkt, addr)).await;
             }
             Entry::Vacant(entry) => {
-                let assoc =
-                    UdpSession::new(assoc_id, self.recv_pkt_tx_for_clone.clone(), src_addr).await?;
+                let assoc = UdpSession::new(
+                    assoc_id,
+                    self.recv_pkt_tx_for_clone.clone(),
+                    src_addr,
+                    max_udp_pkt_size,
+                )
+                .await?;
                 let _ = entry.insert(assoc).0.send((pkt, addr)).await;
             }
         }
@@ -102,6 +108,7 @@ impl UdpSession {
         assoc_id: u32,
         recv_pkt_tx: RecvPacketSender,
         src_addr: SocketAddr,
+        max_udp_pkt_size: usize,
     ) -> Result<Self, IoError> {
         let socket = Arc::new(UdpSocket::bind(SocketAddr::from(([0, 0, 0, 0], 0))).await?);
         let (send_pkt_tx, send_pkt_rx) = mpsc::channel(1);
@@ -109,7 +116,7 @@ impl UdpSession {
         tokio::spawn(async move {
             match tokio::select!(
                 res = Self::listen_send_packet(socket.clone(), send_pkt_rx) => res,
-                res = Self::listen_receive_packet(socket, assoc_id, recv_pkt_tx) => res,
+                res = Self::listen_receive_packet(socket, assoc_id, recv_pkt_tx, max_udp_pkt_size) => res,
             ) {
                 Ok(()) => (),
                 Err(err) => log::warn!("[{src_addr}] [udp-session] [{assoc_id}] {err}"),
@@ -141,9 +148,10 @@ impl UdpSession {
         socket: Arc<UdpSocket>,
         assoc_id: u32,
         recv_pkt_tx: RecvPacketSender,
+        max_udp_pkt_size: usize,
     ) -> Result<(), IoError> {
         loop {
-            let mut buf = vec![0; 1536];
+            let mut buf = vec![0; max_udp_pkt_size];
             let (len, addr) = socket.recv_from(&mut buf).await?;
             buf.truncate(len);
 

@@ -34,6 +34,7 @@ async fn main() {
         config.private_key,
         config.authentication_timeout,
         config.congestion_controller,
+        config.max_udp_packet_size,
     ) {
         Ok(server) => server,
         Err(err) => {
