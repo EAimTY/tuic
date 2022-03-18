@@ -1,5 +1,5 @@
 use super::{Error, HandshakeMethod, SOCKS5_VERSION};
-use std::mem;
+use std::mem::ManuallyDrop;
 use tokio::io::{AsyncRead, AsyncReadExt};
 
 /// SOCKS5 handshake request packet
@@ -31,10 +31,17 @@ impl HandshakeRequest {
             return Err(Error::UnsupportedSocks5Version(ver));
         }
 
-        let methods = {
-            let mut m = vec![0; mlen as usize];
-            r.read_exact(&mut m).await?;
-            unsafe { mem::transmute(m) }
+        let methods = unsafe {
+            let mut methods = vec![0; mlen as usize];
+            r.read_exact(&mut methods).await?;
+
+            let mut methods = ManuallyDrop::new(methods);
+
+            Vec::from_raw_parts(
+                methods.as_mut_ptr() as *mut HandshakeMethod,
+                methods.len(),
+                methods.capacity(),
+            )
         };
 
         Ok(Self { methods })
