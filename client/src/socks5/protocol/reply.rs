@@ -1,3 +1,4 @@
+#[allow(unused)]
 #[derive(Clone, Copy, Debug)]
 pub enum Reply {
     Succeeded,
@@ -9,7 +10,6 @@ pub enum Reply {
     TtlExpired,
     CommandNotSupported,
     AddressTypeNotSupported,
-    Other(u8),
 }
 
 impl Reply {
@@ -34,7 +34,6 @@ impl Reply {
             Self::TtlExpired => Self::REPLY_TTL_EXPIRED,
             Self::CommandNotSupported => Self::REPLY_COMMAND_NOT_SUPPORTED,
             Self::AddressTypeNotSupported => Self::REPLY_ADDRESS_TYPE_NOT_SUPPORTED,
-            Self::Other(c) => c,
         }
     }
 }
