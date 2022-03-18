@@ -1,4 +1,4 @@
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy)]
 pub enum Command {
     Connect,
     Bind,

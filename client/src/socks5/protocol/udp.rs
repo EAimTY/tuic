@@ -11,7 +11,7 @@ use tokio::io::{AsyncRead, AsyncReadExt};
 /// |  2  |  1   |  1   | Variable |    2     | Variable |
 /// +-----+------+------+----------+----------+----------+
 /// ```
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct UdpHeader {
     pub frag: u8,
     pub address: Address,

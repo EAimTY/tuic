@@ -1,4 +1,4 @@
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 #[repr(transparent)]
 pub struct HandshakeMethod(pub u8);
 

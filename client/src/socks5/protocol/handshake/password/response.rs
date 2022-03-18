@@ -13,7 +13,7 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
 /// +-----+--------+
 /// ```
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Response(bool);
 
 impl Response {

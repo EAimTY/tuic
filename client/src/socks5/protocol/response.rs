@@ -12,7 +12,7 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
 /// |  1  |  1  | X'00' |  1   | Variable |    2     |
 /// +-----+-----+-------+------+----------+----------+
 /// ```
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Response {
     pub reply: Reply,
     pub address: Address,

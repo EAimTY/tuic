@@ -10,7 +10,7 @@ use tokio::io::{AsyncRead, AsyncReadExt};
 /// |  1  |  1  | X'00' |  1   | Variable |    2     |
 /// +-----+-----+-------+------+----------+----------+
 /// ```
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Request {
     pub command: Command,
     pub address: Address,

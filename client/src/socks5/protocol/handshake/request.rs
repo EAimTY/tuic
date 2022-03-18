@@ -11,7 +11,7 @@ use tokio::io::{AsyncRead, AsyncReadExt};
 /// |  1  |    1     | 1 to 255 |
 /// +-----+----------+----------|
 /// ```
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct HandshakeRequest {
     pub methods: Vec<HandshakeMethod>,
 }

@@ -11,7 +11,6 @@ use tokio::io::{AsyncRead, AsyncReadExt};
 /// +-----+------+----------+------+----------+
 /// ```
 
-#[derive(Debug)]
 pub struct Request {
     pub username: Vec<u8>,
     pub password: Vec<u8>,

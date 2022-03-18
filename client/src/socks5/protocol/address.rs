@@ -6,7 +6,7 @@ use std::{
 };
 use tokio::io::{AsyncRead, AsyncReadExt};
 
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum Address {
     SocketAddress(SocketAddr),
     HostnameAddress(String, u16),

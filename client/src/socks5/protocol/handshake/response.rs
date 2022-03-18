@@ -12,7 +12,7 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
 /// |  1  |   1    |
 /// +-----+--------+
 /// ```
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct HandshakeResponse {
     pub method: HandshakeMethod,
 }

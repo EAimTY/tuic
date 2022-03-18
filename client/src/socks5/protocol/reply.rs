@@ -1,5 +1,5 @@
 #[allow(unused)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy)]
 pub enum Reply {
     Succeeded,
     GeneralFailure,
