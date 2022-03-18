@@ -4,10 +4,9 @@ use super::{
         Address, Command, Error as ProtocolError, HandshakeMethod, HandshakeRequest,
         HandshakeResponse, Reply, Request, Response,
     },
-    Authentication,
+    Authentication, Socks5Error,
 };
 use crate::relay::Request as RelayRequest;
-use anyhow::{bail, Result};
 use std::{net::SocketAddr, sync::Arc};
 use tokio::{net::TcpStream, sync::mpsc::Sender as MpscSender};
 
@@ -26,7 +25,7 @@ impl Connection {
         conn: TcpStream,
         auth: Arc<Authentication>,
         req_tx: MpscSender<RelayRequest>,
-    ) -> Result<()> {
+    ) -> Result<(), Socks5Error> {
         let mut conn = Self {
             stream: conn,
             auth,
@@ -68,7 +67,7 @@ impl Connection {
         Ok(())
     }
 
-    async fn handshake(&mut self) -> Result<()> {
+    async fn handshake(&mut self) -> Result<(), Socks5Error> {
         let method = self.auth.as_handshake_method();
         let req = HandshakeRequest::read_from(&mut self.stream).await?;
 
@@ -88,14 +87,14 @@ impl Connection {
                     } else {
                         let resp = PasswordAuthResponse::new(false);
                         resp.write_to(&mut self.stream).await?;
-                        bail!("Password authentication failed");
+                        return Err(Socks5Error::Authentication);
                     }
                 }
             }
         } else {
             let resp = HandshakeResponse::new(HandshakeMethod::Unacceptable);
             resp.write_to(&mut self.stream).await?;
-            bail!("No acceptable authentication method");
+            return Err(Socks5Error::Authentication);
         }
 
         Ok(())

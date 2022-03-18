@@ -1,9 +1,11 @@
 use super::Connection;
 use crate::{
     relay::{Address as RelayAddress, Request as RelayRequest},
-    socks5::protocol::{Address, Reply, Response, UdpHeader},
+    socks5::{
+        protocol::{Address, Reply, Response, UdpHeader},
+        Socks5Error,
+    },
 };
-use anyhow::{bail, Result};
 use bytes::{Bytes, BytesMut};
 use std::{net::SocketAddr, sync::Arc};
 use tokio::{
@@ -13,7 +15,7 @@ use tokio::{
 };
 
 impl Connection {
-    pub async fn handle_associate(mut self, addr: Address) -> Result<()> {
+    pub async fn handle_associate(mut self, addr: Address) -> Result<(), Socks5Error> {
         let src_addr = match addr {
             Address::SocketAddress(addr) => {
                 if addr.ip().is_unspecified() && addr.port() == 0 {
@@ -26,7 +28,13 @@ impl Connection {
                 if hostname.is_empty() && port == 0 {
                     None
                 } else {
-                    bail!("Connot associate FQDN address")
+                    let resp = Response::new(
+                        Reply::AddressTypeNotSupported,
+                        Address::SocketAddress(SocketAddr::from(([0, 0, 0, 0], 0))),
+                    );
+                    resp.write_to(&mut self.stream).await?;
+
+                    return Err(Socks5Error::AssociateFromDomainAddress);
                 }
             }
         };
@@ -68,7 +76,7 @@ impl Connection {
     }
 }
 
-async fn create_udp_socket() -> Result<(UdpSocket, SocketAddr)> {
+async fn create_udp_socket() -> Result<(UdpSocket, SocketAddr), Socks5Error> {
     let socket = UdpSocket::bind(SocketAddr::from(([0, 0, 0, 0], 0))).await?;
     let addr = socket.local_addr()?;
 
@@ -79,7 +87,7 @@ async fn listen_packet_to_relay(
     socket: Arc<UdpSocket>,
     mut src_addr: Option<SocketAddr>,
     pkt_send_tx: MpscSender<(Bytes, RelayAddress)>,
-) -> Result<()> {
+) -> Result<(), Socks5Error> {
     loop {
         let mut buf = vec![0; 1536];
         let (len, addr) = socket.recv_from(&mut buf).await?;
@@ -103,24 +111,26 @@ async fn listen_packet_to_relay(
 async fn listen_packet_from_relay(
     socket: Arc<UdpSocket>,
     mut pkt_receive_rx: MpscReceiver<(Bytes, RelayAddress)>,
-) -> Result<()> {
+) -> Result<(), Socks5Error> {
     while let Some((pkt, addr)) = pkt_receive_rx.recv().await {
         let pkt = process_packet_from_relay(pkt, addr);
         socket.send(&pkt).await?;
     }
 
-    bail!("UDP packet channel closed");
+    Err(Socks5Error::RelayConnectivity)
 }
 
 async fn listen_control_stream(mut stream: TcpStream) {
     while let true = stream.read_u8().await.is_ok() {}
 }
 
-async fn process_packet_to_relay(pkt: Bytes) -> Result<(Bytes, RelayAddress)> {
+async fn process_packet_to_relay(pkt: Bytes) -> Result<(Bytes, RelayAddress), Socks5Error> {
     let header = UdpHeader::read_from(&mut pkt.as_ref()).await?;
+
     if header.frag != 0 {
-        bail!("Fragmented UDP packet is not supported");
+        return Err(Socks5Error::FragmentedUdpPacket);
     }
+
     let pkt = pkt.slice(header.serialized_len()..);
     let addr = RelayAddress::from(header.address);
 

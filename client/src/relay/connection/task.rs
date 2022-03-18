@@ -1,4 +1,5 @@
-use super::{Address, Error, UdpSessionMap};
+use super::UdpSessionMap;
+use crate::relay::{Address, RelayError};
 use bytes::{Bytes, BytesMut};
 use quinn::{Connection as QuinnConnection, RecvStream, SendStream};
 use std::sync::Arc;
@@ -9,11 +10,11 @@ pub async fn connect(
     conn: QuinnConnection,
     addr: Address,
     tx: OneshotSender<Option<(SendStream, RecvStream)>>,
-) -> Result<(), Error> {
+) -> Result<(), RelayError> {
     async fn get_streams(
         conn: QuinnConnection,
         addr: Address,
-    ) -> Result<Option<(SendStream, RecvStream)>, Error> {
+    ) -> Result<Option<(SendStream, RecvStream)>, RelayError> {
         let (mut send, mut recv) = conn.open_bi().await?;
 
         let addr = TuicAddress::from(addr);
@@ -47,7 +48,7 @@ pub async fn packet_to_uni_stream(
     assoc_id: u32,
     pkt: Bytes,
     addr: Address,
-) -> Result<(), Error> {
+) -> Result<(), RelayError> {
     let mut stream = conn.open_uni().await?;
 
     let addr = TuicAddress::from(addr);
@@ -64,7 +65,7 @@ pub async fn packet_to_datagram(
     assoc_id: u32,
     pkt: Bytes,
     addr: Address,
-) -> Result<(), Error> {
+) -> Result<(), RelayError> {
     let addr = TuicAddress::from(addr);
     let cmd = TuicCommand::new_packet(assoc_id, pkt.len() as u16, addr);
 
@@ -83,19 +84,19 @@ pub async fn packet_from_server(
     udp_sessions: Arc<UdpSessionMap>,
     assoc_id: u32,
     addr: Address,
-) -> Result<(), Error> {
+) -> Result<(), RelayError> {
     let recv_pkt_tx = udp_sessions
         .lock()
         .get(&assoc_id)
         .cloned()
-        .ok_or(Error::UdpSessionNotFound(assoc_id))?;
+        .ok_or(RelayError::UdpSessionNotFound(assoc_id))?;
 
     let _ = recv_pkt_tx.send((pkt, addr)).await;
 
     Ok(())
 }
 
-pub async fn dissociate(conn: QuinnConnection, assoc_id: u32) -> Result<(), Error> {
+pub async fn dissociate(conn: QuinnConnection, assoc_id: u32) -> Result<(), RelayError> {
     let mut stream = conn.open_uni().await?;
     let cmd = TuicCommand::new_dissociate(assoc_id);
     cmd.write_to(&mut stream).await?;

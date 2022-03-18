@@ -1,7 +1,7 @@
-use self::connection::Connection;
+use self::{connection::Connection, protocol::Error as ProtocolError};
 use crate::relay::Request as RelayRequest;
-use anyhow::Result;
-use std::{net::SocketAddr, sync::Arc};
+use std::{io::Error as IoError, net::SocketAddr, sync::Arc};
+use thiserror::Error;
 use tokio::{net::TcpListener, sync::mpsc::Sender as MpscSender};
 
 pub use self::authentication::Authentication;
@@ -22,7 +22,7 @@ impl Socks5 {
         local_addr: SocketAddr,
         auth: Authentication,
         req_tx: MpscSender<RelayRequest>,
-    ) -> Result<Self> {
+    ) -> Result<Self, Socks5Error> {
         let listener = TcpListener::bind(local_addr).await?;
         let auth = Arc::new(auth);
 
@@ -46,4 +46,20 @@ impl Socks5 {
             });
         }
     }
+}
+
+#[derive(Debug, Error)]
+pub enum Socks5Error {
+    #[error(transparent)]
+    Protocol(#[from] ProtocolError),
+    #[error(transparent)]
+    Io(#[from] IoError),
+    #[error("failed to connect to the relay layer")]
+    RelayConnectivity,
+    #[error("called associate from a domain address")]
+    AssociateFromDomainAddress,
+    #[error("fragmented UDP packet is not supported")]
+    FragmentedUdpPacket,
+    #[error("authentication failed")]
+    Authentication,
 }

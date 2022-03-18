@@ -3,16 +3,19 @@ use crate::config::{CongestionController, ServerAddr, UdpMode};
 use anyhow::Result;
 use quinn::{
     congestion::{BbrConfig, CubicConfig, NewRenoConfig},
-    ClientConfig, Endpoint, TransportConfig,
+    ClientConfig, ConnectionError, Endpoint, SendDatagramError, TransportConfig, WriteError,
 };
 use rustls::{Certificate, RootCertStore};
 use std::{
+    io::Error as IoError,
     mem::{self, MaybeUninit},
     net::{SocketAddr, ToSocketAddrs},
     sync::Arc,
     vec::IntoIter,
 };
+use thiserror::Error;
 use tokio::sync::mpsc::{self, Receiver as MpscReceiver, Sender as MpscSender};
+use tuic_protocol::Error as ProtocolError;
 
 pub use self::{address::Address, request::Request};
 
@@ -151,4 +154,22 @@ impl Relay {
             }
         }
     }
+}
+
+#[derive(Debug, Error)]
+pub enum RelayError {
+    #[error(transparent)]
+    Protocol(#[from] ProtocolError),
+    #[error(transparent)]
+    Io(#[from] IoError),
+    #[error(transparent)]
+    Connection(#[from] ConnectionError),
+    #[error(transparent)]
+    WriteStream(#[from] WriteError),
+    #[error(transparent)]
+    SendDatagram(#[from] SendDatagramError),
+    #[error("UDP session not found: {0}")]
+    UdpSessionNotFound(u32),
+    #[error("bad command")]
+    BadCommand,
 }

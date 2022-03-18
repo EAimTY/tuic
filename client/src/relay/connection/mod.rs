@@ -1,24 +1,22 @@
-use super::Address;
+use super::{Address, RelayError};
 use crate::config::UdpMode;
 use anyhow::Result;
 use bytes::Bytes;
 use futures_util::StreamExt;
 use parking_lot::Mutex;
 use quinn::{
-    Connecting, Connection as QuinnConnection, ConnectionError as QuinnConnectionError, Datagrams,
-    IncomingUniStreams, NewConnection, SendDatagramError, WriteError,
+    Connecting, Connection as QuinnConnection, ConnectionError, Datagrams, IncomingUniStreams,
+    NewConnection,
 };
 use std::{
     collections::HashMap,
-    io::Error as IoError,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
 };
-use thiserror::Error;
 use tokio::sync::mpsc::Sender as MpscSender;
-use tuic_protocol::{Command as TuicCommand, Error as TuicError};
+use tuic_protocol::Command as TuicCommand;
 
 mod dispatch;
 mod task;
@@ -82,7 +80,7 @@ impl Connection {
         async fn send_authenticate(
             conn: QuinnConnection,
             token_digest: [u8; 32],
-        ) -> Result<(), Error> {
+        ) -> Result<(), RelayError> {
             let mut stream = conn.open_uni().await?;
             let cmd = TuicCommand::new_authenticate(token_digest);
             cmd.write_to(&mut stream).await?;
@@ -102,7 +100,7 @@ impl Connection {
         async fn listen(
             conn: Connection,
             mut uni_streams: IncomingUniStreams,
-        ) -> Result<(), Error> {
+        ) -> Result<(), RelayError> {
             while let Some(stream) = uni_streams.next().await {
                 let stream = stream?;
                 let conn = conn.clone();
@@ -117,15 +115,15 @@ impl Connection {
                 });
             }
 
-            Err(QuinnConnectionError::LocallyClosed)?
+            Err(ConnectionError::LocallyClosed)?
         }
 
         let is_closed = self.is_closed.clone();
 
         match listen(self, uni_streams).await {
             Ok(())
-            | Err(Error::Quinn(QuinnConnectionError::LocallyClosed))
-            | Err(Error::Quinn(QuinnConnectionError::TimedOut)) => (),
+            | Err(RelayError::Connection(ConnectionError::LocallyClosed))
+            | Err(RelayError::Connection(ConnectionError::TimedOut)) => {}
             Err(err) => eprintln!("{err}"),
         }
 
@@ -133,7 +131,7 @@ impl Connection {
     }
 
     async fn listen_datagrams(self, datagrams: Datagrams) {
-        async fn listen(conn: Connection, mut datagrams: Datagrams) -> Result<(), Error> {
+        async fn listen(conn: Connection, mut datagrams: Datagrams) -> Result<(), RelayError> {
             while let Some(datagram) = datagrams.next().await {
                 let datagram = datagram?;
                 let conn = conn.clone();
@@ -148,36 +146,18 @@ impl Connection {
                 });
             }
 
-            Err(QuinnConnectionError::LocallyClosed)?
+            Err(ConnectionError::LocallyClosed)?
         }
 
         let is_closed = self.is_closed.clone();
 
         match listen(self, datagrams).await {
             Ok(())
-            | Err(Error::Quinn(QuinnConnectionError::LocallyClosed))
-            | Err(Error::Quinn(QuinnConnectionError::TimedOut)) => (),
+            | Err(RelayError::Connection(ConnectionError::LocallyClosed))
+            | Err(RelayError::Connection(ConnectionError::TimedOut)) => {}
             Err(err) => eprintln!("{err}"),
         }
 
         is_closed.store(true, Ordering::Release);
     }
-}
-
-#[derive(Debug, Error)]
-pub enum Error {
-    #[error(transparent)]
-    Protocol(#[from] TuicError),
-    #[error(transparent)]
-    Io(#[from] IoError),
-    #[error(transparent)]
-    Quinn(#[from] QuinnConnectionError),
-    #[error(transparent)]
-    WriteStream(#[from] WriteError),
-    #[error(transparent)]
-    SendDatagram(#[from] SendDatagramError),
-    #[error("UDP session not found: {0}")]
-    UdpSessionNotFound(u32),
-    #[error("bad command")]
-    BadCommand,
 }

@@ -1,19 +1,23 @@
 use super::Connection;
 use crate::{
     relay::{Address as RelayAddress, Request as RelayRequest},
-    socks5::protocol::{Address, Reply, Response},
+    socks5::{
+        protocol::{Address, Reply, Response},
+        Socks5Error,
+    },
 };
-use anyhow::Result;
 use std::net::SocketAddr;
 use tokio::io;
 
 impl Connection {
-    pub async fn handle_connect(mut self, addr: Address) -> Result<()> {
+    pub async fn handle_connect(mut self, addr: Address) -> Result<(), Socks5Error> {
         let addr = RelayAddress::from(addr);
         let (relay_req, relay_resp_rx) = RelayRequest::new_connect(addr);
 
         let _ = self.req_tx.send(relay_req).await;
-        let relay_resp = relay_resp_rx.await?;
+        let relay_resp = relay_resp_rx
+            .await
+            .map_err(|_| Socks5Error::RelayConnectivity)?;
 
         if let Some((mut remote_send, mut remote_recv)) = relay_resp {
             let resp = Response::new(

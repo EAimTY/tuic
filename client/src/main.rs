@@ -1,5 +1,4 @@
 #![feature(once_cell)]
-#![feature(try_blocks)]
 
 use crate::{config::ConfigBuilder, relay::Relay, socks5::Socks5};
 use std::{env, process};
