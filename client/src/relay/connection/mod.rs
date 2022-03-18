@@ -67,8 +67,8 @@ impl Connection {
         tokio::spawn(Self::authenticate(conn.clone(), token_digest));
 
         match udp_mode {
-            UdpMode::Native => tokio::spawn(Self::listen_uni_streams(conn.clone(), uni_streams)),
-            UdpMode::Quic => tokio::spawn(Self::listen_datagrams(conn.clone(), datagrams)),
+            UdpMode::Native => tokio::spawn(Self::listen_datagrams(conn.clone(), datagrams)),
+            UdpMode::Quic => tokio::spawn(Self::listen_uni_streams(conn.clone(), uni_streams)),
         };
 
         Ok(conn)

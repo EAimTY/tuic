@@ -1,4 +1,4 @@
-use crate::{certificate, socks5::Authentication as Socks5Auth};
+use crate::{certificate, socks5::Authentication as Socks5Authentication};
 use anyhow::{bail, Context, Result};
 use getopts::Options;
 use rustls::Certificate;
@@ -92,7 +92,7 @@ impl<'cfg> ConfigBuilder<'cfg> {
         opts.optflag(
             "",
             "allow-external-connection",
-            "Allow external connections to the local socks5 server",
+            "Allow external connections for the local socks5 server",
         );
 
         opts.optflag("v", "version", "Print the version");
@@ -179,15 +179,12 @@ impl<'cfg> ConfigBuilder<'cfg> {
             matches.opt_str("socks5-username"),
             matches.opt_str("socks5-password"),
         ) {
-            (None, None) => Socks5Auth::None,
-            (Some(username), Some(password)) => Socks5Auth::Password {
+            (None, None) => Socks5Authentication::None,
+            (Some(username), Some(password)) => Socks5Authentication::Password {
                 username: username.into_bytes(),
                 password: password.into_bytes(),
             },
-            _ => bail!(
-                "socks5 server username and password should be set together\n\n{}",
-                self.get_usage()
-            ),
+            _ => bail!("socks5 server username and password should be set together"),
         };
 
         let certificate = if let Some(path) = matches.opt_str("cert") {
@@ -228,7 +225,7 @@ pub struct Config {
     pub server_addr: ServerAddr,
     pub token_digest: [u8; 32],
     pub local_addr: SocketAddr,
-    pub socks5_auth: Socks5Auth,
+    pub socks5_auth: Socks5Authentication,
     pub certificate: Option<Certificate>,
     pub udp_mode: UdpMode,
     pub congestion_controller: CongestionController,
