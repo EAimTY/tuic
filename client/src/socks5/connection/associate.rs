@@ -14,7 +14,7 @@ use tokio::{
 
 impl Connection {
     pub async fn handle_associate(mut self, addr: Address) -> Result<()> {
-        let mut src_addr = match addr {
+        let src_addr = match addr {
             Address::SocketAddress(addr) => {
                 if addr.ip().is_unspecified() && addr.port() == 0 {
                     None
@@ -31,95 +31,108 @@ impl Connection {
             }
         };
 
-        let socket = Arc::new(UdpSocket::bind(SocketAddr::from(([0, 0, 0, 0], 0))).await?);
-        let socket_addr = socket.local_addr()?;
+        match create_udp_socket().await {
+            Ok((socket, socket_addr)) => {
+                let socket = Arc::new(socket);
 
-        let resp = Response::new(Reply::Succeeded, Address::SocketAddress(socket_addr));
-        resp.write_to(&mut self.stream).await?;
+                let resp = Response::new(Reply::Succeeded, Address::SocketAddress(socket_addr));
+                resp.write_to(&mut self.stream).await?;
 
-        let (relay_req, pkt_send_tx, pkt_receive_rx) = RelayRequest::new_associate();
-        let _ = self.req_tx.send(relay_req).await;
+                let (relay_req, pkt_send_tx, pkt_receive_rx) = RelayRequest::new_associate();
+                let _ = self.req_tx.send(relay_req).await;
 
-        if src_addr.is_none() {
-            let mut buf = vec![0; 1536];
-            let (len, addr) = socket.recv_from(&mut buf).await?;
-            buf.truncate(len);
+                let res = tokio::select! {
+                    res = listen_packet_to_relay(socket.clone(), src_addr, pkt_send_tx) => res,
+                    res = listen_packet_from_relay(socket, pkt_receive_rx) => res,
+                    () = listen_control_stream(self.stream) => Ok(())
+                };
 
-            src_addr = Some(addr);
+                match res {
+                    Ok(()) => {}
+                    Err(err) => eprintln!("{err}"),
+                }
 
-            match send_packet(buf, &pkt_send_tx).await {
-                Ok(()) => (),
-                Err(err) => eprintln!("{err}"),
+                Ok(())
+            }
+            Err(err) => {
+                let resp = Response::new(
+                    Reply::GeneralFailure,
+                    Address::SocketAddress(SocketAddr::from(([0, 0, 0, 0], 0))),
+                );
+
+                resp.write_to(&mut self.stream).await?;
+
+                Err(err)
             }
         }
-
-        let src_addr = unsafe { src_addr.unwrap_unchecked() };
-        socket.connect(src_addr).await?;
-
-        tokio::try_join!(
-            listen_send(socket.clone(), pkt_send_tx),
-            listen_receive(socket, pkt_receive_rx),
-            listen_termination(self.stream)
-        )?;
-
-        Ok(())
     }
 }
 
-async fn listen_send(
+async fn create_udp_socket() -> Result<(UdpSocket, SocketAddr)> {
+    let socket = UdpSocket::bind(SocketAddr::from(([0, 0, 0, 0], 0))).await?;
+    let addr = socket.local_addr()?;
+
+    Ok((socket, addr))
+}
+
+async fn listen_packet_to_relay(
     socket: Arc<UdpSocket>,
+    mut src_addr: Option<SocketAddr>,
     pkt_send_tx: MpscSender<(Bytes, RelayAddress)>,
 ) -> Result<()> {
     loop {
         let mut buf = vec![0; 1536];
-        let len = socket.recv(&mut buf).await?;
+        let (len, addr) = socket.recv_from(&mut buf).await?;
         buf.truncate(len);
+        let pkt = Bytes::from(buf);
 
-        match send_packet(buf, &pkt_send_tx).await {
-            Ok(()) => (),
-            Err(err) => eprintln!("{err}"),
+        if src_addr.map_or(true, |src_addr| addr == src_addr) {
+            match process_packet_to_relay(pkt).await {
+                Ok((pkt, dst_addr)) => {
+                    src_addr = Some(addr);
+                    let _ = pkt_send_tx.send((pkt, dst_addr)).await;
+                }
+                Err(err) => eprintln!("{err}"),
+            }
+        } else {
+            eprintln!("UDP packet from unknown source");
         }
     }
 }
 
-async fn listen_receive(
+async fn listen_packet_from_relay(
     socket: Arc<UdpSocket>,
     mut pkt_receive_rx: MpscReceiver<(Bytes, RelayAddress)>,
 ) -> Result<()> {
-    while let Some((packet, addr)) = pkt_receive_rx.recv().await {
-        let addr = Address::from(addr);
-
-        let udp_header = UdpHeader::new(0, addr);
-
-        let mut buf = BytesMut::with_capacity(udp_header.serialized_len());
-        udp_header.write_to_buf(&mut buf);
-        buf.extend_from_slice(&packet);
-
-        socket.send(&buf).await?;
+    while let Some((pkt, addr)) = pkt_receive_rx.recv().await {
+        let pkt = process_packet_from_relay(pkt, addr);
+        socket.send(&pkt).await?;
     }
 
     bail!("UDP packet channel closed");
 }
 
-async fn listen_termination(mut stream: TcpStream) -> Result<()> {
-    let mut buf = [0; 8];
-
-    loop {
-        stream.read_exact(&mut buf).await?;
-    }
+async fn listen_control_stream(mut stream: TcpStream) {
+    while let true = stream.read_u8().await.is_ok() {}
 }
 
-async fn send_packet(buf: Vec<u8>, pkt_send_tx: &MpscSender<(Bytes, RelayAddress)>) -> Result<()> {
-    let udp_header = UdpHeader::read_from(&mut buf.as_slice()).await?;
-
-    if udp_header.frag != 0 {
+async fn process_packet_to_relay(pkt: Bytes) -> Result<(Bytes, RelayAddress)> {
+    let header = UdpHeader::read_from(&mut pkt.as_ref()).await?;
+    if header.frag != 0 {
         bail!("Fragmented UDP packet is not supported");
     }
+    let pkt = pkt.slice(header.serialized_len()..);
+    let addr = RelayAddress::from(header.address);
 
-    let packet = Bytes::from(buf).slice(udp_header.serialized_len()..);
-    let dst_addr = RelayAddress::from(udp_header.address);
+    Ok((pkt, addr))
+}
 
-    let _ = pkt_send_tx.send((packet, dst_addr)).await;
+fn process_packet_from_relay(pkt: Bytes, addr: RelayAddress) -> Bytes {
+    let addr = Address::from(addr);
+    let header = UdpHeader::new(0, addr);
 
-    Ok(())
+    let mut buf = BytesMut::with_capacity(header.serialized_len());
+    header.write_to_buf(&mut buf);
+    buf.extend_from_slice(&pkt);
+    buf.freeze()
 }

@@ -1,13 +1,14 @@
 use super::{
     protocol::{
         handshake::password::{Request as PasswordAuthRequest, Response as PasswordAuthResponse},
-        Command, HandshakeMethod, HandshakeRequest, HandshakeResponse, Request,
+        Address, Command, Error as ProtocolError, HandshakeMethod, HandshakeRequest,
+        HandshakeResponse, Reply, Request, Response,
     },
     Authentication,
 };
 use crate::relay::Request as RelayRequest;
 use anyhow::{bail, Result};
-use std::sync::Arc;
+use std::{net::SocketAddr, sync::Arc};
 use tokio::{net::TcpStream, sync::mpsc::Sender as MpscSender};
 
 mod associate;
@@ -21,32 +22,47 @@ pub struct Connection {
 }
 
 impl Connection {
-    pub async fn handle_stream(
-        stream: TcpStream,
+    pub async fn handle(
+        conn: TcpStream,
         auth: Arc<Authentication>,
         req_tx: MpscSender<RelayRequest>,
-    ) {
-        let conn = Connection {
-            stream,
+    ) -> Result<()> {
+        let mut conn = Self {
+            stream: conn,
             auth,
             req_tx,
         };
 
-        match conn.process().await {
-            Ok(()) => (),
-            Err(err) => eprintln!("{err}"),
-        }
-    }
+        conn.handshake().await?;
 
-    async fn process(mut self) -> Result<()> {
-        self.handshake().await?;
+        match Request::read_from(&mut conn.stream).await {
+            Ok(req) => match req.command {
+                Command::Connect => conn.handle_connect(req.address).await?,
+                Command::Bind => conn.handle_bind(req.address).await?,
+                Command::Associate => conn.handle_associate(req.address).await?,
+            },
+            Err(err) => {
+                let reply = match err {
+                    ProtocolError::Io(err) => Err(err)?,
+                    err => {
+                        eprintln!("{err}");
+                        match err {
+                            ProtocolError::UnsupportedCommand(_) => Reply::CommandNotSupported,
+                            ProtocolError::UnsupportedAddressType(_)
+                            | ProtocolError::AddressInvalidEncoding => {
+                                Reply::AddressTypeNotSupported
+                            }
+                            _ => Reply::GeneralFailure,
+                        }
+                    }
+                };
 
-        let req = Request::read_from(&mut self.stream).await?;
-
-        match req.command {
-            Command::Connect => self.handle_connect(req.address).await?,
-            Command::Bind => self.handle_bind(req.address).await?,
-            Command::Associate => self.handle_associate(req.address).await?,
+                let resp = Response::new(
+                    reply,
+                    Address::SocketAddress(SocketAddr::from(([0, 0, 0, 0], 0))),
+                );
+                resp.write_to(&mut conn.stream).await?;
+            }
         }
 
         Ok(())
@@ -62,7 +78,7 @@ impl Connection {
 
             match self.auth.as_ref() {
                 Authentication::None => {}
-                Authentication::Gssapi => unimplemented!(),
+                Authentication::Gssapi => todo!(),
                 Authentication::Password { username, password } => {
                     let req = PasswordAuthRequest::read_from(&mut self.stream).await?;
 

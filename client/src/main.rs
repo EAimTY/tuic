@@ -1,7 +1,7 @@
 #![feature(once_cell)]
 #![feature(try_blocks)]
 
-use crate::{config::ConfigBuilder, relay::Relay};
+use crate::{config::ConfigBuilder, relay::Relay, socks5::Socks5};
 use std::{env, process};
 
 mod certificate;
@@ -38,8 +38,8 @@ async fn main() {
         }
     };
 
-    let socks5_server = match socks5::init(config.local_addr, config.socks5_auth, req_tx).await {
-        Ok(res) => res,
+    let socks5_server = match Socks5::init(config.local_addr, config.socks5_auth, req_tx).await {
+        Ok(socks5) => tokio::spawn(socks5.run()),
         Err(err) => {
             eprintln!("{err}");
             process::exit(1);
