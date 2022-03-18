@@ -1,4 +1,4 @@
-use super::{Address, UdpSessionMap};
+use super::{Address, Error, UdpSessionMap};
 use bytes::{Bytes, BytesMut};
 use quinn::{Connection as QuinnConnection, RecvStream, SendStream};
 use std::sync::Arc;
@@ -9,37 +9,37 @@ pub async fn connect(
     conn: QuinnConnection,
     addr: Address,
     tx: OneshotSender<Option<(SendStream, RecvStream)>>,
-) -> Result<(), ()> {
+) -> Result<(), Error> {
     async fn get_streams(
         conn: QuinnConnection,
         addr: Address,
-    ) -> Result<(SendStream, RecvStream), ()> {
-        let (mut send, mut recv) = conn.open_bi().await.unwrap();
+    ) -> Result<Option<(SendStream, RecvStream)>, Error> {
+        let (mut send, mut recv) = conn.open_bi().await?;
 
         let addr = TuicAddress::from(addr);
         let cmd = TuicCommand::new_connect(addr);
 
-        cmd.write_to(&mut send).await.unwrap();
+        cmd.write_to(&mut send).await?;
 
-        let resp = TuicResponse::read_from(&mut recv).await.unwrap();
+        let resp = TuicResponse::read_from(&mut recv).await?;
 
         if resp.is_succeeded() {
-            Ok((send, recv))
+            Ok(Some((send, recv)))
         } else {
-            Err(())
+            Ok(None)
         }
     }
 
     match get_streams(conn, addr).await {
-        Ok((send, recv)) => {
-            let _ = tx.send(Some((send, recv)));
+        Ok(res) => {
+            let _ = tx.send(res);
+            Ok(())
         }
-        Err(()) => {
+        Err(err) => {
             let _ = tx.send(None);
+            Err(err)
         }
     }
-
-    Ok(())
 }
 
 pub async fn packet_to_uni_stream(
@@ -47,14 +47,14 @@ pub async fn packet_to_uni_stream(
     assoc_id: u32,
     pkt: Bytes,
     addr: Address,
-) -> Result<(), ()> {
-    let mut stream = conn.open_uni().await.unwrap();
+) -> Result<(), Error> {
+    let mut stream = conn.open_uni().await?;
 
     let addr = TuicAddress::from(addr);
     let cmd = TuicCommand::new_packet(assoc_id, pkt.len() as u16, addr);
 
-    cmd.write_to(&mut stream).await.unwrap();
-    stream.write_all(&pkt).await.unwrap();
+    cmd.write_to(&mut stream).await?;
+    stream.write_all(&pkt).await?;
 
     Ok(())
 }
@@ -64,7 +64,7 @@ pub async fn packet_to_datagram(
     assoc_id: u32,
     pkt: Bytes,
     addr: Address,
-) -> Result<(), ()> {
+) -> Result<(), Error> {
     let addr = TuicAddress::from(addr);
     let cmd = TuicCommand::new_packet(assoc_id, pkt.len() as u16, addr);
 
@@ -73,7 +73,7 @@ pub async fn packet_to_datagram(
     buf.extend_from_slice(&pkt);
 
     let pkt = buf.freeze();
-    conn.send_datagram(pkt).unwrap();
+    conn.send_datagram(pkt)?;
 
     Ok(())
 }
@@ -83,13 +83,22 @@ pub async fn packet_from_server(
     udp_sessions: Arc<UdpSessionMap>,
     assoc_id: u32,
     addr: Address,
-) -> Result<(), ()> {
-    let recv_pkt_tx = udp_sessions.lock().get(&assoc_id).cloned().unwrap();
+) -> Result<(), Error> {
+    let recv_pkt_tx = udp_sessions
+        .lock()
+        .get(&assoc_id)
+        .cloned()
+        .ok_or(Error::UdpSessionNotFound(assoc_id))?;
+
     let _ = recv_pkt_tx.send((pkt, addr)).await;
 
     Ok(())
 }
 
-pub async fn dissociate(conn: QuinnConnection, assoc_id: u32) -> Result<(), ()> {
+pub async fn dissociate(conn: QuinnConnection, assoc_id: u32) -> Result<(), Error> {
+    let mut stream = conn.open_uni().await?;
+    let cmd = TuicCommand::new_dissociate(assoc_id);
+    cmd.write_to(&mut stream).await?;
+
     Ok(())
 }

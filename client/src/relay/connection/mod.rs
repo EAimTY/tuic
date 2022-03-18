@@ -6,7 +6,7 @@ use futures_util::StreamExt;
 use parking_lot::Mutex;
 use quinn::{
     Connecting, Connection as QuinnConnection, ConnectionError as QuinnConnectionError, Datagrams,
-    IncomingUniStreams, NewConnection,
+    IncomingUniStreams, NewConnection, SendDatagramError, WriteError,
 };
 use std::{
     collections::HashMap,
@@ -18,7 +18,7 @@ use std::{
 };
 use thiserror::Error;
 use tokio::sync::mpsc::Sender as MpscSender;
-use tuic_protocol::Command as TuicCommand;
+use tuic_protocol::{Command as TuicCommand, Error as TuicError};
 
 mod dispatch;
 mod task;
@@ -82,7 +82,7 @@ impl Connection {
         async fn send_authenticate(
             conn: QuinnConnection,
             token_digest: [u8; 32],
-        ) -> Result<(), ConnectionError> {
+        ) -> Result<(), Error> {
             let mut stream = conn.open_uni().await?;
             let cmd = TuicCommand::new_authenticate(token_digest);
             cmd.write_to(&mut stream).await?;
@@ -91,7 +91,10 @@ impl Connection {
 
         match send_authenticate(self.controller, token_digest).await {
             Ok(()) => (),
-            Err(err) => eprintln!("{err}"),
+            Err(err) => {
+                self.is_closed.store(true, Ordering::Release);
+                eprintln!("{err}");
+            }
         }
     }
 
@@ -99,7 +102,7 @@ impl Connection {
         async fn listen(
             conn: Connection,
             mut uni_streams: IncomingUniStreams,
-        ) -> Result<(), ConnectionError> {
+        ) -> Result<(), Error> {
             while let Some(stream) = uni_streams.next().await {
                 let stream = stream?;
                 let conn = conn.clone();
@@ -108,7 +111,7 @@ impl Connection {
                     match conn.process_incoming_uni_stream(stream).await {
                         Ok(()) => (),
                         Err(err) => {
-                            eprintln!("");
+                            eprintln!("{err}");
                         }
                     }
                 });
@@ -121,8 +124,8 @@ impl Connection {
 
         match listen(self, uni_streams).await {
             Ok(())
-            | Err(ConnectionError::Quinn(QuinnConnectionError::LocallyClosed))
-            | Err(ConnectionError::Quinn(QuinnConnectionError::TimedOut)) => (),
+            | Err(Error::Quinn(QuinnConnectionError::LocallyClosed))
+            | Err(Error::Quinn(QuinnConnectionError::TimedOut)) => (),
             Err(err) => eprintln!("{err}"),
         }
 
@@ -130,7 +133,7 @@ impl Connection {
     }
 
     async fn listen_datagrams(self, datagrams: Datagrams) {
-        async fn listen(conn: Connection, mut datagrams: Datagrams) -> Result<(), ConnectionError> {
+        async fn listen(conn: Connection, mut datagrams: Datagrams) -> Result<(), Error> {
             while let Some(datagram) = datagrams.next().await {
                 let datagram = datagram?;
                 let conn = conn.clone();
@@ -139,7 +142,7 @@ impl Connection {
                     match conn.process_incoming_datagram(datagram).await {
                         Ok(()) => (),
                         Err(err) => {
-                            eprintln!("");
+                            eprintln!("{err}");
                         }
                     }
                 });
@@ -152,8 +155,8 @@ impl Connection {
 
         match listen(self, datagrams).await {
             Ok(())
-            | Err(ConnectionError::Quinn(QuinnConnectionError::LocallyClosed))
-            | Err(ConnectionError::Quinn(QuinnConnectionError::TimedOut)) => (),
+            | Err(Error::Quinn(QuinnConnectionError::LocallyClosed))
+            | Err(Error::Quinn(QuinnConnectionError::TimedOut)) => (),
             Err(err) => eprintln!("{err}"),
         }
 
@@ -162,9 +165,19 @@ impl Connection {
 }
 
 #[derive(Debug, Error)]
-enum ConnectionError {
+pub enum Error {
+    #[error(transparent)]
+    Protocol(#[from] TuicError),
     #[error(transparent)]
     Io(#[from] IoError),
     #[error(transparent)]
     Quinn(#[from] QuinnConnectionError),
+    #[error(transparent)]
+    WriteStream(#[from] WriteError),
+    #[error(transparent)]
+    SendDatagram(#[from] SendDatagramError),
+    #[error("UDP session not found: {0}")]
+    UdpSessionNotFound(u32),
+    #[error("bad command")]
+    BadCommand,
 }

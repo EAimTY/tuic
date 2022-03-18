@@ -1,4 +1,4 @@
-use super::{task, Connection};
+use super::{task, Connection, Error};
 use crate::{
     config::UdpMode,
     relay::{Address, Request},
@@ -8,10 +8,10 @@ use quinn::RecvStream;
 use tuic_protocol::Command as TuicCommand;
 
 impl Connection {
-    pub async fn process_request(self, req: Request) -> Result<(), ()> {
+    pub async fn process_request(self, req: Request) -> Result<(), Error> {
         match req {
             Request::Connect { addr, tx } => {
-                task::connect(self.controller, addr, tx).await;
+                task::connect(self.controller, addr, tx).await?;
             }
             Request::Associate {
                 assoc_id,
@@ -35,25 +35,26 @@ impl Connection {
 
                         match res {
                             Ok(()) => (),
-                            Err(err) => eprintln!(""),
+                            Err(err) => eprintln!("{err}"),
                         }
                     });
                 }
 
                 self.udp_sessions.lock().remove(&assoc_id);
-                task::dissociate(self.controller, assoc_id).await;
+                task::dissociate(self.controller, assoc_id).await?;
             }
         }
+
         Ok(())
     }
 
-    pub async fn process_incoming_uni_stream(self, mut stream: RecvStream) -> Result<(), ()> {
-        let cmd = TuicCommand::read_from(&mut stream).await.unwrap();
+    pub async fn process_incoming_uni_stream(self, mut stream: RecvStream) -> Result<(), Error> {
+        let cmd = TuicCommand::read_from(&mut stream).await?;
 
         match cmd {
-            TuicCommand::Authenticate { .. } => todo!(),
-            TuicCommand::Connect { .. } => todo!(),
-            TuicCommand::Bind { .. } => todo!(),
+            TuicCommand::Authenticate { .. } => Err(Error::BadCommand),
+            TuicCommand::Connect { .. } => Err(Error::BadCommand),
+            TuicCommand::Bind { .. } => Err(Error::BadCommand),
             TuicCommand::Packet {
                 assoc_id,
                 len,
@@ -61,43 +62,34 @@ impl Connection {
             } => {
                 let mut buf = vec![0; len as usize];
                 stream.read_exact(&mut buf).await.unwrap();
+
                 let pkt = Bytes::from(buf);
 
                 task::packet_from_server(pkt, self.udp_sessions, assoc_id, Address::from(addr))
-                    .await;
+                    .await
             }
-            TuicCommand::Dissociate { .. } => todo!(),
+            TuicCommand::Dissociate { .. } => Err(Error::BadCommand),
         }
-
-        Ok(())
     }
 
-    pub async fn process_incoming_datagram(self, datagram: Bytes) -> Result<(), ()> {
-        let cmd = TuicCommand::read_from(&mut datagram.as_ref())
-            .await
-            .unwrap();
+    pub async fn process_incoming_datagram(self, datagram: Bytes) -> Result<(), Error> {
+        let cmd = TuicCommand::read_from(&mut datagram.as_ref()).await?;
         let cmd_len = cmd.serialized_len();
 
         match cmd {
-            TuicCommand::Authenticate { .. } => todo!(),
-            TuicCommand::Connect { .. } => todo!(),
-            TuicCommand::Bind { .. } => todo!(),
-            TuicCommand::Packet {
-                assoc_id,
-                len,
-                addr,
-            } => {
+            TuicCommand::Authenticate { .. } => Err(Error::BadCommand),
+            TuicCommand::Connect { .. } => Err(Error::BadCommand),
+            TuicCommand::Bind { .. } => Err(Error::BadCommand),
+            TuicCommand::Packet { assoc_id, addr, .. } => {
                 task::packet_from_server(
                     datagram.slice(cmd_len..),
                     self.udp_sessions,
                     assoc_id,
                     Address::from(addr),
                 )
-                .await;
+                .await
             }
-            TuicCommand::Dissociate { .. } => todo!(),
+            TuicCommand::Dissociate { .. } => Err(Error::BadCommand),
         }
-
-        Ok(())
     }
 }

@@ -97,7 +97,7 @@ impl Relay {
                 match conn_cloned.process_request(req).await {
                     Ok(()) => (),
                     Err(err) => {
-                        eprintln!("");
+                        eprintln!("{err}");
                     }
                 }
             });
