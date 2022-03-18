@@ -11,9 +11,9 @@ use std::{
 
 #[derive(Clone)]
 pub struct IsAuthenticated {
+    is_connection_closed: Arc<AtomicBool>,
     is_authenticated: Arc<AtomicBool>,
     authenticate_broadcast: Arc<AuthenticateBroadcast>,
-    is_connection_closed: Arc<AtomicBool>,
 }
 
 impl IsAuthenticated {
@@ -22,9 +22,9 @@ impl IsAuthenticated {
 
         (
             Self {
+                is_connection_closed: is_closed,
                 is_authenticated: Arc::new(AtomicBool::new(false)),
                 authenticate_broadcast: auth_bcast.clone(),
-                is_connection_closed: is_closed,
             },
             auth_bcast,
         )

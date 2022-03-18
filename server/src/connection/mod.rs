@@ -30,7 +30,6 @@ pub struct Connection {
     expected_token_digest: [u8; 32],
     is_authenticated: IsAuthenticated,
     authenticate_broadcast: Arc<AuthenticateBroadcast>,
-    is_closed: Arc<AtomicBool>,
     max_udp_packet_size: usize,
 }
 
@@ -64,7 +63,6 @@ impl Connection {
                     expected_token_digest: exp_token_dgst,
                     is_authenticated: is_authed,
                     authenticate_broadcast: auth_bcast,
-                    is_closed,
                     max_udp_packet_size: max_udp_pkt_size,
                 };
 
@@ -75,6 +73,8 @@ impl Connection {
                     Self::listen_received_udp_packet(conn.clone(), recv_pkt_rx),
                     Self::handle_authentication_timeout(conn, auth_timeout)
                 );
+
+                is_closed.store(true, Ordering::Release);
 
                 match res {
                     Ok(_)
@@ -109,7 +109,6 @@ impl Connection {
             });
         }
 
-        self.is_closed.store(true, Ordering::Release);
         Err(ConnectionError::LocallyClosed)?
     }
 
@@ -135,7 +134,6 @@ impl Connection {
             });
         }
 
-        self.is_closed.store(true, Ordering::Release);
         Err(ConnectionError::LocallyClosed)?
     }
 
@@ -158,7 +156,6 @@ impl Connection {
             });
         }
 
-        self.is_closed.store(true, Ordering::Release);
         Err(ConnectionError::LocallyClosed)?
     }
 
