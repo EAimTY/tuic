@@ -87,22 +87,20 @@ impl Relay {
         let mut conn = self.establish_connection().await;
 
         while let Some(req) = self.req_rx.recv().await {
-            if conn.is_closed().await {
+            if conn.is_closed() {
                 conn = self.establish_connection().await;
             }
 
-            match req {
-                Request::Connect { addr, tx } => {
-                    conn.handle_connect(addr, tx);
+            let conn_cloned = conn.clone();
+
+            tokio::spawn(async move {
+                match conn_cloned.process_request(req).await {
+                    Ok(()) => (),
+                    Err(err) => {
+                        eprintln!("");
+                    }
                 }
-                Request::Associate {
-                    assoc_id,
-                    pkt_send_rx,
-                    pkt_receive_tx,
-                } => {
-                    conn.handle_associate(assoc_id, pkt_send_rx, pkt_receive_tx);
-                }
-            }
+            });
         }
     }
 
