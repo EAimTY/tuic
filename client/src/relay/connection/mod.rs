@@ -1,5 +1,6 @@
 use self::associate::AssociateMap;
 use super::Address;
+use crate::config::UdpMode;
 use anyhow::Result;
 use quinn::{Connecting, Connection as QuinnConnection, NewConnection, VarInt};
 use std::sync::Arc;
@@ -10,11 +11,17 @@ mod connect;
 
 pub struct Connection {
     controller: QuinnConnection,
+    udp_mode: UdpMode,
     assoc_map: Arc<AssociateMap>,
 }
 
 impl Connection {
-    pub async fn init(conn: Connecting, token_digest: [u8; 32], reduce_rtt: bool) -> Result<Self> {
+    pub async fn init(
+        conn: Connecting,
+        token_digest: [u8; 32],
+        udp_mode: UdpMode,
+        reduce_rtt: bool,
+    ) -> Result<Self> {
         let NewConnection {
             connection,
             uni_streams,
@@ -40,6 +47,7 @@ impl Connection {
 
         Ok(Self {
             controller: connection,
+            udp_mode,
             assoc_map,
         })
     }

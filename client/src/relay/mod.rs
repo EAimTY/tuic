@@ -1,5 +1,5 @@
 use self::connection::Connection;
-use crate::config::{CongestionController, ServerAddr};
+use crate::config::{CongestionController, ServerAddr, UdpMode};
 use anyhow::Result;
 use quinn::{
     congestion::{BbrConfig, CubicConfig, NewRenoConfig},
@@ -25,6 +25,7 @@ pub struct Relay {
     endpoint: Endpoint,
     server_addr: ServerAddr,
     token_digest: [u8; 32],
+    udp_mode: UdpMode,
     reduce_rtt: bool,
 }
 
@@ -33,8 +34,9 @@ impl Relay {
         server_addr: ServerAddr,
         certificate: Option<Certificate>,
         token_digest: [u8; 32],
-        reduce_rtt: bool,
+        udp_mode: UdpMode,
         congestion_controller: CongestionController,
+        reduce_rtt: bool,
     ) -> Result<(Self, MpscSender<Request>)> {
         let config = {
             let mut config = if let Some(cert) = certificate {
@@ -60,6 +62,7 @@ impl Relay {
             };
 
             config.transport = Arc::new(transport);
+
             config
         };
 
@@ -73,6 +76,7 @@ impl Relay {
             endpoint,
             server_addr,
             token_digest,
+            udp_mode,
             reduce_rtt,
         };
 
@@ -132,7 +136,14 @@ impl Relay {
             for addr in addrs.as_ref() {
                 match self.endpoint.connect(*addr, server_name) {
                     Ok(conn) => {
-                        match Connection::init(conn, self.token_digest, self.reduce_rtt).await {
+                        match Connection::init(
+                            conn,
+                            self.token_digest,
+                            self.udp_mode,
+                            self.reduce_rtt,
+                        )
+                        .await
+                        {
                             Ok(conn) => return conn,
                             Err(err) => eprintln!("{err}"),
                         }

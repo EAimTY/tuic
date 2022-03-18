@@ -2,7 +2,7 @@ use crate::{certificate, socks5::Authentication as Socks5Auth};
 use anyhow::{bail, Context, Result};
 use getopts::Options;
 use rustls::Certificate;
-use std::net::SocketAddr;
+use std::{net::SocketAddr, str::FromStr};
 
 pub struct ConfigBuilder<'cfg> {
     opts: Options,
@@ -71,8 +71,15 @@ impl<'cfg> ConfigBuilder<'cfg> {
 
         opts.optopt(
             "",
+            "udp-mode",
+            r#"Set the UDP relay mode. Available: "native", "quic". Default: "native""#,
+            "UDP_MODE",
+        );
+
+        opts.optopt(
+            "",
             "congestion-controller",
-            r#"Set the congestion controller. Available: "cubic" (default), "new_reno", "bbr""#,
+            r#"Set the congestion controller. Available: "cubic", "new_reno", "bbr". Default: "cubic""#,
             "CONGESTION_CONTROLLER",
         );
 
@@ -189,19 +196,20 @@ impl<'cfg> ConfigBuilder<'cfg> {
             None
         };
 
-        let reduce_rtt = matches.opt_present("reduce-rtt");
+        let udp_mode = if let Some(mode) = matches.opt_str("udp-mode") {
+            mode.parse()?
+        } else {
+            UdpMode::Native
+        };
 
         let congestion_controller =
             if let Some(controller) = matches.opt_str("congestion-controller") {
-                match controller.as_str() {
-                    "cubic" => CongestionController::Cubic,
-                    "new_reno" => CongestionController::NewReno,
-                    "bbr" => CongestionController::Bbr,
-                    _ => bail!("Unknown congestion controller: {controller}"),
-                }
+                controller.parse()?
             } else {
                 CongestionController::Cubic
             };
+
+        let reduce_rtt = matches.opt_present("reduce-rtt");
 
         Ok(Config {
             server_addr,
@@ -209,8 +217,9 @@ impl<'cfg> ConfigBuilder<'cfg> {
             local_addr,
             socks5_auth,
             certificate,
-            reduce_rtt,
+            udp_mode,
             congestion_controller,
+            reduce_rtt,
         })
     }
 }
@@ -221,8 +230,9 @@ pub struct Config {
     pub local_addr: SocketAddr,
     pub socks5_auth: Socks5Auth,
     pub certificate: Option<Certificate>,
-    pub reduce_rtt: bool,
+    pub udp_mode: UdpMode,
     pub congestion_controller: CongestionController,
+    pub reduce_rtt: bool,
 }
 
 #[derive(Clone)]
@@ -237,8 +247,44 @@ pub enum ServerAddr {
     },
 }
 
+#[derive(Clone, Copy)]
+pub enum UdpMode {
+    Native,
+    Quic,
+}
+
+impl FromStr for UdpMode {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        if s.eq_ignore_ascii_case("native") {
+            Ok(UdpMode::Native)
+        } else if s.eq_ignore_ascii_case("quic") {
+            Ok(UdpMode::Quic)
+        } else {
+            bail!("Unknown UDP relay mode: {s}");
+        }
+    }
+}
+
 pub enum CongestionController {
     Cubic,
     NewReno,
     Bbr,
+}
+
+impl FromStr for CongestionController {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        if s.eq_ignore_ascii_case("cubic") {
+            Ok(CongestionController::Cubic)
+        } else if s.eq_ignore_ascii_case("new_reno") {
+            Ok(CongestionController::NewReno)
+        } else if s.eq_ignore_ascii_case("bbr") {
+            Ok(CongestionController::Bbr)
+        } else {
+            bail!("Unknown congestion controller: {s}");
+        }
+    }
 }

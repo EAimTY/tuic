@@ -27,8 +27,9 @@ async fn main() {
         config.server_addr,
         config.certificate,
         config.token_digest,
-        config.reduce_rtt,
+        config.udp_mode,
         config.congestion_controller,
+        config.reduce_rtt,
     ) {
         Ok((relay, tx)) => (tokio::spawn(relay.run()), tx),
         Err(err) => {
