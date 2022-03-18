@@ -186,7 +186,7 @@ impl Connection {
 
         match unsafe { self.udp_packet_from.check().unwrap_unchecked() } {
             UdpPacketSource::UniStream => {
-                log::debug!("[{rmt_addr}] [received-packet-from-quic] [{assoc_id}] [{dst_addr}]");
+                log::debug!("[{rmt_addr}] [packet-to-quic] [{assoc_id}] [{dst_addr}]");
 
                 let res =
                     task::packet_to_uni_stream(self.controller.clone(), assoc_id, pkt, addr).await;
@@ -194,9 +194,7 @@ impl Connection {
                 match res {
                     Ok(()) => {}
                     Err(err) => {
-                        log::warn!(
-                            "[{rmt_addr}] [received-packet-from-quic] [{assoc_id}] [{dst_addr}] {err}"
-                        )
+                        log::warn!("[{rmt_addr}] [packet-to-quic] [{assoc_id}] [{dst_addr}] {err}")
                     }
                 }
             }

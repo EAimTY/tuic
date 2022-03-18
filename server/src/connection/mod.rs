@@ -109,7 +109,7 @@ impl Connection {
             });
         }
 
-        Err(ConnectionError::LocallyClosed)?
+        Err(ConnectionError::LocallyClosed)
     }
 
     async fn listen_bi_streams(
@@ -134,7 +134,7 @@ impl Connection {
             });
         }
 
-        Err(ConnectionError::LocallyClosed)?
+        Err(ConnectionError::LocallyClosed)
     }
 
     async fn listen_datagrams(self, mut datagrams: Datagrams) -> Result<(), ConnectionError> {
@@ -156,7 +156,7 @@ impl Connection {
             });
         }
 
-        Err(ConnectionError::LocallyClosed)?
+        Err(ConnectionError::LocallyClosed)
     }
 
     async fn listen_received_udp_packet(
@@ -198,7 +198,7 @@ impl Connection {
             let rmt_addr = self.controller.remote_address();
             log::error!("[{rmt_addr}] {err}");
 
-            Err(ConnectionError::LocallyClosed)?
+            Err(ConnectionError::LocallyClosed)
         }
     }
 }
