@@ -41,7 +41,7 @@ impl Connection {
                 } => {
                     if self.udp_packet_from.uni_stream() {
                         let dst_addr = addr.to_string();
-                        log::info!("[{rmt_addr}] [packet-from-quic] [{assoc_id}] [{dst_addr}]");
+                        log::debug!("[{rmt_addr}] [packet-from-quic] [{assoc_id}] [{dst_addr}]");
 
                         let res = task::packet_from_uni_stream(
                             stream,
@@ -67,7 +67,7 @@ impl Connection {
                     }
                 }
                 Command::Dissociate { assoc_id } => {
-                    let res = task::dissociate(self.udp_sessions.clone(), assoc_id).await;
+                    let res = task::dissociate(self.udp_sessions.clone(), assoc_id, rmt_addr).await;
 
                     match res {
                         Ok(()) => {}
@@ -142,7 +142,7 @@ impl Connection {
                 Command::Packet { assoc_id, addr, .. } => {
                     if self.udp_packet_from.datagram() {
                         let dst_addr = addr.to_string();
-                        log::info!("[{rmt_addr}] [packet-from-native] [{assoc_id}] [{dst_addr}]");
+                        log::debug!("[{rmt_addr}] [packet-from-native] [{assoc_id}] [{dst_addr}]");
 
                         let res = task::packet_from_datagram(
                             datagram.slice(cmd_len..),
@@ -186,7 +186,7 @@ impl Connection {
 
         match unsafe { self.udp_packet_from.check().unwrap_unchecked() } {
             UdpPacketSource::UniStream => {
-                log::info!("[{rmt_addr}] [received-packet-from-quic] [{assoc_id}] [{dst_addr}]");
+                log::debug!("[{rmt_addr}] [received-packet-from-quic] [{assoc_id}] [{dst_addr}]");
 
                 let res =
                     task::packet_to_uni_stream(self.controller.clone(), assoc_id, pkt, addr).await;
@@ -201,7 +201,7 @@ impl Connection {
                 }
             }
             UdpPacketSource::Datagram => {
-                log::info!("[{rmt_addr}] [packet-to-native] [{assoc_id}] [{dst_addr}]");
+                log::debug!("[{rmt_addr}] [packet-to-native] [{assoc_id}] [{dst_addr}]");
 
                 let res =
                     task::packet_to_datagram(self.controller.clone(), assoc_id, pkt, addr).await;

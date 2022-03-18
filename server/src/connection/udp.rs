@@ -82,6 +82,8 @@ impl UdpSessionMap {
                 let _ = entry.get().0.send((pkt, addr)).await;
             }
             Entry::Vacant(entry) => {
+                log::info!("[{src_addr}] [associate] [{assoc_id}]");
+
                 let assoc = UdpSession::new(
                     assoc_id,
                     self.recv_pkt_tx_for_clone.clone(),
@@ -96,7 +98,8 @@ impl UdpSessionMap {
         Ok(())
     }
 
-    pub fn dissociate(&self, assoc_id: u32) {
+    pub fn dissociate(&self, assoc_id: u32, src_addr: SocketAddr) {
+        log::info!("[{src_addr}] [dissociate] [{assoc_id}]");
         self.map.lock().remove(&assoc_id);
     }
 }

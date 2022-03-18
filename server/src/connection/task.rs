@@ -116,8 +116,12 @@ pub async fn packet_to_datagram(
     Ok(())
 }
 
-pub async fn dissociate(udp_sessions: Arc<UdpSessionMap>, assoc_id: u32) -> Result<(), TaskError> {
-    udp_sessions.dissociate(assoc_id);
+pub async fn dissociate(
+    udp_sessions: Arc<UdpSessionMap>,
+    assoc_id: u32,
+    src_addr: SocketAddr,
+) -> Result<(), TaskError> {
+    udp_sessions.dissociate(assoc_id, src_addr);
     Ok(())
 }
 
