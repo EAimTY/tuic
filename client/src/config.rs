@@ -1,6 +1,7 @@
 use crate::{certificate, socks5::Authentication as Socks5Authentication};
 use anyhow::{bail, Context, Result};
 use getopts::Options;
+use log::LevelFilter;
 use rustls::Certificate;
 use std::{net::SocketAddr, str::FromStr};
 
@@ -62,6 +63,12 @@ impl<'cfg> ConfigBuilder<'cfg> {
             "SOCKS5_PASSWORD",
         );
 
+        opts.optflag(
+            "",
+            "allow-external-connection",
+            "Allow external connections for the local socks5 server",
+        );
+
         opts.optopt(
             "",
             "cert",
@@ -89,10 +96,11 @@ impl<'cfg> ConfigBuilder<'cfg> {
             "Enable 0-RTT for QUIC handshake at the cost of weakened security",
         );
 
-        opts.optflag(
+        opts.optopt(
             "",
-            "allow-external-connection",
-            "Allow external connections for the local socks5 server",
+            "log-level",
+            r#"Set the log level. Available: "off", "error", "warn", "info", "debug", "trace". Default: "info""#,
+            "LOG_LEVEL",
         );
 
         opts.optflag("v", "version", "Print the version");
@@ -208,6 +216,12 @@ impl<'cfg> ConfigBuilder<'cfg> {
 
         let reduce_rtt = matches.opt_present("reduce-rtt");
 
+        let log_level = if let Some(level) = matches.opt_str("log-level") {
+            level.parse()?
+        } else {
+            LevelFilter::Info
+        };
+
         Ok(Config {
             server_addr,
             token_digest,
@@ -217,6 +231,7 @@ impl<'cfg> ConfigBuilder<'cfg> {
             udp_mode,
             congestion_controller,
             reduce_rtt,
+            log_level,
         })
     }
 }
@@ -230,6 +245,7 @@ pub struct Config {
     pub udp_mode: UdpMode,
     pub congestion_controller: CongestionController,
     pub reduce_rtt: bool,
+    pub log_level: LevelFilter,
 }
 
 #[derive(Clone)]

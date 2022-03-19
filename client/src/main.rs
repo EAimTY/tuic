@@ -22,6 +22,13 @@ async fn main() {
         }
     };
 
+    env_logger::builder()
+        .filter_level(config.log_level)
+        .format_level(true)
+        .format_target(false)
+        .format_module_path(false)
+        .init();
+
     let (relay, req_tx) = match Relay::init(
         config.server_addr,
         config.certificate,
