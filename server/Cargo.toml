@@ -17,7 +17,6 @@ anyhow = "1.0"
 blake3 = "1.3"
 bytes = "1.1"
 crossbeam-utils = { version = "0.8", default-features = false }
-der-parser = { version = "7.0", default-features = false }
 env_logger = { version = "0.9", features = ["humantime"], default-features = false }
 futures-util = { version = "0.3", default-features = false }
 getopts = "0.2"
