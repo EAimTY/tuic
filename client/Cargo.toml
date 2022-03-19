@@ -19,7 +19,7 @@ bytes = "1.1"
 futures-util = { version = "0.3", default-features = false }
 getopts = "0.2"
 parking_lot = "0.12"
-quinn = { git = "https://github.com/EAimTY/quinn", branch = "0.8.x" }
+quinn = "0.8"
 rand = "0.8"
 rustls = { version = "0.20", features = ["quic"], default-features = false }
 thiserror = "1.0"
