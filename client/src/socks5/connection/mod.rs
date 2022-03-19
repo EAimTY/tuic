@@ -24,6 +24,7 @@ impl Connection {
     pub async fn handle(
         conn: TcpStream,
         auth: Arc<Authentication>,
+        max_udp_pkt_size: usize,
         req_tx: MpscSender<RelayRequest>,
     ) -> Result<(), Socks5Error> {
         let mut conn = Self {
@@ -38,7 +39,7 @@ impl Connection {
             Ok(req) => match req.command {
                 Command::Connect => conn.handle_connect(req.address).await?,
                 Command::Bind => conn.handle_bind(req.address).await?,
-                Command::Associate => conn.handle_associate(req.address).await?,
+                Command::Associate => conn.handle_associate(req.address, max_udp_pkt_size).await?,
             },
             Err(err) => {
                 let reply = match err {

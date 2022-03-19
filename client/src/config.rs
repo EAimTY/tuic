@@ -98,6 +98,13 @@ impl<'cfg> ConfigBuilder<'cfg> {
 
         opts.optopt(
             "",
+            "max-udp-packet-size",
+            "Set the maximum UDP packet size. Excess bytes may be discarded. Default: 1536",
+            "MAX_UDP_PACKET_SIZE",
+        );
+
+        opts.optopt(
+            "",
             "log-level",
             r#"Set the log level. Available: "off", "error", "warn", "info", "debug", "trace". Default: "info""#,
             "LOG_LEVEL",
@@ -216,6 +223,12 @@ impl<'cfg> ConfigBuilder<'cfg> {
 
         let reduce_rtt = matches.opt_present("reduce-rtt");
 
+        let max_udp_packet_size = if let Some(size) = matches.opt_str("max-udp-packet-size") {
+            size.parse()?
+        } else {
+            1536
+        };
+
         let log_level = if let Some(level) = matches.opt_str("log-level") {
             level.parse()?
         } else {
@@ -231,6 +244,7 @@ impl<'cfg> ConfigBuilder<'cfg> {
             udp_mode,
             congestion_controller,
             reduce_rtt,
+            max_udp_packet_size,
             log_level,
         })
     }
@@ -245,6 +259,7 @@ pub struct Config {
     pub udp_mode: UdpMode,
     pub congestion_controller: CongestionController,
     pub reduce_rtt: bool,
+    pub max_udp_packet_size: usize,
     pub log_level: LevelFilter,
 }
 

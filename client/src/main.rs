@@ -44,14 +44,20 @@ async fn main() {
         }
     };
 
-    let socks5_server =
-        match Socks5::init(config.local_addr, config.socks5_authentication, req_tx).await {
-            Ok(socks5) => tokio::spawn(socks5.run()),
-            Err(err) => {
-                eprintln!("{err}");
-                process::exit(1);
-            }
-        };
+    let socks5_server = match Socks5::init(
+        config.local_addr,
+        config.socks5_authentication,
+        config.max_udp_packet_size,
+        req_tx,
+    )
+    .await
+    {
+        Ok(socks5) => tokio::spawn(socks5.run()),
+        Err(err) => {
+            eprintln!("{err}");
+            process::exit(1);
+        }
+    };
 
     let _ = tokio::join!(relay, socks5_server);
 }

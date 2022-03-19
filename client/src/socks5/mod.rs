@@ -14,6 +14,7 @@ mod protocol;
 pub struct Socks5 {
     listener: TcpListener,
     authentication: Arc<Authentication>,
+    max_udp_packet_size: usize,
     req_tx: MpscSender<RelayRequest>,
 }
 
@@ -21,6 +22,7 @@ impl Socks5 {
     pub async fn init(
         local_addr: SocketAddr,
         auth: Authentication,
+        max_udp_pkt_size: usize,
         req_tx: MpscSender<RelayRequest>,
     ) -> Result<Self, Socks5Error> {
         let listener = TcpListener::bind(local_addr).await?;
@@ -29,6 +31,7 @@ impl Socks5 {
         Ok(Self {
             listener,
             authentication: auth,
+            max_udp_packet_size: max_udp_pkt_size,
             req_tx,
         })
     }
@@ -39,7 +42,7 @@ impl Socks5 {
             let req_tx = self.req_tx.clone();
 
             tokio::spawn(async move {
-                match Connection::handle(conn, auth, req_tx).await {
+                match Connection::handle(conn, auth, self.max_udp_packet_size, req_tx).await {
                     Ok(()) => {}
                     Err(err) => eprintln!("{err}"),
                 }

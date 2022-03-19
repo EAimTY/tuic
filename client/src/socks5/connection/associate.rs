@@ -15,7 +15,11 @@ use tokio::{
 };
 
 impl Connection {
-    pub async fn handle_associate(mut self, addr: Address) -> Result<(), Socks5Error> {
+    pub async fn handle_associate(
+        mut self,
+        addr: Address,
+        max_udp_pkt_size: usize,
+    ) -> Result<(), Socks5Error> {
         let src_addr = match addr {
             Address::SocketAddress(addr) => {
                 if addr.ip().is_unspecified() && addr.port() == 0 {
@@ -54,7 +58,7 @@ impl Connection {
                 let _ = self.req_tx.send(relay_req).await;
 
                 let res = tokio::select! {
-                    res = listen_packet_to_relay(socket.clone(), src_addr, pkt_send_tx) => res,
+                    res = listen_packet_to_relay(socket.clone(), src_addr, max_udp_pkt_size,pkt_send_tx) => res,
                     res = listen_packet_from_relay(socket, pkt_receive_rx) => res,
                     () = listen_control_stream(self.stream) => Ok(())
                 };
@@ -90,11 +94,12 @@ async fn create_udp_socket() -> Result<(UdpSocket, SocketAddr), Socks5Error> {
 async fn listen_packet_to_relay(
     socket: Arc<UdpSocket>,
     src_addr: Option<SocketAddr>,
+    max_udp_pkt_size: usize,
     pkt_send_tx: MpscSender<(Bytes, RelayAddress)>,
 ) -> Result<(), Socks5Error> {
     if src_addr.is_none() {
         loop {
-            let mut buf = vec![0; 1536];
+            let mut buf = vec![0; max_udp_pkt_size];
             let (len, addr) = socket.recv_from(&mut buf).await?;
             buf.truncate(len);
             let pkt = Bytes::from(buf);
@@ -111,7 +116,7 @@ async fn listen_packet_to_relay(
     }
 
     loop {
-        let mut buf = vec![0; 1536];
+        let mut buf = vec![0; max_udp_pkt_size];
         let len = socket.recv(&mut buf).await?;
         buf.truncate(len);
         let pkt = Bytes::from(buf);
