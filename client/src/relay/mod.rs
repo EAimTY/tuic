@@ -36,16 +36,20 @@ pub struct Relay {
 impl Relay {
     pub fn init(
         server_addr: ServerAddr,
-        certificate: Option<Certificate>,
+        certs: Option<Vec<Certificate>>,
         token_digest: [u8; 32],
         udp_mode: UdpMode,
         congestion_controller: CongestionController,
         reduce_rtt: bool,
     ) -> Result<(Self, Sender<Request>)> {
         let config = {
-            let mut config = if let Some(cert) = certificate {
+            let mut config = if let Some(certs) = certs {
                 let mut root_cert_store = RootCertStore::empty();
-                root_cert_store.add(&cert)?;
+
+                for cert in certs {
+                    root_cert_store.add(&cert)?;
+                }
+
                 ClientConfig::with_root_certificates(root_cert_store)
             } else {
                 ClientConfig::with_native_roots()

@@ -29,7 +29,7 @@ async fn main() {
 
     let (relay, req_tx) = match Relay::init(
         config.server_addr,
-        config.certificate,
+        config.certificates,
         config.token_digest,
         config.udp_mode,
         config.congestion_controller,

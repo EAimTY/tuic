@@ -202,8 +202,8 @@ impl<'cfg> ConfigBuilder<'cfg> {
             _ => bail!("socks5 server username and password should be set together"),
         };
 
-        let certificate = if let Some(path) = matches.opt_str("cert") {
-            Some(certificate::load_certificate(&path)?)
+        let certificates = if let Some(path) = matches.opt_str("cert") {
+            Some(certificate::load_certificates(&path)?)
         } else {
             None
         };
@@ -240,7 +240,7 @@ impl<'cfg> ConfigBuilder<'cfg> {
             token_digest,
             local_addr,
             socks5_authentication,
-            certificate,
+            certificates,
             udp_mode,
             congestion_controller,
             reduce_rtt,
@@ -255,7 +255,7 @@ pub struct Config {
     pub token_digest: [u8; 32],
     pub local_addr: SocketAddr,
     pub socks5_authentication: Socks5Authentication,
-    pub certificate: Option<Certificate>,
+    pub certificates: Option<Vec<Certificate>>,
     pub udp_mode: UdpMode,
     pub congestion_controller: CongestionController,
     pub reduce_rtt: bool,
