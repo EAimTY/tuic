@@ -1,9 +1,12 @@
-use crate::certificate;
-use anyhow::{bail, Context, Result};
-use getopts::Options;
-use log::LevelFilter;
+use crate::{
+    certificate::{self, CertificateError},
+    server::{CongestionController, ParseCongestionControllerError},
+};
+use getopts::{Fail, Options};
+use log::{LevelFilter, ParseLevelError};
 use rustls::{Certificate, PrivateKey};
-use std::{str::FromStr, time::Duration};
+use std::{num::ParseIntError, time::Duration};
+use thiserror::Error;
 
 pub struct ConfigBuilder<'cfg> {
     opts: Options,
@@ -86,47 +89,40 @@ impl<'cfg> ConfigBuilder<'cfg> {
         ))
     }
 
-    pub fn parse(&mut self, args: &'cfg [String]) -> Result<Config> {
+    pub fn parse(&mut self, args: &'cfg [String]) -> Result<Config, ConfigError> {
         self.program = Some(&args[0]);
-
         let matches = self.opts.parse(&args[1..])?;
 
         if matches.opt_present("h") {
-            bail!("{}", self.get_usage());
+            return Err(ConfigError::Help(self.get_usage()));
         }
 
         if matches.opt_present("v") {
-            bail!("{}", env!("CARGO_PKG_VERSION"));
+            return Err(ConfigError::Version(env!("CARGO_PKG_VERSION")));
         }
 
         if !matches.free.is_empty() {
-            bail!("Unexpected argument: {}", matches.free.join(", "),);
+            return Err(ConfigError::UnexpectedArgument(matches.free.join(", ")));
         }
 
-        let port = matches
-            .opt_str("p")
-            .context("Required option 'port' missing")?
-            .parse()?;
-
-        let token_digest = {
-            let token = matches
-                .opt_str("t")
-                .context("Required option 'token' missing")?;
-            *blake3::hash(&token.into_bytes()).as_bytes()
+        let port = match matches.opt_str("p") {
+            Some(port) => port.parse()?,
+            None => return Err(ConfigError::RequiredOptionMissing("port")),
         };
 
-        let certificate = {
-            let path = matches
-                .opt_str("c")
-                .context("Required option 'cert' missing")?;
-            certificate::load_certificates(&path)?
+        let token_digest = match matches.opt_str("t") {
+            Some(token) => *blake3::hash(&token.into_bytes()).as_bytes(),
+            None => return Err(ConfigError::RequiredOptionMissing("token")),
         };
 
-        let private_key = {
-            let path = matches
-                .opt_str("k")
-                .context("Required option 'priv-key' missing")?;
-            certificate::load_private_key(&path)?
+        let certificates = match matches.opt_str("c") {
+            Some(path) => certificate::load_certificates(&path)?,
+            None => return Err(ConfigError::RequiredOptionMissing("cert")),
+        };
+
+        let private_key = match matches.opt_str("k") {
+            Some(path) => certificate::load_private_key(&path)?,
+            None => return Err(ConfigError::RequiredOptionMissing("priv-key")),
         };
 
         let authentication_timeout =
@@ -159,7 +155,7 @@ impl<'cfg> ConfigBuilder<'cfg> {
         Ok(Config {
             port,
             token_digest,
-            certificate,
+            certificates,
             private_key,
             authentication_timeout,
             congestion_controller,
@@ -172,7 +168,7 @@ impl<'cfg> ConfigBuilder<'cfg> {
 pub struct Config {
     pub port: u16,
     pub token_digest: [u8; 32],
-    pub certificate: Vec<Certificate>,
+    pub certificates: Vec<Certificate>,
     pub private_key: PrivateKey,
     pub authentication_timeout: Duration,
     pub congestion_controller: CongestionController,
@@ -180,24 +176,24 @@ pub struct Config {
     pub log_level: LevelFilter,
 }
 
-pub enum CongestionController {
-    Cubic,
-    NewReno,
-    Bbr,
-}
-
-impl FromStr for CongestionController {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self> {
-        if s.eq_ignore_ascii_case("cubic") {
-            Ok(CongestionController::Cubic)
-        } else if s.eq_ignore_ascii_case("new_reno") {
-            Ok(CongestionController::NewReno)
-        } else if s.eq_ignore_ascii_case("bbr") {
-            Ok(CongestionController::Bbr)
-        } else {
-            bail!("Unknown congestion controller: {s}");
-        }
-    }
+#[derive(Error, Debug)]
+pub enum ConfigError<'e> {
+    #[error("{0}")]
+    Help(String),
+    #[error("{0}")]
+    Version(&'e str),
+    #[error(transparent)]
+    ParseArgument(#[from] Fail),
+    #[error("Unexpected argument: {0}")]
+    UnexpectedArgument(String),
+    #[error("Required option '{0}' missing")]
+    RequiredOptionMissing(&'e str),
+    #[error(transparent)]
+    ParseInt(#[from] ParseIntError),
+    #[error("Failed to load certificate / private key: {0}")]
+    Certificate(#[from] CertificateError),
+    #[error(transparent)]
+    ParseCongestionController(#[from] ParseCongestionControllerError),
+    #[error(transparent)]
+    ParseLogLevel(#[from] ParseLevelError),
 }

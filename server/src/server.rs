@@ -1,4 +1,4 @@
-use crate::{config::CongestionController, connection::Connection};
+use crate::connection::Connection;
 use futures_util::StreamExt;
 use quinn::{
     congestion::{BbrConfig, CubicConfig, NewRenoConfig},
@@ -6,7 +6,7 @@ use quinn::{
 };
 use rustls::Error as RustlsError;
 use rustls::{Certificate, PrivateKey};
-use std::{io::Error as IoError, net::SocketAddr, sync::Arc, time::Duration};
+use std::{io::Error as IoError, net::SocketAddr, str::FromStr, sync::Arc, time::Duration};
 use thiserror::Error;
 
 pub struct Server {
@@ -76,6 +76,32 @@ impl Server {
         }
     }
 }
+
+pub enum CongestionController {
+    Cubic,
+    NewReno,
+    Bbr,
+}
+
+impl FromStr for CongestionController {
+    type Err = ParseCongestionControllerError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.eq_ignore_ascii_case("cubic") {
+            Ok(CongestionController::Cubic)
+        } else if s.eq_ignore_ascii_case("new_reno") {
+            Ok(CongestionController::NewReno)
+        } else if s.eq_ignore_ascii_case("bbr") {
+            Ok(CongestionController::Bbr)
+        } else {
+            Err(ParseCongestionControllerError(s.to_owned()))
+        }
+    }
+}
+
+#[derive(Error, Debug)]
+#[error("unknown congestion controller: {0}")]
+pub struct ParseCongestionControllerError(String);
 
 #[derive(Error, Debug)]
 pub enum ServerError {

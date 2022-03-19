@@ -30,7 +30,7 @@ async fn main() {
     let server = match Server::init(
         config.port,
         config.token_digest,
-        config.certificate,
+        config.certificates,
         config.private_key,
         config.authentication_timeout,
         config.congestion_controller,

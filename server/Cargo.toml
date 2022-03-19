@@ -13,7 +13,6 @@ repository = "https://github.com/EAimTY/tuic"
 [dependencies]
 tuic-protocol = { path="../protocol" }
 
-anyhow = "1.0"
 blake3 = "1.3"
 bytes = "1.1"
 crossbeam-utils = { version = "0.8", default-features = false }
