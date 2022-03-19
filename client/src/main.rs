@@ -1,5 +1,3 @@
-#![feature(once_cell)]
-
 use crate::{config::ConfigBuilder, relay::Relay, socks5::Socks5};
 use std::{env, process};
 
@@ -60,4 +58,6 @@ async fn main() {
     };
 
     let _ = tokio::join!(relay, socks5_server);
+
+    process::exit(1);
 }

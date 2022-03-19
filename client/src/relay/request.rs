@@ -1,9 +1,9 @@
 use super::Address;
 use bytes::Bytes;
+use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use quinn::{RecvStream, SendStream};
 use rand::{rngs::StdRng, RngCore, SeedableRng};
-use std::lazy::SyncLazy;
 use tokio::sync::{
     mpsc::{self, Receiver as MpscReceiver, Sender as MpscSender},
     oneshot::{self, Receiver as OneshotReceiver, Sender as OneshotSender},
@@ -48,7 +48,7 @@ impl Request {
     }
 }
 
-static RNG: SyncLazy<Mutex<StdRng>> = SyncLazy::new(|| Mutex::new(StdRng::from_entropy()));
+static RNG: Lazy<Mutex<StdRng>> = Lazy::new(|| Mutex::new(StdRng::from_entropy()));
 
 fn get_random_u32() -> u32 {
     RNG.lock().next_u32()

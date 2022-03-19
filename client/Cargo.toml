@@ -20,6 +20,7 @@ env_logger = { version = "0.9", features = ["humantime"], default-features = fal
 futures-util = { version = "0.3", default-features = false }
 getopts = "0.2"
 log = "0.4"
+once_cell = "1.10"
 parking_lot = "0.12"
 quinn = "0.8"
 rand = "0.8"
