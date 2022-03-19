@@ -1,5 +1,5 @@
 use self::connection::Connection;
-use crate::config::{CongestionController, ServerAddr, UdpMode};
+use crate::config::{CongestionController, UdpMode};
 use anyhow::Result;
 use quinn::{
     congestion::{BbrConfig, CubicConfig, NewRenoConfig},
@@ -7,6 +7,7 @@ use quinn::{
 };
 use rustls::{Certificate, RootCertStore};
 use std::{
+    fmt::{Display, Formatter, Result as FmtResult},
     io::Error as IoError,
     mem::{self, MaybeUninit},
     net::{SocketAddr, ToSocketAddrs},
@@ -14,7 +15,7 @@ use std::{
     vec::IntoIter,
 };
 use thiserror::Error;
-use tokio::sync::mpsc::{self, Receiver as MpscReceiver, Sender as MpscSender};
+use tokio::sync::mpsc::{self, Receiver, Sender};
 use tuic_protocol::Error as ProtocolError;
 
 pub use self::{address::Address, request::Request};
@@ -24,7 +25,7 @@ mod connection;
 mod request;
 
 pub struct Relay {
-    req_rx: MpscReceiver<Request>,
+    req_rx: Receiver<Request>,
     endpoint: Endpoint,
     server_addr: ServerAddr,
     token_digest: [u8; 32],
@@ -40,7 +41,7 @@ impl Relay {
         udp_mode: UdpMode,
         congestion_controller: CongestionController,
         reduce_rtt: bool,
-    ) -> Result<(Self, MpscSender<Request>)> {
+    ) -> Result<(Self, Sender<Request>)> {
         let config = {
             let mut config = if let Some(cert) = certificate {
                 let mut root_cert_store = RootCertStore::empty();
@@ -87,11 +88,16 @@ impl Relay {
     }
 
     pub async fn run(mut self) {
+        log::info!("[relay] started. Target server: {}", self.server_addr);
+
         let mut conn = self.establish_connection().await;
+        log::debug!("[relay] [connection] [establish]");
 
         while let Some(req) = self.req_rx.recv().await {
             if conn.is_closed() {
+                log::debug!("[relay] [connection] [disconnect]");
                 conn = self.establish_connection().await;
+                log::debug!("[relay] [connection] [establish]");
             }
 
             let conn_cloned = conn.clone();
@@ -100,7 +106,7 @@ impl Relay {
                 match conn_cloned.process_request(req).await {
                     Ok(()) => (),
                     Err(err) => {
-                        eprintln!("{err}");
+                        log::warn!("[relay] [task] {err}");
                     }
                 }
             });
@@ -128,7 +134,7 @@ impl Relay {
                 match (hostname.as_str(), *server_port).to_socket_addrs() {
                     Ok(resolved) => addrs = resolved,
                     Err(err) => {
-                        eprintln!("{err}");
+                        log::error!("[relay] [connection] {err}");
                         continue;
                     }
                 }
@@ -146,12 +152,38 @@ impl Relay {
                         .await
                         {
                             Ok(conn) => return conn,
-                            Err(err) => eprintln!("{err}"),
+                            Err(err) => log::error!("[relay] [connection] {err}"),
                         }
                     }
-                    Err(err) => eprintln!("{err}"),
+                    Err(err) => log::error!("[relay] [connection] {err}"),
                 }
             }
+        }
+    }
+}
+
+pub enum ServerAddr {
+    SocketAddr {
+        server_addr: SocketAddr,
+        server_name: String,
+    },
+    HostnameAddr {
+        hostname: String,
+        server_port: u16,
+    },
+}
+
+impl Display for ServerAddr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        match self {
+            ServerAddr::SocketAddr {
+                server_addr,
+                server_name,
+            } => write!(f, "{server_addr} ({server_name})"),
+            ServerAddr::HostnameAddr {
+                hostname,
+                server_port,
+            } => write!(f, "{hostname}:{server_port}"),
         }
     }
 }

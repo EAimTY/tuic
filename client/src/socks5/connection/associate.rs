@@ -11,12 +11,13 @@ use std::{net::SocketAddr, sync::Arc};
 use tokio::{
     io::AsyncReadExt,
     net::{TcpStream, UdpSocket},
-    sync::mpsc::{Receiver as MpscReceiver, Sender as MpscSender},
+    sync::mpsc::{Receiver, Sender},
 };
 
 impl Connection {
     pub async fn handle_associate(
         mut self,
+        ctrl_addr: SocketAddr,
         addr: Address,
         max_udp_pkt_size: usize,
     ) -> Result<(), Socks5Error> {
@@ -58,8 +59,8 @@ impl Connection {
                 let _ = self.req_tx.send(relay_req).await;
 
                 let res = tokio::select! {
-                    res = listen_packet_to_relay(socket.clone(), src_addr, max_udp_pkt_size,pkt_send_tx) => res,
-                    res = listen_packet_from_relay(socket, pkt_receive_rx) => res,
+                    res = listen_packet_to_relay(socket.clone(), ctrl_addr,src_addr, max_udp_pkt_size,pkt_send_tx) => res,
+                    res = listen_packet_from_relay(socket, ctrl_addr,pkt_receive_rx) => res,
                     () = listen_control_stream(self.stream) => Ok(())
                 };
 
@@ -93,9 +94,10 @@ async fn create_udp_socket() -> Result<(UdpSocket, SocketAddr), Socks5Error> {
 
 async fn listen_packet_to_relay(
     socket: Arc<UdpSocket>,
+    ctrl_addr: SocketAddr,
     src_addr: Option<SocketAddr>,
     max_udp_pkt_size: usize,
-    pkt_send_tx: MpscSender<(Bytes, RelayAddress)>,
+    pkt_send_tx: Sender<(Bytes, RelayAddress)>,
 ) -> Result<(), Socks5Error> {
     if src_addr.is_none() {
         loop {
@@ -106,11 +108,12 @@ async fn listen_packet_to_relay(
 
             match process_packet_to_relay(pkt).await {
                 Ok((pkt, dst_addr)) => {
+                    log::debug!("[socks5] [{ctrl_addr}] [associate] [packet-to] {dst_addr}");
                     socket.connect(addr).await?;
                     let _ = pkt_send_tx.send((pkt, dst_addr)).await;
                     break;
                 }
-                Err(err) => eprintln!("{err}"),
+                Err(err) => log::debug!("[socks5] [{ctrl_addr}] [associate] [packet-to] {err}"),
             }
         }
     }
@@ -123,18 +126,21 @@ async fn listen_packet_to_relay(
 
         match process_packet_to_relay(pkt).await {
             Ok((pkt, dst_addr)) => {
+                log::debug!("[socks5] [{ctrl_addr}] [associate] [packet-to] {dst_addr}");
                 let _ = pkt_send_tx.send((pkt, dst_addr)).await;
             }
-            Err(err) => eprintln!("{err}"),
+            Err(err) => log::debug!("[socks5] [{ctrl_addr}] [associate] [packet-to] {err}"),
         }
     }
 }
 
 async fn listen_packet_from_relay(
     socket: Arc<UdpSocket>,
-    mut pkt_receive_rx: MpscReceiver<(Bytes, RelayAddress)>,
+    ctrl_addr: SocketAddr,
+    mut pkt_receive_rx: Receiver<(Bytes, RelayAddress)>,
 ) -> Result<(), Socks5Error> {
     while let Some((pkt, addr)) = pkt_receive_rx.recv().await {
+        log::debug!("[socks5] [{ctrl_addr}] [associate] [packet-from] {addr}");
         let pkt = process_packet_from_relay(pkt, addr);
         socket.send(&pkt).await?;
     }

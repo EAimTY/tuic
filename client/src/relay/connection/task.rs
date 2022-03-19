@@ -3,13 +3,13 @@ use crate::relay::{Address, RelayError};
 use bytes::{Bytes, BytesMut};
 use quinn::{Connection as QuinnConnection, RecvStream, SendStream};
 use std::sync::Arc;
-use tokio::sync::oneshot::Sender as OneshotSender;
+use tokio::sync::oneshot::Sender;
 use tuic_protocol::{Address as TuicAddress, Command as TuicCommand, Response as TuicResponse};
 
 pub async fn connect(
     conn: QuinnConnection,
     addr: Address,
-    tx: OneshotSender<Option<(SendStream, RecvStream)>>,
+    tx: Sender<Option<(SendStream, RecvStream)>>,
 ) -> Result<(), RelayError> {
     async fn get_streams(
         conn: QuinnConnection,

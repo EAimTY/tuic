@@ -11,6 +11,7 @@ impl Connection {
     pub async fn process_request(self, req: Request) -> Result<(), RelayError> {
         match req {
             Request::Connect { addr, tx } => {
+                log::info!("[relay] [task] [connect] [{addr}]");
                 task::connect(self.controller, addr, tx).await?;
             }
             Request::Associate {
@@ -18,6 +19,7 @@ impl Connection {
                 mut pkt_send_rx,
                 pkt_receive_tx,
             } => {
+                log::info!("[relay] [task] [associate] [{assoc_id}]");
                 self.udp_sessions.lock().insert(assoc_id, pkt_receive_tx);
 
                 while let Some((pkt, addr)) = pkt_send_rx.recv().await {
@@ -26,22 +28,25 @@ impl Connection {
                     tokio::spawn(async move {
                         let res = match self.udp_mode {
                             UdpMode::Native => {
+                                log::debug!("[relay] [task] [associate] [{assoc_id}] [packet-to-native] {addr}");
                                 task::packet_to_datagram(conn, assoc_id, pkt, addr).await
                             }
                             UdpMode::Quic => {
+                                log::debug!("[relay] [task] [associate] [{assoc_id}] [packet-to-quic] {addr}");
                                 task::packet_to_uni_stream(conn, assoc_id, pkt, addr).await
                             }
                         };
 
                         match res {
                             Ok(()) => (),
-                            Err(err) => eprintln!("{err}"),
+                            Err(err) => log::warn!("[relay] [task] [associate] [{assoc_id}] {err}"),
                         }
                     });
                 }
 
                 self.udp_sessions.lock().remove(&assoc_id);
                 task::dissociate(self.controller, assoc_id).await?;
+                log::info!("[relay] [task] [dissociate] [{assoc_id}]");
             }
         }
 
@@ -68,6 +73,7 @@ impl Connection {
 
                 let pkt = Bytes::from(buf);
 
+                log::debug!("[relay] [task] [associate] [{assoc_id}] [packet-from-quic] {addr}");
                 task::packet_from_server(pkt, self.udp_sessions, assoc_id, Address::from(addr))
                     .await
             }
@@ -84,6 +90,8 @@ impl Connection {
             TuicCommand::Connect { .. } => Err(RelayError::BadCommand),
             TuicCommand::Bind { .. } => Err(RelayError::BadCommand),
             TuicCommand::Packet { assoc_id, addr, .. } => {
+                log::debug!("[relay] [task] [associate] [{assoc_id}] [packet-from-native] {addr}");
+
                 task::packet_from_server(
                     datagram.slice(cmd_len..),
                     self.udp_sessions,

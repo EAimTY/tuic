@@ -1,4 +1,4 @@
-use crate::{certificate, socks5::Authentication as Socks5Authentication};
+use crate::{certificate, relay::ServerAddr, socks5::Authentication as Socks5Authentication};
 use anyhow::{bail, Context, Result};
 use getopts::Options;
 use log::LevelFilter;
@@ -261,18 +261,6 @@ pub struct Config {
     pub reduce_rtt: bool,
     pub max_udp_packet_size: usize,
     pub log_level: LevelFilter,
-}
-
-#[derive(Clone)]
-pub enum ServerAddr {
-    SocketAddr {
-        server_addr: SocketAddr,
-        server_name: String,
-    },
-    HostnameAddr {
-        hostname: String,
-        server_port: u16,
-    },
 }
 
 #[derive(Clone, Copy)]

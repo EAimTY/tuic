@@ -1,4 +1,7 @@
-use std::net::SocketAddr;
+use std::{
+    fmt::{Display, Formatter, Result as FmtResult},
+    net::SocketAddr,
+};
 use tuic_protocol::Address as TuicAddress;
 
 pub enum Address {
@@ -20,6 +23,15 @@ impl From<Address> for TuicAddress {
         match address {
             Address::HostnameAddress(hostname, port) => Self::HostnameAddress(hostname, port),
             Address::SocketAddress(socket_addr) => Self::SocketAddress(socket_addr),
+        }
+    }
+}
+
+impl Display for Address {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        match self {
+            Address::HostnameAddress(hostname, port) => write!(f, "{hostname}:{port}"),
+            Address::SocketAddress(socket_addr) => write!(f, "{socket_addr}"),
         }
     }
 }

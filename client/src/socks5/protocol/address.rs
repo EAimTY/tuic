@@ -1,6 +1,7 @@
 use super::Error;
 use bytes::BufMut;
 use std::{
+    fmt::{Display, Formatter, Result as FmtResult},
     net::{Ipv4Addr, Ipv6Addr, SocketAddr},
     vec,
 };
@@ -105,6 +106,15 @@ impl Address {
                 SocketAddr::V6(_) => 18,
             },
             Address::HostnameAddress(addr, _) => 1 + addr.len() + 2,
+        }
+    }
+}
+
+impl Display for Address {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        match self {
+            Address::HostnameAddress(hostname, port) => write!(f, "{hostname}:{port}"),
+            Address::SocketAddress(socket_addr) => write!(f, "{socket_addr}"),
         }
     }
 }

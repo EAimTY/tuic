@@ -1,6 +1,5 @@
 use super::{Address, RelayError};
 use crate::config::UdpMode;
-use anyhow::Result;
 use bytes::Bytes;
 use futures_util::StreamExt;
 use parking_lot::Mutex;
@@ -15,8 +14,8 @@ use std::{
         Arc,
     },
 };
-use tokio::sync::mpsc::Sender as MpscSender;
-use tuic_protocol::Command as TuicCommand;
+use tokio::sync::mpsc::Sender;
+use tuic_protocol::Command;
 
 mod dispatch;
 mod task;
@@ -29,7 +28,7 @@ pub struct Connection {
     is_closed: Arc<AtomicBool>,
 }
 
-pub type UdpSessionMap = Mutex<HashMap<u32, MpscSender<(Bytes, Address)>>>;
+pub type UdpSessionMap = Mutex<HashMap<u32, Sender<(Bytes, Address)>>>;
 
 impl Connection {
     pub async fn init(
@@ -37,7 +36,7 @@ impl Connection {
         token_digest: [u8; 32],
         udp_mode: UdpMode,
         reduce_rtt: bool,
-    ) -> Result<Self> {
+    ) -> Result<Self, RelayError> {
         let NewConnection {
             connection,
             uni_streams,
@@ -82,16 +81,16 @@ impl Connection {
             token_digest: [u8; 32],
         ) -> Result<(), RelayError> {
             let mut stream = conn.open_uni().await?;
-            let cmd = TuicCommand::new_authenticate(token_digest);
+            let cmd = Command::new_authenticate(token_digest);
             cmd.write_to(&mut stream).await?;
             Ok(())
         }
 
         match send_authenticate(self.controller, token_digest).await {
-            Ok(()) => (),
+            Ok(()) => log::debug!("[relay] [connection] [authentication]"),
             Err(err) => {
                 self.is_closed.store(true, Ordering::Release);
-                eprintln!("{err}");
+                log::error!("[relay] [connection] [authentication] {err}");
             }
         }
     }
@@ -109,7 +108,7 @@ impl Connection {
                     match conn.process_incoming_uni_stream(stream).await {
                         Ok(()) => (),
                         Err(err) => {
-                            eprintln!("{err}");
+                            log::warn!("[relay] [connection] [incoming] {err}");
                         }
                     }
                 });
@@ -124,7 +123,7 @@ impl Connection {
             Ok(())
             | Err(RelayError::Connection(ConnectionError::LocallyClosed))
             | Err(RelayError::Connection(ConnectionError::TimedOut)) => {}
-            Err(err) => eprintln!("{err}"),
+            Err(err) => log::error!("[relay] [connection] {err}"),
         }
 
         is_closed.store(true, Ordering::Release);
@@ -140,7 +139,7 @@ impl Connection {
                     match conn.process_incoming_datagram(datagram).await {
                         Ok(()) => (),
                         Err(err) => {
-                            eprintln!("{err}");
+                            log::warn!("[relay] [connection] [incoming] {err}");
                         }
                     }
                 });
@@ -155,7 +154,7 @@ impl Connection {
             Ok(())
             | Err(RelayError::Connection(ConnectionError::LocallyClosed))
             | Err(RelayError::Connection(ConnectionError::TimedOut)) => {}
-            Err(err) => eprintln!("{err}"),
+            Err(err) => log::error!("[relay] [connection] {err}"),
         }
 
         is_closed.store(true, Ordering::Release);
