@@ -7,7 +7,10 @@ use crate::{
     },
 };
 use bytes::{Bytes, BytesMut};
-use std::{net::SocketAddr, sync::Arc};
+use std::{
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr},
+    sync::Arc,
+};
 use tokio::{
     io::AsyncReadExt,
     net::{TcpStream, UdpSocket},
@@ -20,6 +23,11 @@ impl Connection {
             Address::SocketAddress(addr) => {
                 if addr.ip().is_unspecified() && addr.port() == 0 {
                     None
+                } else if addr.ip().is_unspecified() {
+                    Some(match addr {
+                        SocketAddr::V4(_) => SocketAddr::from((Ipv4Addr::LOCALHOST, addr.port())),
+                        SocketAddr::V6(_) => SocketAddr::from((Ipv6Addr::LOCALHOST, addr.port())),
+                    })
                 } else {
                     Some(addr)
                 }
@@ -98,6 +106,7 @@ async fn listen_packet_to_relay(
             match process_packet_to_relay(pkt).await {
                 Ok((pkt, dst_addr)) => {
                     src_addr = Some(addr);
+                    socket.connect(addr).await?;
                     let _ = pkt_send_tx.send((pkt, dst_addr)).await;
                 }
                 Err(err) => eprintln!("{err}"),
