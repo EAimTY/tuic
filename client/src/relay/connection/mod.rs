@@ -1,5 +1,4 @@
-use super::{Address, RelayError};
-use crate::config::UdpMode;
+use super::{Address, RelayError, UdpMode};
 use bytes::Bytes;
 use futures_util::StreamExt;
 use parking_lot::Mutex;

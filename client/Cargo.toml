@@ -28,3 +28,4 @@ rustls = { version = "0.20", features = ["quic"], default-features = false }
 rustls-pemfile = "0.3"
 thiserror = "1.0"
 tokio = { version = "1.17", features = ["io-util", "macros", "net", "rt-multi-thread", "sync"] }
+webpki = { version = "0.22", default-features = false }

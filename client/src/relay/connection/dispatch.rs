@@ -1,8 +1,5 @@
 use super::{task, Connection};
-use crate::{
-    config::UdpMode,
-    relay::{Address, RelayError, Request},
-};
+use crate::relay::{Address, RelayError, Request, UdpMode};
 use bytes::Bytes;
 use quinn::RecvStream;
 use tuic_protocol::Command as TuicCommand;

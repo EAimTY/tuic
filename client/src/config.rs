@@ -1,9 +1,13 @@
-use crate::{certificate, relay::ServerAddr, socks5::Authentication as Socks5Authentication};
+use crate::{
+    certificate,
+    relay::{CongestionController, ServerAddr, UdpMode},
+    socks5::Authentication as Socks5Authentication,
+};
 use anyhow::{bail, Context, Result};
 use getopts::Options;
 use log::LevelFilter;
-use rustls::Certificate;
-use std::{net::SocketAddr, str::FromStr};
+use rustls::RootCertStore;
+use std::net::SocketAddr;
 
 pub struct ConfigBuilder<'cfg> {
     opts: Options,
@@ -255,52 +259,10 @@ pub struct Config {
     pub token_digest: [u8; 32],
     pub local_addr: SocketAddr,
     pub socks5_authentication: Socks5Authentication,
-    pub certificates: Option<Vec<Certificate>>,
+    pub certificates: Option<RootCertStore>,
     pub udp_mode: UdpMode,
     pub congestion_controller: CongestionController,
     pub reduce_rtt: bool,
     pub max_udp_packet_size: usize,
     pub log_level: LevelFilter,
-}
-
-#[derive(Clone, Copy)]
-pub enum UdpMode {
-    Native,
-    Quic,
-}
-
-impl FromStr for UdpMode {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self> {
-        if s.eq_ignore_ascii_case("native") {
-            Ok(UdpMode::Native)
-        } else if s.eq_ignore_ascii_case("quic") {
-            Ok(UdpMode::Quic)
-        } else {
-            bail!("Unknown UDP relay mode: {s}");
-        }
-    }
-}
-
-pub enum CongestionController {
-    Cubic,
-    NewReno,
-    Bbr,
-}
-
-impl FromStr for CongestionController {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self> {
-        if s.eq_ignore_ascii_case("cubic") {
-            Ok(CongestionController::Cubic)
-        } else if s.eq_ignore_ascii_case("new_reno") {
-            Ok(CongestionController::NewReno)
-        } else if s.eq_ignore_ascii_case("bbr") {
-            Ok(CongestionController::Bbr)
-        } else {
-            bail!("Unknown congestion controller: {s}");
-        }
-    }
 }

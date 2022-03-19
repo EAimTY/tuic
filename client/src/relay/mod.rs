@@ -1,16 +1,15 @@
 use self::connection::Connection;
-use crate::config::{CongestionController, UdpMode};
-use anyhow::Result;
 use quinn::{
     congestion::{BbrConfig, CubicConfig, NewRenoConfig},
     ClientConfig, ConnectionError, Endpoint, SendDatagramError, TransportConfig, WriteError,
 };
-use rustls::{Certificate, RootCertStore};
+use rustls::RootCertStore;
 use std::{
     fmt::{Display, Formatter, Result as FmtResult},
     io::Error as IoError,
     mem::{self, MaybeUninit},
     net::{SocketAddr, ToSocketAddrs},
+    str::FromStr,
     sync::Arc,
     vec::IntoIter,
 };
@@ -36,24 +35,17 @@ pub struct Relay {
 impl Relay {
     pub fn init(
         server_addr: ServerAddr,
-        certs: Option<Vec<Certificate>>,
+        certs: Option<RootCertStore>,
         token_digest: [u8; 32],
         udp_mode: UdpMode,
         congestion_controller: CongestionController,
         reduce_rtt: bool,
-    ) -> Result<(Self, Sender<Request>)> {
+    ) -> Result<(Self, Sender<Request>), RelayError> {
         let config = {
-            let mut config = if let Some(certs) = certs {
-                let mut root_cert_store = RootCertStore::empty();
-
-                for cert in certs {
-                    root_cert_store.add(&cert)?;
-                }
-
-                ClientConfig::with_root_certificates(root_cert_store)
-            } else {
-                ClientConfig::with_native_roots()
-            };
+            let mut config = certs.map_or_else(
+                ClientConfig::with_native_roots,
+                ClientConfig::with_root_certificates,
+            );
 
             let mut transport = TransportConfig::default();
 
@@ -191,6 +183,56 @@ impl Display for ServerAddr {
         }
     }
 }
+
+#[derive(Clone, Copy)]
+pub enum UdpMode {
+    Native,
+    Quic,
+}
+
+impl FromStr for UdpMode {
+    type Err = ParseUdpModeError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.eq_ignore_ascii_case("native") {
+            Ok(UdpMode::Native)
+        } else if s.eq_ignore_ascii_case("quic") {
+            Ok(UdpMode::Quic)
+        } else {
+            Err(ParseUdpModeError(s.to_owned()))
+        }
+    }
+}
+
+#[derive(Error, Debug)]
+#[error("unknown UDP mode: {0}")]
+pub struct ParseUdpModeError(String);
+
+pub enum CongestionController {
+    Cubic,
+    NewReno,
+    Bbr,
+}
+
+impl FromStr for CongestionController {
+    type Err = ParseCongestionControllerError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.eq_ignore_ascii_case("cubic") {
+            Ok(CongestionController::Cubic)
+        } else if s.eq_ignore_ascii_case("new_reno") {
+            Ok(CongestionController::NewReno)
+        } else if s.eq_ignore_ascii_case("bbr") {
+            Ok(CongestionController::Bbr)
+        } else {
+            Err(ParseCongestionControllerError(s.to_owned()))
+        }
+    }
+}
+
+#[derive(Error, Debug)]
+#[error("unknown congestion controller: {0}")]
+pub struct ParseCongestionControllerError(String);
 
 #[derive(Debug, Error)]
 pub enum RelayError {
