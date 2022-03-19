@@ -7,10 +7,7 @@ use crate::{
     },
 };
 use bytes::{Bytes, BytesMut};
-use std::{
-    net::{Ipv4Addr, Ipv6Addr, SocketAddr},
-    sync::Arc,
-};
+use std::{net::SocketAddr, sync::Arc};
 use tokio::{
     io::AsyncReadExt,
     net::{TcpStream, UdpSocket},
@@ -23,11 +20,6 @@ impl Connection {
             Address::SocketAddress(addr) => {
                 if addr.ip().is_unspecified() && addr.port() == 0 {
                     None
-                } else if addr.ip().is_unspecified() {
-                    Some(match addr {
-                        SocketAddr::V4(_) => SocketAddr::from((Ipv4Addr::LOCALHOST, addr.port())),
-                        SocketAddr::V6(_) => SocketAddr::from((Ipv6Addr::LOCALHOST, addr.port())),
-                    })
                 } else {
                     Some(addr)
                 }
@@ -50,6 +42,10 @@ impl Connection {
         match create_udp_socket().await {
             Ok((socket, socket_addr)) => {
                 let socket = Arc::new(socket);
+
+                if let Some(src_addr) = src_addr {
+                    socket.connect(src_addr).await?;
+                }
 
                 let resp = Response::new(Reply::Succeeded, Address::SocketAddress(socket_addr));
                 resp.write_to(&mut self.stream).await?;
@@ -93,26 +89,38 @@ async fn create_udp_socket() -> Result<(UdpSocket, SocketAddr), Socks5Error> {
 
 async fn listen_packet_to_relay(
     socket: Arc<UdpSocket>,
-    mut src_addr: Option<SocketAddr>,
+    src_addr: Option<SocketAddr>,
     pkt_send_tx: MpscSender<(Bytes, RelayAddress)>,
 ) -> Result<(), Socks5Error> {
-    loop {
-        let mut buf = vec![0; 1536];
-        let (len, addr) = socket.recv_from(&mut buf).await?;
-        buf.truncate(len);
-        let pkt = Bytes::from(buf);
+    if src_addr.is_none() {
+        loop {
+            let mut buf = vec![0; 1536];
+            let (len, addr) = socket.recv_from(&mut buf).await?;
+            buf.truncate(len);
+            let pkt = Bytes::from(buf);
 
-        if src_addr.map_or(true, |src_addr| addr == src_addr) {
             match process_packet_to_relay(pkt).await {
                 Ok((pkt, dst_addr)) => {
-                    src_addr = Some(addr);
                     socket.connect(addr).await?;
                     let _ = pkt_send_tx.send((pkt, dst_addr)).await;
+                    break;
                 }
                 Err(err) => eprintln!("{err}"),
             }
-        } else {
-            eprintln!("UDP packet from unknown source");
+        }
+    }
+
+    loop {
+        let mut buf = vec![0; 1536];
+        let len = socket.recv(&mut buf).await?;
+        buf.truncate(len);
+        let pkt = Bytes::from(buf);
+
+        match process_packet_to_relay(pkt).await {
+            Ok((pkt, dst_addr)) => {
+                let _ = pkt_send_tx.send((pkt, dst_addr)).await;
+            }
+            Err(err) => eprintln!("{err}"),
         }
     }
 }

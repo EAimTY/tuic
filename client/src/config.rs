@@ -183,7 +183,7 @@ impl<'cfg> ConfigBuilder<'cfg> {
             }
         };
 
-        let socks5_auth = match (
+        let socks5_authentication = match (
             matches.opt_str("socks5-username"),
             matches.opt_str("socks5-password"),
         ) {
@@ -226,7 +226,7 @@ impl<'cfg> ConfigBuilder<'cfg> {
             server_addr,
             token_digest,
             local_addr,
-            socks5_auth,
+            socks5_authentication,
             certificate,
             udp_mode,
             congestion_controller,
@@ -240,7 +240,7 @@ pub struct Config {
     pub server_addr: ServerAddr,
     pub token_digest: [u8; 32],
     pub local_addr: SocketAddr,
-    pub socks5_auth: Socks5Authentication,
+    pub socks5_authentication: Socks5Authentication,
     pub certificate: Option<Certificate>,
     pub udp_mode: UdpMode,
     pub congestion_controller: CongestionController,
