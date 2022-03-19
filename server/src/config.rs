@@ -119,7 +119,7 @@ impl<'cfg> ConfigBuilder<'cfg> {
             let path = matches
                 .opt_str("c")
                 .context("Required option 'cert' missing")?;
-            certificate::load_certificate(&path)?
+            certificate::load_certificates(&path)?
         };
 
         let private_key = {
@@ -172,7 +172,7 @@ impl<'cfg> ConfigBuilder<'cfg> {
 pub struct Config {
     pub port: u16,
     pub token_digest: [u8; 32],
-    pub certificate: Certificate,
+    pub certificate: Vec<Certificate>,
     pub private_key: PrivateKey,
     pub authentication_timeout: Duration,
     pub congestion_controller: CongestionController,

@@ -21,14 +21,14 @@ impl Server {
     pub fn init(
         port: u16,
         exp_tkn_dgst: [u8; 32],
-        cert: Certificate,
+        certs: Vec<Certificate>,
         priv_key: PrivateKey,
         auth_timeout: Duration,
         cgstn_ctrl: CongestionController,
         max_udp_pkt_size: usize,
     ) -> Result<Self, ServerError> {
         let config = {
-            let mut config = ServerConfig::with_single_cert(vec![cert], priv_key)?;
+            let mut config = ServerConfig::with_single_cert(certs, priv_key)?;
 
             let mut transport = TransportConfig::default();
 
