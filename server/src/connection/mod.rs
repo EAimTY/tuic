@@ -50,7 +50,7 @@ impl Connection {
                 datagrams,
                 ..
             }) => {
-                log::debug!("[{rmt_addr}] [established]");
+                log::debug!("[{rmt_addr}] [establish]");
 
                 let (udp_sessions, recv_pkt_rx) = UdpSessionMap::new();
                 let is_closed = Arc::new(AtomicBool::new(false));
@@ -79,7 +79,7 @@ impl Connection {
                 match res {
                     Ok(_)
                     | Err(ConnectionError::LocallyClosed)
-                    | Err(ConnectionError::TimedOut) => log::debug!("[{rmt_addr}] [disconnected]"),
+                    | Err(ConnectionError::TimedOut) => log::debug!("[{rmt_addr}] [disconnect]"),
                     Err(err) => log::error!("[{rmt_addr}] {err}"),
                 }
             }

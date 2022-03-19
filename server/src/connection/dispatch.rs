@@ -13,7 +13,7 @@ impl Connection {
             let rmt_addr = self.controller.remote_address();
 
             if digest == self.expected_token_digest {
-                log::debug!("[{rmt_addr}] [authenticated]");
+                log::debug!("[{rmt_addr}] [authentication]");
 
                 self.is_authenticated.set_authenticated();
                 self.authenticate_broadcast.wake();
