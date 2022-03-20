@@ -141,7 +141,7 @@ tuic-client \
     -p SERVER_PORT
     -t TOKEN \
     -l LOCAL_SOCKS5_SERVER_PORT \
-    --udp-mode quic
+    --udp-mode quic \
     --congestion-controller bbr \
     --reduce-rtt
 ```
