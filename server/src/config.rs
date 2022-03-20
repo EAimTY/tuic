@@ -110,13 +110,13 @@ impl<'cfg> ConfigBuilder<'cfg> {
             let certs = match matches.opt_str("c") {
                 Some(path) => certificate::load_certificates(&path)
                     .map_err(|err| ConfigError::Io(path, err))?,
-                None => return Err(ConfigError::RequiredOptionMissing("cert")),
+                None => return Err(ConfigError::RequiredOptionMissing("--cert")),
             };
 
             let priv_key = match matches.opt_str("k") {
                 Some(path) => certificate::load_private_key(&path)
                     .map_err(|err| ConfigError::Io(path, err))?,
-                None => return Err(ConfigError::RequiredOptionMissing("priv-key")),
+                None => return Err(ConfigError::RequiredOptionMissing("--priv-key")),
             };
 
             let mut config = ServerConfig::with_single_cert(certs, priv_key)?;
@@ -144,12 +144,12 @@ impl<'cfg> ConfigBuilder<'cfg> {
 
         let port = match matches.opt_str("p") {
             Some(port) => port.parse()?,
-            None => return Err(ConfigError::RequiredOptionMissing("port")),
+            None => return Err(ConfigError::RequiredOptionMissing("--port")),
         };
 
         let token_digest = match matches.opt_str("t") {
             Some(token) => *blake3::hash(&token.into_bytes()).as_bytes(),
-            None => return Err(ConfigError::RequiredOptionMissing("token")),
+            None => return Err(ConfigError::RequiredOptionMissing("--token")),
         };
 
         let authentication_timeout =
