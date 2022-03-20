@@ -21,35 +21,35 @@ impl<'cfg> ConfigBuilder<'cfg> {
         opts.optopt(
             "p",
             "port",
-            "Set the listening port(Required)",
+            "(Required) Set the listening port",
             "SERVER_PORT",
         );
 
         opts.optopt(
             "t",
             "token",
-            "Set the TUIC token for the authentication(Required)",
+            "(Required) Set the token for TUIC authentication",
             "TOKEN",
         );
 
         opts.optopt(
             "c",
             "cert",
-            "Set the certificate for QUIC handshake(Required)",
+            "(Required) Set the X.509 certificate. This must be an end-entity certificate",
             "CERTIFICATE",
         );
 
         opts.optopt(
             "k",
             "priv-key",
-            "Set the private key for QUIC handshake(Required)",
+            "(Required) Set the private key. Supports PKCS#8 and PKCS#1(RSA) formats",
             "PRIVATE_KEY",
         );
 
         opts.optopt(
             "",
             "authentication-timeout",
-            "Set the maximum time allowed between connection establishment and authentication packet receipt, in milliseconds. Default: 1000ms",
+            "Set the maximum time allowed between a QUIC connection established and the TUIC authentication packet received, in milliseconds. Default: 1000ms",
             "AUTHENTICATION_TIMEOUT",
         );
 

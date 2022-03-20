@@ -8,15 +8,14 @@ mod server;
 
 #[tokio::main]
 async fn main() {
-    let args = env::args().collect::<Vec<_>>();
-
     let mut cfg_builder = ConfigBuilder::new();
+    let args = env::args().collect::<Vec<_>>();
 
     let config = match cfg_builder.parse(&args) {
         Ok(cfg) => cfg,
         Err(err) => {
             eprintln!("{err}");
-            process::exit(1);
+            return;
         }
     };
 
@@ -37,7 +36,7 @@ async fn main() {
         Ok(server) => server,
         Err(err) => {
             eprintln!("{err}");
-            process::exit(1);
+            return;
         }
     };
 
