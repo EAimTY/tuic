@@ -106,7 +106,7 @@ impl Command {
                 let assoc_id = r.read_u32().await?;
                 Ok(Self::new_dissociate(assoc_id))
             }
-            _ => return Err(Error::UnsupportedCommand(cmd)),
+            _ => Err(Error::UnsupportedCommand(cmd)),
         }
     }
 
