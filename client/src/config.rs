@@ -1,13 +1,23 @@
 use crate::{
     certificate,
-    relay::{CongestionController, ServerAddr, UdpMode},
+    relay::{ServerAddr, UdpMode},
     socks5::Authentication as Socks5Authentication,
 };
-use anyhow::{bail, Context, Result};
-use getopts::Options;
-use log::LevelFilter;
+use getopts::{Fail, Options};
+use log::{LevelFilter, ParseLevelError};
+use quinn::{
+    congestion::{BbrConfig, CubicConfig, NewRenoConfig},
+    ClientConfig, TransportConfig,
+};
 use rustls::RootCertStore;
-use std::net::SocketAddr;
+use std::{
+    io::Error as IoError,
+    net::{AddrParseError, SocketAddr},
+    num::ParseIntError,
+    sync::Arc,
+};
+use thiserror::Error;
+use webpki::Error as WebpkiError;
 
 pub struct ConfigBuilder<'cfg> {
     opts: Options,
@@ -130,32 +140,69 @@ impl<'cfg> ConfigBuilder<'cfg> {
         ))
     }
 
-    pub fn parse(&mut self, args: &'cfg [String]) -> Result<Config> {
+    pub fn parse(&mut self, args: &'cfg [String]) -> Result<Config, ConfigError> {
         self.program = Some(&args[0]);
-
         let matches = self.opts.parse(&args[1..])?;
 
         if matches.opt_present("h") {
-            bail!("{}", self.get_usage());
+            return Err(ConfigError::Help(self.get_usage()));
         }
 
         if matches.opt_present("v") {
-            bail!("{}", env!("CARGO_PKG_VERSION"));
+            return Err(ConfigError::Version(env!("CARGO_PKG_VERSION")));
         }
 
         if !matches.free.is_empty() {
-            bail!("Unexpected argument: {}", matches.free.join(", "),);
+            return Err(ConfigError::UnexpectedArgument(matches.free.join(", ")));
         }
 
-        let server_addr = {
-            let server_name = matches
-                .opt_str("s")
-                .context("Required option 'server' missing")?;
+        let config = {
+            let mut config = if let Some(path) = matches.opt_str("cert") {
+                let mut certs = RootCertStore::empty();
 
-            let server_port = matches
-                .opt_str("p")
-                .context("Required option 'port' missing")?
-                .parse()?;
+                for cert in certificate::load_certificates(&path)
+                    .map_err(|err| ConfigError::Io(path, err))?
+                {
+                    certs.add(&cert)?;
+                }
+
+                ClientConfig::with_root_certificates(certs)
+            } else {
+                ClientConfig::with_native_roots()
+            };
+
+            let mut transport = TransportConfig::default();
+
+            match matches.opt_str("congestion-controller") {
+                None => {
+                    transport.congestion_controller_factory(Arc::new(CubicConfig::default()));
+                }
+                Some(ctrl) if ctrl.eq_ignore_ascii_case("cubic") => {
+                    transport.congestion_controller_factory(Arc::new(CubicConfig::default()));
+                }
+                Some(ctrl) if ctrl.eq_ignore_ascii_case("new_reno") => {
+                    transport.congestion_controller_factory(Arc::new(NewRenoConfig::default()));
+                }
+                Some(ctrl) if ctrl.eq_ignore_ascii_case("bbr") => {
+                    transport.congestion_controller_factory(Arc::new(BbrConfig::default()));
+                }
+                Some(ctrl) => return Err(ConfigError::CongestionController(ctrl)),
+            }
+
+            config.transport = Arc::new(transport);
+            config
+        };
+
+        let server_addr = {
+            let server_name = match matches.opt_str("s") {
+                Some(server) => server,
+                None => return Err(ConfigError::RequiredOptionMissing("server")),
+            };
+
+            let server_port = match matches.opt_str("p") {
+                Some(port) => port.parse()?,
+                None => return Err(ConfigError::RequiredOptionMissing("port")),
+            };
 
             if let Some(server_ip) = matches.opt_str("server-ip") {
                 let server_ip = server_ip.parse()?;
@@ -174,18 +221,16 @@ impl<'cfg> ConfigBuilder<'cfg> {
             }
         };
 
-        let token_digest = {
-            let token = matches
-                .opt_str("t")
-                .context("Required option 'token' missing")?;
-            *blake3::hash(&token.into_bytes()).as_bytes()
+        let token_digest = match matches.opt_str("t") {
+            Some(token) => *blake3::hash(&token.into_bytes()).as_bytes(),
+            None => return Err(ConfigError::RequiredOptionMissing("token")),
         };
 
         let local_addr = {
-            let local_port = matches
-                .opt_str("l")
-                .context("Required option 'local-port' missing")?
-                .parse()?;
+            let local_port = match matches.opt_str("l") {
+                Some(port) => port.parse()?,
+                None => return Err(ConfigError::RequiredOptionMissing("local-port")),
+            };
 
             if matches.opt_present("allow-external-connection") {
                 SocketAddr::from(([0, 0, 0, 0], local_port))
@@ -203,27 +248,15 @@ impl<'cfg> ConfigBuilder<'cfg> {
                 username: username.into_bytes(),
                 password: password.into_bytes(),
             },
-            _ => bail!("socks5 server username and password should be set together"),
+            _ => return Err(ConfigError::Socks5Authentication),
         };
 
-        let certificates = if let Some(path) = matches.opt_str("cert") {
-            Some(certificate::load_certificates(&path)?)
-        } else {
-            None
+        let udp_mode = match matches.opt_str("udp-mode") {
+            None => UdpMode::Native,
+            Some(mode) if mode.eq_ignore_ascii_case("native") => UdpMode::Native,
+            Some(mode) if mode.eq_ignore_ascii_case("quic") => UdpMode::Quic,
+            Some(mode) => return Err(ConfigError::UdpMode(mode)),
         };
-
-        let udp_mode = if let Some(mode) = matches.opt_str("udp-mode") {
-            mode.parse()?
-        } else {
-            UdpMode::Native
-        };
-
-        let congestion_controller =
-            if let Some(controller) = matches.opt_str("congestion-controller") {
-                controller.parse()?
-            } else {
-                CongestionController::Cubic
-            };
 
         let reduce_rtt = matches.opt_present("reduce-rtt");
 
@@ -240,13 +273,12 @@ impl<'cfg> ConfigBuilder<'cfg> {
         };
 
         Ok(Config {
+            config,
             server_addr,
             token_digest,
             local_addr,
             socks5_authentication,
-            certificates,
             udp_mode,
-            congestion_controller,
             reduce_rtt,
             max_udp_packet_size,
             log_level,
@@ -255,14 +287,43 @@ impl<'cfg> ConfigBuilder<'cfg> {
 }
 
 pub struct Config {
+    pub config: ClientConfig,
     pub server_addr: ServerAddr,
     pub token_digest: [u8; 32],
     pub local_addr: SocketAddr,
     pub socks5_authentication: Socks5Authentication,
-    pub certificates: Option<RootCertStore>,
     pub udp_mode: UdpMode,
-    pub congestion_controller: CongestionController,
     pub reduce_rtt: bool,
     pub max_udp_packet_size: usize,
     pub log_level: LevelFilter,
+}
+
+#[derive(Error, Debug)]
+pub enum ConfigError<'e> {
+    #[error("{0}")]
+    Help(String),
+    #[error("{0}")]
+    Version(&'e str),
+    #[error(transparent)]
+    ParseArgument(#[from] Fail),
+    #[error("Unexpected argument: {0}")]
+    UnexpectedArgument(String),
+    #[error("Required option '{0}' missing")]
+    RequiredOptionMissing(&'e str),
+    #[error("Failed to read '{0}': {1}")]
+    Io(String, #[source] IoError),
+    #[error("Failed to load certificate: {0}")]
+    Certificate(#[from] WebpkiError),
+    #[error(transparent)]
+    ParseInt(#[from] ParseIntError),
+    #[error(transparent)]
+    ParseIpAddr(#[from] AddrParseError),
+    #[error("Unknown congestion controller: {0}")]
+    CongestionController(String),
+    #[error("Unknown udp mode: {0}")]
+    UdpMode(String),
+    #[error("Socks5 server username and password should be set together")]
+    Socks5Authentication,
+    #[error(transparent)]
+    ParseLogLevel(#[from] ParseLevelError),
 }

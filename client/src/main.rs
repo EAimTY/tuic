@@ -28,11 +28,10 @@ async fn main() {
         .init();
 
     let (relay, req_tx) = match Relay::init(
+        config.config,
         config.server_addr,
-        config.certificates,
         config.token_digest,
         config.udp_mode,
-        config.congestion_controller,
         config.reduce_rtt,
     ) {
         Ok((relay, tx)) => (tokio::spawn(relay.run()), tx),

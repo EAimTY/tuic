@@ -1,16 +1,10 @@
 use self::connection::Connection;
-use quinn::{
-    congestion::{BbrConfig, CubicConfig, NewRenoConfig},
-    ClientConfig, ConnectionError, Endpoint, SendDatagramError, TransportConfig, WriteError,
-};
-use rustls::RootCertStore;
+use quinn::{ClientConfig, ConnectionError, Endpoint, SendDatagramError, WriteError};
 use std::{
     fmt::{Display, Formatter, Result as FmtResult},
     io::Error as IoError,
     mem::{self, MaybeUninit},
     net::{SocketAddr, ToSocketAddrs},
-    str::FromStr,
-    sync::Arc,
     vec::IntoIter,
 };
 use thiserror::Error;
@@ -34,38 +28,12 @@ pub struct Relay {
 
 impl Relay {
     pub fn init(
+        config: ClientConfig,
         server_addr: ServerAddr,
-        certs: Option<RootCertStore>,
         token_digest: [u8; 32],
         udp_mode: UdpMode,
-        congestion_controller: CongestionController,
         reduce_rtt: bool,
-    ) -> Result<(Self, Sender<Request>), RelayError> {
-        let config = {
-            let mut config = certs.map_or_else(
-                ClientConfig::with_native_roots,
-                ClientConfig::with_root_certificates,
-            );
-
-            let mut transport = TransportConfig::default();
-
-            match congestion_controller {
-                CongestionController::Cubic => {
-                    transport.congestion_controller_factory(Arc::new(CubicConfig::default()))
-                }
-                CongestionController::NewReno => {
-                    transport.congestion_controller_factory(Arc::new(NewRenoConfig::default()))
-                }
-                CongestionController::Bbr => {
-                    transport.congestion_controller_factory(Arc::new(BbrConfig::default()))
-                }
-            };
-
-            config.transport = Arc::new(transport);
-
-            config
-        };
-
+    ) -> Result<(Self, Sender<Request>), IoError> {
         let mut endpoint = Endpoint::client(SocketAddr::from(([0, 0, 0, 0], 0)))?;
         endpoint.set_default_client_config(config);
 
@@ -189,50 +157,6 @@ pub enum UdpMode {
     Native,
     Quic,
 }
-
-impl FromStr for UdpMode {
-    type Err = ParseUdpModeError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if s.eq_ignore_ascii_case("native") {
-            Ok(UdpMode::Native)
-        } else if s.eq_ignore_ascii_case("quic") {
-            Ok(UdpMode::Quic)
-        } else {
-            Err(ParseUdpModeError(s.to_owned()))
-        }
-    }
-}
-
-#[derive(Error, Debug)]
-#[error("unknown UDP mode: {0}")]
-pub struct ParseUdpModeError(String);
-
-pub enum CongestionController {
-    Cubic,
-    NewReno,
-    Bbr,
-}
-
-impl FromStr for CongestionController {
-    type Err = ParseCongestionControllerError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if s.eq_ignore_ascii_case("cubic") {
-            Ok(CongestionController::Cubic)
-        } else if s.eq_ignore_ascii_case("new_reno") {
-            Ok(CongestionController::NewReno)
-        } else if s.eq_ignore_ascii_case("bbr") {
-            Ok(CongestionController::Bbr)
-        } else {
-            Err(ParseCongestionControllerError(s.to_owned()))
-        }
-    }
-}
-
-#[derive(Error, Debug)]
-#[error("unknown congestion controller: {0}")]
-pub struct ParseCongestionControllerError(String);
 
 #[derive(Debug, Error)]
 pub enum RelayError {
