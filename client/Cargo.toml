@@ -1,8 +1,8 @@
 [package]
 name = "tuic-client"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["EAimTY <ea.imty@gmail.com>"]
-description = ""
+description = "Delicately-TUICed high-performance proxy built on top of the QUIC protocol"
 categories = ["network-programming", "command-line-utilities"]
 keywords = ["tuic", "proxy", "quic"]
 edition = "2021"
