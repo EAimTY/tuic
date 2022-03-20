@@ -56,8 +56,8 @@ impl Connection {
         let conn = Self {
             controller: connection,
             udp_mode,
-            udp_sessions: udp_sessions.clone(),
-            is_closed: is_closed.clone(),
+            udp_sessions,
+            is_closed,
         };
 
         tokio::spawn(Self::authenticate(conn.clone(), token_digest));
@@ -113,7 +113,7 @@ impl Connection {
                 });
             }
 
-            Err(ConnectionError::LocallyClosed)?
+            Err(RelayError::Connection(ConnectionError::LocallyClosed))
         }
 
         let is_closed = self.is_closed.clone();
@@ -144,7 +144,7 @@ impl Connection {
                 });
             }
 
-            Err(ConnectionError::LocallyClosed)?
+            Err(RelayError::Connection(ConnectionError::LocallyClosed))
         }
 
         let is_closed = self.is_closed.clone();

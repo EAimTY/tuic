@@ -59,7 +59,7 @@ impl Connection {
                     log::info!("[socks5] [{src_addr}] [dissociate] [{req_addr}]");
                 }
             },
-            Err(ProtocolError::Io(err)) => Err(err)?,
+            Err(ProtocolError::Io(err)) => return Err(Socks5Error::Io(err)),
             Err(err) => {
                 let reply = match &err {
                     ProtocolError::UnsupportedCommand(_) => Reply::CommandNotSupported,
@@ -74,7 +74,7 @@ impl Connection {
                 );
                 resp.write_to(&mut conn.stream).await?;
 
-                Err(err)?
+                return Err(Socks5Error::Protocol(err));
             }
         }
 

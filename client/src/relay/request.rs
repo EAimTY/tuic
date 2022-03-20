@@ -9,29 +9,32 @@ use tokio::sync::{
     oneshot::{self, Receiver as OneshotReceiver, Sender as OneshotSender},
 };
 
+type ConnectResponseSender = OneshotSender<Option<(SendStream, RecvStream)>>;
+type ConnectResponseReceiver = OneshotReceiver<Option<(SendStream, RecvStream)>>;
+type AssociateSendPacketSender = MpscSender<(Bytes, Address)>;
+type AssociateSendPacketReceiver = MpscReceiver<(Bytes, Address)>;
+type AssociateRecvPacketSender = MpscSender<(Bytes, Address)>;
+type AssociateRecvPacketReceiver = MpscReceiver<(Bytes, Address)>;
+
 pub enum Request {
     Connect {
         addr: Address,
-        tx: OneshotSender<Option<(SendStream, RecvStream)>>,
+        tx: ConnectResponseSender,
     },
     Associate {
         assoc_id: u32,
-        pkt_send_rx: MpscReceiver<(Bytes, Address)>,
-        pkt_receive_tx: MpscSender<(Bytes, Address)>,
+        pkt_send_rx: AssociateSendPacketReceiver,
+        pkt_receive_tx: AssociateRecvPacketSender,
     },
 }
 
 impl Request {
-    pub fn new_connect(addr: Address) -> (Self, OneshotReceiver<Option<(SendStream, RecvStream)>>) {
+    pub fn new_connect(addr: Address) -> (Self, ConnectResponseReceiver) {
         let (tx, rx) = oneshot::channel();
         (Request::Connect { addr, tx }, rx)
     }
 
-    pub fn new_associate() -> (
-        Self,
-        MpscSender<(Bytes, Address)>,
-        MpscReceiver<(Bytes, Address)>,
-    ) {
+    pub fn new_associate() -> (Self, AssociateSendPacketSender, AssociateRecvPacketReceiver) {
         let assoc_id = get_random_u32();
         let (pkt_send_tx, pkt_send_rx) = mpsc::channel(1);
         let (pkt_receive_tx, pkt_receive_rx) = mpsc::channel(1);
