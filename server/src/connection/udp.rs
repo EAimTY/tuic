@@ -1,12 +1,7 @@
 use bytes::Bytes;
 use crossbeam_utils::atomic::AtomicCell;
 use parking_lot::Mutex;
-use std::{
-    collections::{hash_map::Entry, HashMap},
-    io::Error as IoError,
-    net::SocketAddr,
-    sync::Arc,
-};
+use std::{collections::HashMap, io::Error as IoError, net::SocketAddr, sync::Arc};
 use tokio::{
     net::UdpSocket,
     sync::mpsc::{self, Receiver, Sender},
@@ -67,6 +62,7 @@ impl UdpSessionMap {
         )
     }
 
+    #[allow(clippy::await_holding_lock)]
     pub async fn send(
         &self,
         assoc_id: u32,
@@ -75,25 +71,33 @@ impl UdpSessionMap {
         src_addr: SocketAddr,
         max_udp_pkt_size: usize,
     ) -> Result<(), IoError> {
-        let mut map = self.map.lock();
+        let map = self.map.lock();
 
-        match map.entry(assoc_id) {
-            Entry::Occupied(entry) => {
-                let _ = entry.get().0.send((pkt, addr)).await;
-            }
-            Entry::Vacant(entry) => {
-                log::info!("[{src_addr}] [associate] [{assoc_id}]");
+        let send_pkt_tx = if let Some(session) = map.get(&assoc_id) {
+            let send_pkt_tx = session.0.clone();
+            drop(map);
+            send_pkt_tx
+        } else {
+            log::info!("[{src_addr}] [associate] [{assoc_id}]");
+            drop(map);
 
-                let assoc = UdpSession::new(
-                    assoc_id,
-                    self.recv_pkt_tx_for_clone.clone(),
-                    src_addr,
-                    max_udp_pkt_size,
-                )
-                .await?;
-                let _ = entry.insert(assoc).0.send((pkt, addr)).await;
-            }
-        }
+            let assoc = UdpSession::new(
+                assoc_id,
+                self.recv_pkt_tx_for_clone.clone(),
+                src_addr,
+                max_udp_pkt_size,
+            )
+            .await?;
+
+            let send_pkt_tx = assoc.0.clone();
+
+            let mut map = self.map.lock();
+            map.insert(assoc_id, assoc);
+
+            send_pkt_tx
+        };
+
+        let _ = send_pkt_tx.send((pkt, addr)).await;
 
         Ok(())
     }
