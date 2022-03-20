@@ -28,12 +28,10 @@ async fn main() {
         .init();
 
     let server = match Server::init(
+        config.config,
         config.port,
         config.token_digest,
-        config.certificates,
-        config.private_key,
         config.authentication_timeout,
-        config.congestion_controller,
         config.max_udp_packet_size,
     ) {
         Ok(server) => server,
@@ -44,6 +42,5 @@ async fn main() {
     };
 
     server.run().await;
-
     process::exit(1);
 }

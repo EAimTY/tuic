@@ -4,9 +4,8 @@ use std::{
     fs::{self, File},
     io::{BufReader, Error as IoError},
 };
-use thiserror::Error;
 
-pub fn load_certificates(path: &str) -> Result<Vec<Certificate>, CertificateError> {
+pub fn load_certificates(path: &str) -> Result<Vec<Certificate>, IoError> {
     let mut file = BufReader::new(File::open(path)?);
     let mut certs = Vec::new();
 
@@ -23,7 +22,7 @@ pub fn load_certificates(path: &str) -> Result<Vec<Certificate>, CertificateErro
     Ok(certs)
 }
 
-pub fn load_private_key(path: &str) -> Result<PrivateKey, CertificateError> {
+pub fn load_private_key(path: &str) -> Result<PrivateKey, IoError> {
     let mut file = BufReader::new(File::open(path)?);
     let mut priv_key = None;
 
@@ -40,10 +39,4 @@ pub fn load_private_key(path: &str) -> Result<PrivateKey, CertificateError> {
     let priv_key = unsafe { priv_key.unwrap_unchecked() };
 
     Ok(priv_key)
-}
-
-#[derive(Error, Debug)]
-pub enum CertificateError {
-    #[error(transparent)]
-    Io(#[from] IoError),
 }

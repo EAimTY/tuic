@@ -1,11 +1,12 @@
-use crate::{
-    certificate::{self, CertificateError},
-    server::{CongestionController, ParseCongestionControllerError},
-};
+use crate::certificate;
 use getopts::{Fail, Options};
 use log::{LevelFilter, ParseLevelError};
-use rustls::{Certificate, PrivateKey};
-use std::{num::ParseIntError, time::Duration};
+use quinn::{
+    congestion::{BbrConfig, CubicConfig, NewRenoConfig},
+    ServerConfig, TransportConfig,
+};
+use rustls::Error as RustlsError;
+use std::{io::Error as IoError, num::ParseIntError, sync::Arc, time::Duration};
 use thiserror::Error;
 
 pub struct ConfigBuilder<'cfg> {
@@ -105,6 +106,42 @@ impl<'cfg> ConfigBuilder<'cfg> {
             return Err(ConfigError::UnexpectedArgument(matches.free.join(", ")));
         }
 
+        let config = {
+            let certs = match matches.opt_str("c") {
+                Some(path) => certificate::load_certificates(&path)
+                    .map_err(|err| ConfigError::Io(path, err))?,
+                None => return Err(ConfigError::RequiredOptionMissing("cert")),
+            };
+
+            let priv_key = match matches.opt_str("k") {
+                Some(path) => certificate::load_private_key(&path)
+                    .map_err(|err| ConfigError::Io(path, err))?,
+                None => return Err(ConfigError::RequiredOptionMissing("priv-key")),
+            };
+
+            let mut config = ServerConfig::with_single_cert(certs, priv_key)?;
+            let mut transport = TransportConfig::default();
+
+            match matches.opt_str("congestion-controller") {
+                None => {
+                    transport.congestion_controller_factory(Arc::new(CubicConfig::default()));
+                }
+                Some(ctrl) if ctrl.eq_ignore_ascii_case("cubic") => {
+                    transport.congestion_controller_factory(Arc::new(CubicConfig::default()));
+                }
+                Some(ctrl) if ctrl.eq_ignore_ascii_case("new_reno") => {
+                    transport.congestion_controller_factory(Arc::new(NewRenoConfig::default()));
+                }
+                Some(ctrl) if ctrl.eq_ignore_ascii_case("bbr") => {
+                    transport.congestion_controller_factory(Arc::new(BbrConfig::default()));
+                }
+                Some(ctrl) => return Err(ConfigError::CongestionController(ctrl)),
+            }
+
+            config.transport = Arc::new(transport);
+            config
+        };
+
         let port = match matches.opt_str("p") {
             Some(port) => port.parse()?,
             None => return Err(ConfigError::RequiredOptionMissing("port")),
@@ -115,29 +152,12 @@ impl<'cfg> ConfigBuilder<'cfg> {
             None => return Err(ConfigError::RequiredOptionMissing("token")),
         };
 
-        let certificates = match matches.opt_str("c") {
-            Some(path) => certificate::load_certificates(&path)?,
-            None => return Err(ConfigError::RequiredOptionMissing("cert")),
-        };
-
-        let private_key = match matches.opt_str("k") {
-            Some(path) => certificate::load_private_key(&path)?,
-            None => return Err(ConfigError::RequiredOptionMissing("priv-key")),
-        };
-
         let authentication_timeout =
             if let Some(duration) = matches.opt_str("authentication-timeout") {
                 let duration = duration.parse()?;
                 Duration::from_millis(duration)
             } else {
                 Duration::from_millis(1000)
-            };
-
-        let congestion_controller =
-            if let Some(controller) = matches.opt_str("congestion-controller") {
-                controller.parse()?
-            } else {
-                CongestionController::Cubic
             };
 
         let max_udp_packet_size = if let Some(size) = matches.opt_str("max-udp-packet-size") {
@@ -153,12 +173,10 @@ impl<'cfg> ConfigBuilder<'cfg> {
         };
 
         Ok(Config {
+            config,
             port,
             token_digest,
-            certificates,
-            private_key,
             authentication_timeout,
-            congestion_controller,
             max_udp_packet_size,
             log_level,
         })
@@ -166,12 +184,10 @@ impl<'cfg> ConfigBuilder<'cfg> {
 }
 
 pub struct Config {
+    pub config: ServerConfig,
     pub port: u16,
     pub token_digest: [u8; 32],
-    pub certificates: Vec<Certificate>,
-    pub private_key: PrivateKey,
     pub authentication_timeout: Duration,
-    pub congestion_controller: CongestionController,
     pub max_udp_packet_size: usize,
     pub log_level: LevelFilter,
 }
@@ -188,12 +204,14 @@ pub enum ConfigError<'e> {
     UnexpectedArgument(String),
     #[error("Required option '{0}' missing")]
     RequiredOptionMissing(&'e str),
+    #[error("Failed to read {0}: {1}")]
+    Io(String, #[source] IoError),
+    #[error("Failed to load certificate / private key: {0}")]
+    Rustls(#[from] RustlsError),
     #[error(transparent)]
     ParseInt(#[from] ParseIntError),
-    #[error("Failed to load certificate / private key: {0}")]
-    Certificate(#[from] CertificateError),
-    #[error(transparent)]
-    ParseCongestionController(#[from] ParseCongestionControllerError),
+    #[error("Unknown congestion controller: {0}")]
+    CongestionController(String),
     #[error(transparent)]
     ParseLogLevel(#[from] ParseLevelError),
 }
