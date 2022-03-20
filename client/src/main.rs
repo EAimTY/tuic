@@ -8,15 +8,14 @@ mod socks5;
 
 #[tokio::main]
 async fn main() {
-    let args = env::args().collect::<Vec<_>>();
-
     let mut cfg_builder = ConfigBuilder::new();
+    let args = env::args().collect::<Vec<_>>();
 
     let config = match cfg_builder.parse(&args) {
         Ok(cfg) => cfg,
         Err(err) => {
             eprintln!("{err}");
-            process::exit(1);
+            return;
         }
     };
 
@@ -37,11 +36,11 @@ async fn main() {
         Ok((relay, tx)) => (tokio::spawn(relay.run()), tx),
         Err(err) => {
             eprintln!("{err}");
-            process::exit(1);
+            return;
         }
     };
 
-    let socks5_server = match Socks5::init(
+    let socks5 = match Socks5::init(
         config.local_addr,
         config.socks5_authentication,
         config.max_udp_packet_size,
@@ -52,11 +51,10 @@ async fn main() {
         Ok(socks5) => tokio::spawn(socks5.run()),
         Err(err) => {
             eprintln!("{err}");
-            process::exit(1);
+            return;
         }
     };
 
-    let _ = tokio::join!(relay, socks5_server);
-
+    let _ = tokio::join!(relay, socks5);
     process::exit(1);
 }

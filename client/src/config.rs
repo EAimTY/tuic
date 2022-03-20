@@ -31,62 +31,62 @@ impl<'cfg> ConfigBuilder<'cfg> {
         opts.optopt(
             "s",
             "server",
-            "Set the server address. This address is supposed to be in the certificate(Required)",
+            "(Required) Set the server address. This address must be included in certificate",
             "SERVER",
         );
 
         opts.optopt(
             "p",
             "server-port",
-            "Set the server port(Required)",
+            "(Required) Set the server port",
             "SERVER_PORT",
         );
 
         opts.optopt(
             "t",
             "token",
-            "Set the TUIC token for the server authentication(Required)",
+            "(Required) Set the token for TUIC authentication",
             "TOKEN",
         );
 
         opts.optopt(
             "l",
             "local-port",
-            "Set the listening port of the local socks5 server(Required)",
+            "(Required) Set the listening port for local socks5 server",
             "LOCAL_PORT",
         );
 
         opts.optopt(
             "",
             "server-ip",
-            "Set the server IP, for overwriting the DNS lookup result of the server address",
+            "Set the server IP, for overwriting the DNS lookup result of the server address set in option '-s'",
             "SERVER_IP",
         );
 
         opts.optopt(
             "",
             "socks5-username",
-            "Set the username of the local socks5 server authentication",
+            "Set the username for local socks5 server authentication",
             "SOCKS5_USERNAME",
         );
 
         opts.optopt(
             "",
             "socks5-password",
-            "Set the password of the local socks5 server authentication",
+            "Set the password for local socks5 server authentication",
             "SOCKS5_PASSWORD",
         );
 
         opts.optflag(
             "",
             "allow-external-connection",
-            "Allow external connections for the local socks5 server",
+            "Allow external connections for local socks5 server",
         );
 
         opts.optopt(
             "",
             "cert",
-            "Set the custom certificate for QUIC handshake. If not set, the platform's native roots will be trusted",
+            "Set the X.509 certificate for QUIC handshake. If not set, native CA roots will be trusted",
             "CERTIFICATE",
         );
 
@@ -104,11 +104,7 @@ impl<'cfg> ConfigBuilder<'cfg> {
             "CONGESTION_CONTROLLER",
         );
 
-        opts.optflag(
-            "",
-            "reduce-rtt",
-            "Enable 0-RTT for QUIC handshake at the cost of weakened security",
-        );
+        opts.optflag("", "reduce-rtt", "Enable 0-RTT QUIC handshake");
 
         opts.optopt(
             "",
@@ -196,12 +192,12 @@ impl<'cfg> ConfigBuilder<'cfg> {
         let server_addr = {
             let server_name = match matches.opt_str("s") {
                 Some(server) => server,
-                None => return Err(ConfigError::RequiredOptionMissing("server")),
+                None => return Err(ConfigError::RequiredOptionMissing("--server")),
             };
 
             let server_port = match matches.opt_str("p") {
                 Some(port) => port.parse()?,
-                None => return Err(ConfigError::RequiredOptionMissing("port")),
+                None => return Err(ConfigError::RequiredOptionMissing("--port")),
             };
 
             if let Some(server_ip) = matches.opt_str("server-ip") {
@@ -223,13 +219,13 @@ impl<'cfg> ConfigBuilder<'cfg> {
 
         let token_digest = match matches.opt_str("t") {
             Some(token) => *blake3::hash(&token.into_bytes()).as_bytes(),
-            None => return Err(ConfigError::RequiredOptionMissing("token")),
+            None => return Err(ConfigError::RequiredOptionMissing("--token")),
         };
 
         let local_addr = {
             let local_port = match matches.opt_str("l") {
                 Some(port) => port.parse()?,
-                None => return Err(ConfigError::RequiredOptionMissing("local-port")),
+                None => return Err(ConfigError::RequiredOptionMissing("--local-port")),
             };
 
             if matches.opt_present("allow-external-connection") {
@@ -322,7 +318,7 @@ pub enum ConfigError<'e> {
     CongestionController(String),
     #[error("Unknown udp mode: {0}")]
     UdpMode(String),
-    #[error("Socks5 server username and password should be set together")]
+    #[error("Socks5 username and password must be set together")]
     Socks5Authentication,
     #[error(transparent)]
     ParseLogLevel(#[from] ParseLevelError),
