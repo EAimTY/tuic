@@ -18,39 +18,11 @@ impl Connection {
     pub async fn handle_associate(
         mut self,
         ctrl_addr: SocketAddr,
-        addr: Address,
         max_udp_pkt_size: usize,
     ) -> Result<(), Socks5Error> {
-        let src_addr = match addr {
-            Address::SocketAddress(addr) => {
-                if addr.ip().is_unspecified() && addr.port() == 0 {
-                    None
-                } else {
-                    Some(addr)
-                }
-            }
-            Address::HostnameAddress(hostname, port) => {
-                if hostname.is_empty() && port == 0 {
-                    None
-                } else {
-                    let resp = Response::new(
-                        Reply::AddressTypeNotSupported,
-                        Address::SocketAddress(SocketAddr::from(([0, 0, 0, 0], 0))),
-                    );
-                    resp.write_to(&mut self.stream).await?;
-
-                    return Err(Socks5Error::AssociateFromDomainAddress);
-                }
-            }
-        };
-
         match create_udp_socket().await {
             Ok((socket, socket_addr)) => {
                 let socket = Arc::new(socket);
-
-                if let Some(src_addr) = src_addr {
-                    socket.connect(src_addr).await?;
-                }
 
                 let resp = Response::new(Reply::Succeeded, Address::SocketAddress(socket_addr));
                 resp.write_to(&mut self.stream).await?;
@@ -59,14 +31,14 @@ impl Connection {
                 let _ = self.req_tx.send(relay_req).await;
 
                 let res = tokio::select! {
-                    res = listen_packet_to_relay(socket.clone(), ctrl_addr,src_addr, max_udp_pkt_size,pkt_send_tx) => res,
-                    res = listen_packet_from_relay(socket, ctrl_addr,pkt_receive_rx) => res,
+                    res = listen_packet_to_relay(socket.clone(), ctrl_addr, max_udp_pkt_size, pkt_send_tx) => res,
+                    res = listen_packet_from_relay(socket, ctrl_addr, pkt_receive_rx) => res,
                     () = listen_control_stream(self.stream) => Ok(())
                 };
 
                 match res {
                     Ok(()) => {}
-                    Err(err) => eprintln!("{err}"),
+                    Err(err) => log::warn!("[socks5] [{ctrl_addr}] [associate] {err}"),
                 }
 
                 Ok(())
@@ -95,26 +67,23 @@ async fn create_udp_socket() -> Result<(UdpSocket, SocketAddr), Socks5Error> {
 async fn listen_packet_to_relay(
     socket: Arc<UdpSocket>,
     ctrl_addr: SocketAddr,
-    src_addr: Option<SocketAddr>,
     max_udp_pkt_size: usize,
     pkt_send_tx: Sender<(Bytes, RelayAddress)>,
 ) -> Result<(), Socks5Error> {
-    if src_addr.is_none() {
-        loop {
-            let mut buf = vec![0; max_udp_pkt_size];
-            let (len, addr) = socket.recv_from(&mut buf).await?;
-            buf.truncate(len);
-            let pkt = Bytes::from(buf);
+    loop {
+        let mut buf = vec![0; max_udp_pkt_size];
+        let (len, addr) = socket.recv_from(&mut buf).await?;
+        buf.truncate(len);
+        let pkt = Bytes::from(buf);
 
-            match process_packet_to_relay(pkt).await {
-                Ok((pkt, dst_addr)) => {
-                    log::debug!("[socks5] [{ctrl_addr}] [associate] [packet-to] {dst_addr}");
-                    socket.connect(addr).await?;
-                    let _ = pkt_send_tx.send((pkt, dst_addr)).await;
-                    break;
-                }
-                Err(err) => log::debug!("[socks5] [{ctrl_addr}] [associate] [packet-to] {err}"),
+        match process_packet_to_relay(pkt).await {
+            Ok((pkt, dst_addr)) => {
+                log::debug!("[socks5] [{ctrl_addr}] [associate] [packet-to] {dst_addr}");
+                socket.connect(addr).await?;
+                let _ = pkt_send_tx.send((pkt, dst_addr)).await;
+                break;
             }
+            Err(err) => log::debug!("[socks5] [{ctrl_addr}] [associate] [packet-to] {err}"),
         }
     }
 

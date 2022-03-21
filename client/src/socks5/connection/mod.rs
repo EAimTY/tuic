@@ -53,8 +53,7 @@ impl Connection {
                     let req_addr = req.address.to_string();
                     log::info!("[socks5] [{src_addr}] [associate] [{req_addr}]");
 
-                    conn.handle_associate(src_addr, req.address, max_udp_pkt_size)
-                        .await?;
+                    conn.handle_associate(src_addr, max_udp_pkt_size).await?;
 
                     log::info!("[socks5] [{src_addr}] [dissociate] [{req_addr}]");
                 }

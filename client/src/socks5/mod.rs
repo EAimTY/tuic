@@ -65,8 +65,6 @@ pub enum Socks5Error {
     Io(#[from] IoError),
     #[error("failed to connect to the relay layer")]
     RelayConnectivity,
-    #[error("called associate from a domain address")]
-    AssociateFromDomainAddress,
     #[error("fragmented UDP packet is not supported")]
     FragmentedUdpPacket,
     #[error("authentication failed")]
