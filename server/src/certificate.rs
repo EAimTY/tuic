@@ -27,7 +27,7 @@ pub fn load_private_key(path: &str) -> Result<PrivateKey, IoError> {
     let mut priv_key = None;
 
     while let Ok(Some(item)) = rustls_pemfile::read_one(&mut file) {
-        if let Item::RSAKey(key) | Item::PKCS8Key(key) = item {
+        if let Item::RSAKey(key) | Item::PKCS8Key(key) | Item::ECKey(key) = item {
             priv_key = Some(PrivateKey(key));
         }
     }
