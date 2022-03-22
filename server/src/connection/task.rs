@@ -4,11 +4,7 @@ use quinn::{
     Connection as QuinnConnection, ConnectionError, ReadExactError, RecvStream, SendDatagramError,
     SendStream, WriteError,
 };
-use std::{
-    io::Error as IoError,
-    net::{SocketAddr, ToSocketAddrs},
-    sync::Arc,
-};
+use std::{io::Error as IoError, net::SocketAddr, sync::Arc};
 use thiserror::Error;
 use tokio::{io, net::TcpStream};
 use tuic_protocol::{Address, Command, Response};
@@ -19,7 +15,7 @@ pub async fn connect(
     addr: Address,
 ) -> Result<(), TaskError> {
     let mut stream = None;
-    let addrs = addr.to_socket_addrs()?;
+    let addrs = addr.to_socket_addrs().await?;
 
     for addr in addrs {
         if let Ok(tcp_stream) = TcpStream::connect(addr).await {
