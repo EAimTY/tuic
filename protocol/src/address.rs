@@ -6,7 +6,10 @@ use std::{
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs},
     vec::IntoIter,
 };
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::{
+    io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
+    task::spawn_blocking,
+};
 
 /// Address
 ///
@@ -127,14 +130,15 @@ impl Address {
             },
         }
     }
-}
 
-impl ToSocketAddrs for Address {
-    type Iter = IntoIter<SocketAddr>;
-
-    fn to_socket_addrs(&self) -> IoResult<Self::Iter> {
+    pub async fn to_socket_addrs(&self) -> IoResult<IntoIter<SocketAddr>> {
         Ok(match self {
-            Self::HostnameAddress(addr, port) => (addr.as_str(), *port).to_socket_addrs()?,
+            Self::HostnameAddress(addr, port) => {
+                let addr = addr.clone();
+                let port = *port;
+
+                spawn_blocking(move || (addr, port).to_socket_addrs()).await??
+            }
             Self::SocketAddress(addr) => vec![addr.to_owned()].into_iter(),
         })
     }

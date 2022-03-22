@@ -3,12 +3,13 @@ use quinn::{ClientConfig, ConnectionError, Endpoint, SendDatagramError, WriteErr
 use std::{
     fmt::{Display, Formatter, Result as FmtResult},
     io::Error as IoError,
-    mem::{self, MaybeUninit},
-    net::{SocketAddr, ToSocketAddrs},
-    vec::IntoIter,
+    net::SocketAddr,
 };
 use thiserror::Error;
-use tokio::sync::mpsc::{self, Receiver, Sender};
+use tokio::{
+    net::lookup_host,
+    sync::mpsc::{self, Receiver, Sender},
+};
 use tuic_protocol::Error as ProtocolError;
 
 pub use self::{address::Address, request::Request};
@@ -79,14 +80,11 @@ impl Relay {
 
     async fn establish_connection(&self) -> Connection {
         let (mut addrs, server_name) = match &self.server_addr {
-            ServerAddr::HostnameAddr { hostname, .. } => (
-                unsafe { mem::transmute(MaybeUninit::<IntoIter<SocketAddr>>::uninit()) },
-                hostname,
-            ),
+            ServerAddr::HostnameAddr { hostname, .. } => (Vec::new(), hostname),
             ServerAddr::SocketAddr {
                 server_addr,
                 server_name,
-            } => (vec![*server_addr].into_iter(), server_name),
+            } => (vec![*server_addr], server_name),
         };
 
         loop {
@@ -95,8 +93,8 @@ impl Relay {
                 server_port,
             } = &self.server_addr
             {
-                match (hostname.as_str(), *server_port).to_socket_addrs() {
-                    Ok(resolved) => addrs = resolved,
+                match lookup_host((hostname.as_str(), *server_port)).await {
+                    Ok(resolved) => addrs = resolved.collect(),
                     Err(err) => {
                         log::error!("[relay] [connection] {err}");
                         continue;
@@ -104,7 +102,7 @@ impl Relay {
                 }
             }
 
-            for addr in addrs.as_ref() {
+            for addr in &addrs {
                 match self.endpoint.connect(*addr, server_name) {
                     Ok(conn) => {
                         match Connection::init(
