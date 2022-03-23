@@ -1,7 +1,6 @@
 use super::{task, Connection, UdpPacketSource};
 use bytes::Bytes;
 use quinn::{RecvStream, SendStream, VarInt};
-use std::hint::unreachable_unchecked;
 use thiserror::Error;
 use tuic_protocol::{Address, Command, Error as ProtocolError};
 
@@ -31,7 +30,7 @@ impl Connection {
             let rmt_addr = self.controller.remote_address();
 
             match cmd {
-                Command::Authenticate { .. } => unsafe { unreachable_unchecked() },
+                Command::Authenticate { .. } => unreachable!(),
                 Command::Connect { .. } => Err(DispatchError::BadCommand),
                 Command::Bind { .. } => Err(DispatchError::BadCommand),
                 Command::Packet {
@@ -184,7 +183,7 @@ impl Connection {
         let rmt_addr = self.controller.remote_address();
         let dst_addr = addr.to_string();
 
-        match unsafe { self.udp_packet_from.check().unwrap_unchecked() } {
+        match self.udp_packet_from.check().unwrap() {
             UdpPacketSource::UniStream => {
                 log::debug!("[{rmt_addr}] [packet-to-quic] [{assoc_id}] [{dst_addr}]");
 
