@@ -27,16 +27,13 @@ pub fn load_private_key(path: &str) -> Result<PrivateKey, IoError> {
     let mut priv_key = None;
 
     while let Ok(Some(item)) = rustls_pemfile::read_one(&mut file) {
-        if let Item::RSAKey(key) | Item::PKCS8Key(key) = item {
-            priv_key = Some(PrivateKey(key));
+        if let Item::RSAKey(key) | Item::PKCS8Key(key) | Item::ECKey(key) = item {
+            priv_key = Some(key);
         }
     }
 
-    if priv_key.is_none() {
-        priv_key = Some(PrivateKey(fs::read(path)?));
-    }
-
-    let priv_key = unsafe { priv_key.unwrap_unchecked() };
-
-    Ok(priv_key)
+    priv_key
+        .map(|i| Ok(i))
+        .unwrap_or_else(|| fs::read(path))
+        .map(PrivateKey)
 }
