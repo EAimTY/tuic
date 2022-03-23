@@ -67,8 +67,7 @@ Options:
         --max-udp-packet-size MAX_UDP_PACKET_SIZE
                         Set the maximum UDP packet size. Excess bytes may be
                         discarded. Default: 1536
-        --ipv4-only     Only accept IPv4 connections
-        --ipv6-only     Only accept IPv6 connections
+        --ipv6          Enable IPv6 support
         --log-level LOG_LEVEL
                         Set the log level. Available: "off", "error", "warn",
                         "info", "debug", "trace". Default: "info"
