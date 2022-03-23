@@ -1,5 +1,5 @@
 use crate::connection::Connection;
-use futures_util::{stream::SelectAll, StreamExt};
+use futures_util::StreamExt;
 use quinn::{Endpoint, Incoming, ServerConfig};
 use std::{
     io::Error as IoError,
@@ -8,7 +8,7 @@ use std::{
 };
 
 pub struct Server {
-    incoming: SelectAll<Incoming>,
+    incoming: Incoming,
     port: u16,
     expected_token_digest: [u8; 32],
     authentication_timeout: Duration,
@@ -22,36 +22,13 @@ impl Server {
         exp_tkn_dgst: [u8; 32],
         auth_timeout: Duration,
         max_udp_pkt_size: usize,
-        ipv4_only: bool,
-        ipv6_only: bool,
+        ipv6: bool,
     ) -> Result<Self, IoError> {
-        let mut incoming = SelectAll::new();
-
-        match (ipv4_only, ipv6_only) {
-            (true, false) => {
-                let (_, incoming_ipv4) =
-                    Endpoint::server(config, SocketAddr::from((Ipv4Addr::UNSPECIFIED, port)))?;
-                incoming.push(incoming_ipv4);
-            }
-            (false, true) => {
-                let (_, incoming_ipv6) =
-                    Endpoint::server(config, SocketAddr::from((Ipv6Addr::UNSPECIFIED, port)))?;
-                incoming.push(incoming_ipv6);
-            }
-            (true, true) => {
-                let (_, incoming_ipv4) = Endpoint::server(
-                    config.clone(),
-                    SocketAddr::from((Ipv4Addr::UNSPECIFIED, port)),
-                )?;
-
-                let (_, incoming_ipv6) =
-                    Endpoint::server(config, SocketAddr::from((Ipv6Addr::UNSPECIFIED, port)))?;
-
-                incoming.push(incoming_ipv4);
-                incoming.push(incoming_ipv6);
-            }
-            (false, false) => unreachable!(),
-        }
+        let (_, incoming) = if ipv6 {
+            Endpoint::server(config, SocketAddr::from((Ipv6Addr::UNSPECIFIED, port)))?
+        } else {
+            Endpoint::server(config, SocketAddr::from((Ipv4Addr::UNSPECIFIED, port)))?
+        };
 
         Ok(Self {
             incoming,

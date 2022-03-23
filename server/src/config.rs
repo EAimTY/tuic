@@ -67,8 +67,7 @@ impl<'cfg> ConfigBuilder<'cfg> {
             "MAX_UDP_PACKET_SIZE",
         );
 
-        opts.optflag("", "ipv4-only", "Only accept IPv4 connections");
-        opts.optflag("", "ipv6-only", "Only accept IPv6 connections");
+        opts.optflag("", "ipv6", "Enable IPv6 support");
 
         opts.optopt(
             "",
@@ -169,12 +168,7 @@ impl<'cfg> ConfigBuilder<'cfg> {
             1536
         };
 
-        let ipv4_only = matches.opt_present("ipv4-only");
-        let ipv6_only = matches.opt_present("ipv6-only");
-
-        if ipv4_only && ipv6_only {
-            return Err(ConfigError::AllIpVersionsDisabled);
-        }
+        let ipv6 = matches.opt_present("ipv6");
 
         let log_level = if let Some(level) = matches.opt_str("log-level") {
             level.parse()?
@@ -188,8 +182,7 @@ impl<'cfg> ConfigBuilder<'cfg> {
             token_digest,
             authentication_timeout,
             max_udp_packet_size,
-            ipv4_only,
-            ipv6_only,
+            ipv6,
             log_level,
         })
     }
@@ -201,8 +194,7 @@ pub struct Config {
     pub token_digest: [u8; 32],
     pub authentication_timeout: Duration,
     pub max_udp_packet_size: usize,
-    pub ipv4_only: bool,
-    pub ipv6_only: bool,
+    pub ipv6: bool,
     pub log_level: LevelFilter,
 }
 
@@ -226,8 +218,6 @@ pub enum ConfigError<'e> {
     ParseInt(#[from] ParseIntError),
     #[error("Unknown congestion controller: {0}")]
     CongestionController(String),
-    #[error("Both IPv4 and IPv6 are disabled")]
-    AllIpVersionsDisabled,
     #[error(transparent)]
     ParseLogLevel(#[from] ParseLevelError),
 }

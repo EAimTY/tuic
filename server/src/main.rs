@@ -32,8 +32,7 @@ async fn main() {
         config.token_digest,
         config.authentication_timeout,
         config.max_udp_packet_size,
-        config.ipv4_only,
-        config.ipv6_only,
+        config.ipv6,
     ) {
         Ok(server) => server,
         Err(err) => {
