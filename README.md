@@ -56,8 +56,7 @@ Options:
                         (Required) Set the X.509 certificate. This must be an
                         end-entity certificate
     -k, --priv-key PRIVATE_KEY
-                        (Required) Set the private key. Supports PKCS#8 and
-                        PKCS#1(RSA) formats
+                        (Required) Set the private key
         --authentication-timeout AUTHENTICATION_TIMEOUT
                         Set the maximum time allowed between a QUIC connection
                         established and the TUIC authentication packet
@@ -68,6 +67,8 @@ Options:
         --max-udp-packet-size MAX_UDP_PACKET_SIZE
                         Set the maximum UDP packet size. Excess bytes may be
                         discarded. Default: 1536
+        --ipv4-only     Only accept IPv4 connections
+        --ipv6-only     Only accept IPv6 connections
         --log-level LOG_LEVEL
                         Set the log level. Available: "off", "error", "warn",
                         "info", "debug", "trace". Default: "info"
