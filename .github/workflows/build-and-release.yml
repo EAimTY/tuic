@@ -11,47 +11,71 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # x86_64-linux
-          - os: ubuntu-latest
+          # x86_64-linux-gnu
+          - arch-name: x86_64-linux-gnu
+            os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             cross: false
-            arch-name: x86_64-linux
             file-ext:
-          # x86_64-windows
-          - os: windows-latest
+          # x86_64-linux-musl
+          - arch-name: x86_64-linux-musl
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            cross: true
+            file-ext:
+          # x86_64-windows-msvc
+          - arch-name: x86_64-windows-msvc
+            os: windows-latest
             target: x86_64-pc-windows-msvc
             cross: false
-            arch-name: x86_64-windows
+            file-ext: .exe
+          # x86_64-windows-gnu
+          - arch-name: x86_64-windows-gnu
+            os: ubuntu-latest
+            target: x86_64-pc-windows-gnu
+            cross: true
             file-ext: .exe
           # x86_64-macos
-          - os: macos-latest
+          - arch-name: x86_64-macos
+            os: macos-latest
             target: x86_64-apple-darwin
             cross: false
-            arch-name: x86_64-macos
             file-ext:
-          # aarch64-linux
-          - os: ubuntu-latest
+          # x86_64-android
+          - arch-name: x86_64-android
+            os: ubuntu-latest
+            target: x86_64-linux-android
+            cross: true
+            file-ext:
+          # aarch64-linux-gnu
+          - arch-name: aarch64-linux-gnu
+            os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
             cross: true
-            arch-name: aarch64-linux
+            file-ext:
+          # aarch64-linux-musl
+          - arch-name: aarch64-linux-musl
+            os: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            cross: true
             file-ext:
           # aarch64-macos
-          - os: macos-latest
+          - arch-name: aarch64-macos
+            os: macos-latest
             target: aarch64-apple-darwin
             cross: true
-            arch-name: aarch64-macos
             file-ext:
           # aarch64-android
-          - os: ubuntu-latest
+          - arch-name: aarch64-android
+            os: ubuntu-latest
             target: aarch64-linux-android
             cross: true
-            arch-name: aarch64-android
             file-ext:
           # aarch64-ios
-          - os: macos-latest
+          - arch-name: aarch64-ios
+            os: macos-latest
             target: aarch64-apple-ios
             cross: true
-            arch-name: aarch64-ios
             file-ext:
 
     runs-on: ${{ matrix.os }}
@@ -69,7 +93,7 @@ jobs:
       - name: Install toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly
+          toolchain: stable
           target: ${{ matrix.target }}
           override: true
 
