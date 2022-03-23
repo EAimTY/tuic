@@ -42,7 +42,7 @@ impl<'cfg> ConfigBuilder<'cfg> {
         opts.optopt(
             "k",
             "priv-key",
-            "(Required) Set the private key. Supports PKCS#8 and PKCS#1(RSA) formats",
+            "(Required) Set the private key",
             "PRIVATE_KEY",
         );
 
