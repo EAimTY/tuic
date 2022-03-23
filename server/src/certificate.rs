@@ -33,7 +33,7 @@ pub fn load_private_key(path: &str) -> Result<PrivateKey, IoError> {
     }
 
     priv_key
-        .map(|i| Ok(i))
+        .map(Ok)
         .unwrap_or_else(|| fs::read(path))
         .map(PrivateKey)
 }
