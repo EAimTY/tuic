@@ -3,7 +3,7 @@ use bytes::{BufMut, BytesMut};
 use std::io::Result as IoResult;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
-/// Response for `Command::Connect` and `Command::Bind`
+/// Response
 ///
 /// ```plain
 /// +-----+-----+

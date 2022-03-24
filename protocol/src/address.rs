@@ -8,7 +8,7 @@ use std::{
 };
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
-    task::spawn_blocking,
+    task,
 };
 
 /// Address
@@ -20,6 +20,11 @@ use tokio::{
 /// |  1   | Variable |    2     |
 /// +------+----------+----------+
 /// ```
+/// 
+/// The address type can be one of the following:
+/// 0x00: fully-qualified domain name (the first byte indicates the length of the domain name)
+/// 0x01: IPv4 address
+/// 0x02: IPv6 address
 #[derive(Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum Address {
     HostnameAddress(String, u16),
@@ -137,7 +142,7 @@ impl Address {
                 let addr = addr.clone();
                 let port = *port;
 
-                spawn_blocking(move || (addr, port).to_socket_addrs()).await??
+                task::spawn_blocking(move || (addr, port).to_socket_addrs()).await??
             }
             Self::SocketAddress(addr) => vec![addr.to_owned()].into_iter(),
         })

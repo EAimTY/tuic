@@ -6,11 +6,11 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 /// Command
 ///
 /// ```plain
-/// +-----+-----+----------+
-/// | VER | CMD |   OPT    |
-/// +-----+-----+----------+
-/// |  1  |  1  | Variable |
-/// +-----+-----+----------+
+/// +-----+------+----------+
+/// | VER | TYPE |   OPT    |
+/// +-----+------+----------+
+/// |  1  |  1   | Variable |
+/// +-----+------+----------+
 /// ```
 #[derive(Clone)]
 pub enum Command {
@@ -34,11 +34,11 @@ pub enum Command {
 }
 
 impl Command {
-    const CMD_AUTHENTICATE: u8 = 0x00;
-    const CMD_CONNECT: u8 = 0x01;
-    const CMD_BIND: u8 = 0x02;
-    const CMD_PACKET: u8 = 0x03;
-    const CMD_DISSOCIATE: u8 = 0x04;
+    const TYPE_AUTHENTICATE: u8 = 0x00;
+    const TYPE_CONNECT: u8 = 0x01;
+    const TYPE_BIND: u8 = 0x02;
+    const TYPE_PACKET: u8 = 0x03;
+    const TYPE_DISSOCIATE: u8 = 0x04;
 
     pub fn new_authenticate(digest: [u8; 32]) -> Self {
         Self::Authenticate { digest }
@@ -79,20 +79,20 @@ impl Command {
         }
 
         match cmd {
-            Self::CMD_AUTHENTICATE => {
+            Self::TYPE_AUTHENTICATE => {
                 let mut digest = [0; 32];
                 r.read_exact(&mut digest).await?;
                 Ok(Self::new_authenticate(digest))
             }
-            Self::CMD_CONNECT => {
+            Self::TYPE_CONNECT => {
                 let addr = Address::read_from(r).await?;
                 Ok(Self::new_connect(addr))
             }
-            Self::CMD_BIND => {
+            Self::TYPE_BIND => {
                 let addr = Address::read_from(r).await?;
                 Ok(Self::new_bind(addr))
             }
-            Self::CMD_PACKET => {
+            Self::TYPE_PACKET => {
                 let mut buf = [0; 6];
                 r.read_exact(&mut buf).await?;
 
@@ -102,7 +102,7 @@ impl Command {
 
                 Ok(Self::new_packet(assoc_id, len, addr))
             }
-            Self::CMD_DISSOCIATE => {
+            Self::TYPE_DISSOCIATE => {
                 let assoc_id = r.read_u32().await?;
                 Ok(Self::new_dissociate(assoc_id))
             }
@@ -124,15 +124,15 @@ impl Command {
 
         match self {
             Self::Authenticate { digest } => {
-                buf.put_u8(Self::CMD_AUTHENTICATE);
+                buf.put_u8(Self::TYPE_AUTHENTICATE);
                 buf.put_slice(digest);
             }
             Self::Connect { addr } => {
-                buf.put_u8(Self::CMD_CONNECT);
+                buf.put_u8(Self::TYPE_CONNECT);
                 addr.write_to_buf(buf);
             }
             Self::Bind { addr } => {
-                buf.put_u8(Self::CMD_BIND);
+                buf.put_u8(Self::TYPE_BIND);
                 addr.write_to_buf(buf);
             }
             Self::Packet {
@@ -140,13 +140,13 @@ impl Command {
                 len,
                 addr,
             } => {
-                buf.put_u8(Self::CMD_PACKET);
+                buf.put_u8(Self::TYPE_PACKET);
                 buf.put_u32(*assoc_id);
                 buf.put_u16(*len);
                 addr.write_to_buf(buf);
             }
             Self::Dissociate { assoc_id } => {
-                buf.put_u8(Self::CMD_DISSOCIATE);
+                buf.put_u8(Self::TYPE_DISSOCIATE);
                 buf.put_u32(*assoc_id);
             }
         }
