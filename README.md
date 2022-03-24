@@ -15,7 +15,7 @@ Delicately-TUICed high-performance proxy built on top of the [QUIC](https://en.w
 
 ## Design
 
-TUIC was designed on the basis of the QUIC protocol from the very beginning. It can make full use of the advantages brought by QUIC.
+TUIC was designed on the basis of the QUIC protocol from the very beginning. It can make full use of the advantages brought by QUIC. You can find more information about the TUIC protocol [here](https://github.com/EAimTY/tuic/tree/master/protocol).
 
 A typical TUIC connection procedure could like:
 
