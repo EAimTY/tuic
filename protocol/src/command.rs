@@ -20,9 +20,6 @@ pub enum Command {
     Connect {
         addr: Address,
     },
-    Bind {
-        addr: Address,
-    },
     Packet {
         assoc_id: u32,
         len: u16,
@@ -31,14 +28,15 @@ pub enum Command {
     Dissociate {
         assoc_id: u32,
     },
+    Heartbeat,
 }
 
 impl Command {
     const TYPE_AUTHENTICATE: u8 = 0x00;
     const TYPE_CONNECT: u8 = 0x01;
-    const TYPE_BIND: u8 = 0x02;
-    const TYPE_PACKET: u8 = 0x03;
-    const TYPE_DISSOCIATE: u8 = 0x04;
+    const TYPE_PACKET: u8 = 0x02;
+    const TYPE_DISSOCIATE: u8 = 0x03;
+    const TYPE_HEARTBEAT: u8 = 0x04;
 
     pub fn new_authenticate(digest: [u8; 32]) -> Self {
         Self::Authenticate { digest }
@@ -46,10 +44,6 @@ impl Command {
 
     pub fn new_connect(addr: Address) -> Self {
         Self::Connect { addr }
-    }
-
-    pub fn new_bind(addr: Address) -> Self {
-        Self::Bind { addr }
     }
 
     pub fn new_packet(assoc_id: u32, len: u16, addr: Address) -> Self {
@@ -62,6 +56,10 @@ impl Command {
 
     pub fn new_dissociate(assoc_id: u32) -> Self {
         Self::Dissociate { assoc_id }
+    }
+
+    pub fn new_heartbeat() -> Self {
+        Self::Heartbeat
     }
 
     pub async fn read_from<R>(r: &mut R) -> Result<Self, Error>
@@ -88,10 +86,6 @@ impl Command {
                 let addr = Address::read_from(r).await?;
                 Ok(Self::new_connect(addr))
             }
-            Self::TYPE_BIND => {
-                let addr = Address::read_from(r).await?;
-                Ok(Self::new_bind(addr))
-            }
             Self::TYPE_PACKET => {
                 let mut buf = [0; 6];
                 r.read_exact(&mut buf).await?;
@@ -106,6 +100,7 @@ impl Command {
                 let assoc_id = r.read_u32().await?;
                 Ok(Self::new_dissociate(assoc_id))
             }
+            Self::TYPE_HEARTBEAT => Ok(Self::new_heartbeat()),
             _ => Err(Error::UnsupportedCommand(cmd)),
         }
     }
@@ -131,10 +126,6 @@ impl Command {
                 buf.put_u8(Self::TYPE_CONNECT);
                 addr.write_to_buf(buf);
             }
-            Self::Bind { addr } => {
-                buf.put_u8(Self::TYPE_BIND);
-                addr.write_to_buf(buf);
-            }
             Self::Packet {
                 assoc_id,
                 len,
@@ -149,6 +140,9 @@ impl Command {
                 buf.put_u8(Self::TYPE_DISSOCIATE);
                 buf.put_u32(*assoc_id);
             }
+            Self::Heartbeat => {
+                buf.put_u8(Self::TYPE_HEARTBEAT);
+            }
         }
     }
 
@@ -156,9 +150,9 @@ impl Command {
         2 + match self {
             Self::Authenticate { .. } => 32,
             Self::Connect { addr } => addr.serialized_len(),
-            Self::Bind { addr } => addr.serialized_len(),
             Self::Packet { addr, .. } => 6 + addr.serialized_len(),
             Self::Dissociate { .. } => 4,
+            Self::Heartbeat => 0,
         }
     }
 }

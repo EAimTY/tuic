@@ -32,7 +32,6 @@ impl Connection {
             match cmd {
                 Command::Authenticate { .. } => unreachable!(),
                 Command::Connect { .. } => Err(DispatchError::BadCommand),
-                Command::Bind { .. } => Err(DispatchError::BadCommand),
                 Command::Packet {
                     assoc_id,
                     len,
@@ -75,6 +74,7 @@ impl Connection {
 
                     Ok(())
                 }
+                Command::Heartbeat => todo!(),
             }
         } else {
             Err(DispatchError::AuthenticationTimeout)
@@ -106,21 +106,9 @@ impl Connection {
 
                     Ok(())
                 }
-                Command::Bind { addr } => {
-                    let dst_addr = addr.to_string();
-                    log::info!("[{rmt_addr}] [bind] [{dst_addr}]");
-
-                    let res = task::bind(send, recv, addr).await;
-
-                    match res {
-                        Ok(()) => {}
-                        Err(err) => log::warn!("[{rmt_addr}] [bind] [{dst_addr}] {err}"),
-                    }
-
-                    Ok(())
-                }
                 Command::Packet { .. } => Err(DispatchError::BadCommand),
                 Command::Dissociate { .. } => Err(DispatchError::BadCommand),
+                Command::Heartbeat => Err(DispatchError::BadCommand),
             }
         } else {
             Err(DispatchError::AuthenticationTimeout)
@@ -137,7 +125,6 @@ impl Connection {
             match cmd {
                 Command::Authenticate { .. } => Err(DispatchError::BadCommand),
                 Command::Connect { .. } => Err(DispatchError::BadCommand),
-                Command::Bind { .. } => Err(DispatchError::BadCommand),
                 Command::Packet { assoc_id, addr, .. } => {
                     if self.udp_packet_from.datagram() {
                         let dst_addr = addr.to_string();
@@ -168,6 +155,7 @@ impl Connection {
                     }
                 }
                 Command::Dissociate { .. } => Err(DispatchError::BadCommand),
+                Command::Heartbeat => Err(DispatchError::BadCommand),
             }
         } else {
             Err(DispatchError::AuthenticationTimeout)

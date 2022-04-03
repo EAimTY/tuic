@@ -40,10 +40,6 @@ pub async fn connect(
     Ok(())
 }
 
-pub async fn bind(_send: SendStream, _recv: RecvStream, _addr: Address) -> Result<(), TaskError> {
-    Ok(())
-}
-
 pub async fn packet_from_uni_stream(
     mut stream: RecvStream,
     udp_sessions: Arc<UdpSessionMap>,

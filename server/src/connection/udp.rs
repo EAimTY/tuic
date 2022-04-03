@@ -139,7 +139,7 @@ impl UdpSession {
     ) -> Result<(), IoError> {
         while let Some((pkt, addr)) = send_pkt_rx.recv().await {
             match addr {
-                Address::HostnameAddress(hostname, port) => {
+                Address::DomainAddress(hostname, port) => {
                     socket.send_to(&pkt, (hostname, port)).await?;
                 }
                 Address::SocketAddress(addr) => {

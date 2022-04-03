@@ -59,7 +59,6 @@ impl Connection {
         match cmd {
             TuicCommand::Authenticate { .. } => Err(RelayError::BadCommand),
             TuicCommand::Connect { .. } => Err(RelayError::BadCommand),
-            TuicCommand::Bind { .. } => Err(RelayError::BadCommand),
             TuicCommand::Packet {
                 assoc_id,
                 len,
@@ -75,6 +74,7 @@ impl Connection {
                     .await
             }
             TuicCommand::Dissociate { .. } => Err(RelayError::BadCommand),
+            TuicCommand::Heartbeat => Err(RelayError::BadCommand),
         }
     }
 
@@ -85,7 +85,6 @@ impl Connection {
         match cmd {
             TuicCommand::Authenticate { .. } => Err(RelayError::BadCommand),
             TuicCommand::Connect { .. } => Err(RelayError::BadCommand),
-            TuicCommand::Bind { .. } => Err(RelayError::BadCommand),
             TuicCommand::Packet { assoc_id, addr, .. } => {
                 log::debug!("[relay] [task] [associate] [{assoc_id}] [packet-from-native] {addr}");
 
@@ -98,6 +97,7 @@ impl Connection {
                 .await
             }
             TuicCommand::Dissociate { .. } => Err(RelayError::BadCommand),
+            TuicCommand::Heartbeat => Err(RelayError::BadCommand),
         }
     }
 }

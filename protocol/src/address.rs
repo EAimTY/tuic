@@ -20,19 +20,19 @@ use tokio::{
 /// |  1   | Variable |    2     |
 /// +------+----------+----------+
 /// ```
-/// 
+///
 /// The address type can be one of the following:
 /// 0x00: fully-qualified domain name (the first byte indicates the length of the domain name)
 /// 0x01: IPv4 address
 /// 0x02: IPv6 address
 #[derive(Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum Address {
-    HostnameAddress(String, u16),
+    DomainAddress(String, u16),
     SocketAddress(SocketAddr),
 }
 
 impl Address {
-    const TYPE_HOSTNAME: u8 = 0x00;
+    const TYPE_DOMAIN: u8 = 0x00;
     const TYPE_IPV4: u8 = 0x01;
     const TYPE_IPV6: u8 = 0x02;
 
@@ -43,7 +43,7 @@ impl Address {
         let addr_type = stream.read_u8().await?;
 
         match addr_type {
-            Self::TYPE_HOSTNAME => {
+            Self::TYPE_DOMAIN => {
                 let len = stream.read_u8().await? as usize;
 
                 let mut buf = vec![0; len + 2];
@@ -55,7 +55,7 @@ impl Address {
 
                 let addr = String::from_utf8(buf).map_err(|_| Error::AddressInvalidEncoding)?;
 
-                Ok(Self::HostnameAddress(addr, port))
+                Ok(Self::DomainAddress(addr, port))
             }
             Self::TYPE_IPV4 => {
                 let mut buf = [0; 6];
@@ -101,10 +101,10 @@ impl Address {
 
     pub fn write_to_buf<B: BufMut>(&self, buf: &mut B) {
         match self {
-            Self::HostnameAddress(addr, port) => {
+            Self::DomainAddress(addr, port) => {
                 assert!(addr.len() < u8::MAX as usize);
 
-                buf.put_u8(Self::TYPE_HOSTNAME);
+                buf.put_u8(Self::TYPE_DOMAIN);
                 buf.put_u8(addr.len() as u8);
                 buf.put_slice(addr.as_bytes());
                 buf.put_u16(*port);
@@ -128,7 +128,7 @@ impl Address {
 
     pub fn serialized_len(&self) -> usize {
         1 + match self {
-            Address::HostnameAddress(addr, _) => 1 + addr.len() + 2,
+            Address::DomainAddress(addr, _) => 1 + addr.len() + 2,
             Address::SocketAddress(addr) => match addr {
                 SocketAddr::V4(_) => 6,
                 SocketAddr::V6(_) => 18,
@@ -138,7 +138,7 @@ impl Address {
 
     pub async fn to_socket_addrs(&self) -> IoResult<IntoIter<SocketAddr>> {
         Ok(match self {
-            Self::HostnameAddress(addr, port) => {
+            Self::DomainAddress(addr, port) => {
                 let addr = addr.clone();
                 let port = *port;
 
@@ -152,7 +152,7 @@ impl Address {
 impl Display for Address {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
-            Self::HostnameAddress(addr, port) => write!(f, "{addr}:{port}"),
+            Self::DomainAddress(addr, port) => write!(f, "{addr}:{port}"),
             Self::SocketAddress(addr) => write!(f, "{addr}"),
         }
     }
