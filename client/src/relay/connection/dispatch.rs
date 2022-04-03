@@ -5,7 +5,7 @@ use quinn::RecvStream;
 use tuic_protocol::Command as TuicCommand;
 
 impl Connection {
-    pub async fn process_request(self, req: Request) -> Result<(), RelayError> {
+    pub async fn process_relay_request(self, req: Request) -> Result<(), RelayError> {
         match req {
             Request::Connect { addr, tx } => {
                 log::info!("[relay] [task] [connect] [{addr}]");
@@ -66,7 +66,7 @@ impl Connection {
                 addr,
             } => {
                 let mut buf = vec![0; len as usize];
-                stream.read_exact(&mut buf).await.unwrap();
+                stream.read_exact(&mut buf).await?;
 
                 let pkt = Bytes::from(buf);
 

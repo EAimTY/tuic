@@ -1,5 +1,7 @@
 use self::connection::Connection;
-use quinn::{ClientConfig, ConnectionError, Endpoint, SendDatagramError, WriteError};
+use quinn::{
+    ClientConfig, ConnectionError, Endpoint, ReadExactError, SendDatagramError, WriteError,
+};
 use std::{
     fmt::{Display, Formatter, Result as FmtResult},
     io::Error as IoError,
@@ -7,7 +9,7 @@ use std::{
 };
 use thiserror::Error;
 use tokio::{
-    net::lookup_host,
+    net,
     sync::mpsc::{self, Receiver, Sender},
 };
 use tuic_protocol::Error as ProtocolError;
@@ -68,7 +70,7 @@ impl Relay {
             let conn_cloned = conn.clone();
 
             tokio::spawn(async move {
-                match conn_cloned.process_request(req).await {
+                match conn_cloned.process_relay_request(req).await {
                     Ok(()) => (),
                     Err(err) => {
                         log::warn!("[relay] [task] {err}");
@@ -93,7 +95,7 @@ impl Relay {
                 server_port,
             } = &self.server_addr
             {
-                match lookup_host((hostname.as_str(), *server_port)).await {
+                match net::lookup_host((hostname.as_str(), *server_port)).await {
                     Ok(resolved) => addrs = resolved.collect(),
                     Err(err) => {
                         log::error!("[relay] [connection] {err}");
@@ -164,6 +166,8 @@ pub enum RelayError {
     Io(#[from] IoError),
     #[error(transparent)]
     Connection(#[from] ConnectionError),
+    #[error(transparent)]
+    ReadStream(#[from] ReadExactError),
     #[error(transparent)]
     WriteStream(#[from] WriteError),
     #[error(transparent)]
