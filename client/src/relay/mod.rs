@@ -6,6 +6,7 @@ use std::{
     fmt::{Display, Formatter, Result as FmtResult},
     io::Error as IoError,
     net::SocketAddr,
+    sync::Arc,
 };
 use thiserror::Error;
 use tokio::{
@@ -57,20 +58,27 @@ impl Relay {
     pub async fn run(mut self) {
         log::info!("[relay] started. Target server: {}", self.server_addr);
 
-        let mut conn = self.establish_connection().await;
+        let mut task_count = TaskCount::new();
+
+        let mut conn = self.establish_connection(task_count.clone()).await;
         log::debug!("[relay] [connection] [establish]");
 
         while let Some(req) = self.req_rx.recv().await {
             if conn.is_closed() {
                 log::debug!("[relay] [connection] [disconnect]");
-                conn = self.establish_connection().await;
+                task_count = TaskCount::new();
+                conn = self.establish_connection(task_count.clone()).await;
                 log::debug!("[relay] [connection] [establish]");
             }
 
             let conn_cloned = conn.clone();
+            let task_count_cloned = task_count.clone();
 
             tokio::spawn(async move {
-                match conn_cloned.process_relay_request(req).await {
+                match conn_cloned
+                    .process_relay_request(req, task_count_cloned)
+                    .await
+                {
                     Ok(()) => (),
                     Err(err) => {
                         log::warn!("[relay] [task] {err}");
@@ -80,7 +88,7 @@ impl Relay {
         }
     }
 
-    async fn establish_connection(&self) -> Connection {
+    async fn establish_connection(&self, task_count: TaskCount) -> Connection {
         let (mut addrs, server_name) = match &self.server_addr {
             ServerAddr::HostnameAddr { hostname, .. } => (Vec::new(), hostname),
             ServerAddr::SocketAddr {
@@ -115,7 +123,10 @@ impl Relay {
                         )
                         .await
                         {
-                            Ok(conn) => return conn,
+                            Ok(conn) => {
+                                conn.start_heartbeat(task_count);
+                                return conn;
+                            }
                             Err(err) => log::error!("[relay] [connection] {err}"),
                         }
                     }
@@ -156,6 +167,19 @@ impl Display for ServerAddr {
 pub enum UdpMode {
     Native,
     Quic,
+}
+
+#[derive(Clone)]
+pub struct TaskCount(Arc<()>);
+
+impl TaskCount {
+    fn new() -> Self {
+        Self(Arc::new(()))
+    }
+
+    pub fn is_zero(&self) -> bool {
+        Arc::strong_count(&self.0) <= 2
+    }
 }
 
 #[derive(Debug, Error)]

@@ -74,7 +74,7 @@ impl Connection {
 
                     Ok(())
                 }
-                Command::Heartbeat => todo!(),
+                Command::Heartbeat => Ok(()),
             }
         } else {
             Err(DispatchError::AuthenticationTimeout)

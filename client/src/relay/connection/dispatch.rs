@@ -1,15 +1,21 @@
 use super::{task, Connection};
-use crate::relay::{Address, RelayError, Request, UdpMode};
+use crate::relay::{Address, RelayError, Request, TaskCount, UdpMode};
 use bytes::Bytes;
 use quinn::RecvStream;
 use tuic_protocol::Command as TuicCommand;
 
 impl Connection {
-    pub async fn process_relay_request(self, req: Request) -> Result<(), RelayError> {
+    pub async fn process_relay_request(
+        self,
+        req: Request,
+        task_count: TaskCount,
+    ) -> Result<(), RelayError> {
         match req {
             Request::Connect { addr, tx } => {
                 log::info!("[relay] [task] [connect] [{addr}]");
-                task::connect(self.controller, addr, tx).await?;
+                let res = task::connect(self.controller, addr, tx).await;
+                drop(task_count);
+                res?
             }
             Request::Associate {
                 assoc_id,
@@ -42,8 +48,10 @@ impl Connection {
                 }
 
                 self.udp_sessions.lock().remove(&assoc_id);
-                task::dissociate(self.controller, assoc_id).await?;
                 log::info!("[relay] [task] [dissociate] [{assoc_id}]");
+                let res = task::dissociate(self.controller, assoc_id).await;
+                drop(task_count);
+                res?
             }
         }
 

@@ -1,4 +1,4 @@
-use super::{Address, RelayError, UdpMode};
+use super::{Address, RelayError, TaskCount, UdpMode};
 use bytes::Bytes;
 use futures_util::StreamExt;
 use parking_lot::Mutex;
@@ -8,12 +8,16 @@ use quinn::{
 };
 use std::{
     collections::HashMap,
+    future::Future,
+    pin::Pin,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
+    task::{Context, Poll, Waker},
+    time::Duration,
 };
-use tokio::sync::mpsc::Sender;
+use tokio::{sync::mpsc::Sender, time};
 use tuic_protocol::Command;
 
 mod dispatch;
@@ -24,7 +28,7 @@ pub struct Connection {
     controller: QuinnConnection,
     udp_mode: UdpMode,
     udp_sessions: Arc<UdpSessionMap>,
-    is_closed: Arc<AtomicBool>,
+    is_closed: IsClosed,
 }
 
 pub type UdpSessionMap = Mutex<HashMap<u32, Sender<(Bytes, Address)>>>;
@@ -51,7 +55,7 @@ impl Connection {
         };
 
         let udp_sessions = Arc::new(Mutex::new(HashMap::new()));
-        let is_closed = Arc::new(AtomicBool::new(false));
+        let is_closed = IsClosed::new();
 
         let conn = Self {
             controller: connection,
@@ -71,7 +75,34 @@ impl Connection {
     }
 
     pub fn is_closed(&self) -> bool {
-        self.is_closed.load(Ordering::Acquire)
+        self.is_closed.check()
+    }
+
+    pub fn start_heartbeat(&self, task_count: TaskCount) {
+        async fn heartbeat(conn: &QuinnConnection) -> Result<(), RelayError> {
+            let mut stream = conn.open_uni().await?;
+            let heartbeat = Command::new_heartbeat();
+            heartbeat.write_to(&mut stream).await?;
+            Ok(())
+        }
+
+        let is_closed = self.is_closed.clone();
+        let mut interval = time::interval(Duration::from_secs(10));
+        let conn = self.controller.clone();
+
+        tokio::spawn(async move {
+            while !tokio::select! {
+                _ = is_closed.clone() => true,
+                _ = interval.tick() => false,
+            } {
+                if !task_count.is_zero() {
+                    match heartbeat(&conn).await {
+                        Ok(()) => log::debug!("[relay] [connection] [heartbeat]"),
+                        Err(err) => log::error!("[relay] [connection] [heartbeat] {err}"),
+                    }
+                }
+            }
+        });
     }
 
     async fn authenticate(self, token_digest: [u8; 32]) {
@@ -88,7 +119,7 @@ impl Connection {
         match send_authenticate(self.controller, token_digest).await {
             Ok(()) => log::debug!("[relay] [connection] [authentication]"),
             Err(err) => {
-                self.is_closed.store(true, Ordering::Release);
+                self.is_closed.set_closed();
                 log::error!("[relay] [connection] [authentication] {err}");
             }
         }
@@ -125,7 +156,7 @@ impl Connection {
             Err(err) => log::error!("[relay] [connection] {err}"),
         }
 
-        is_closed.store(true, Ordering::Release);
+        is_closed.set_closed();
     }
 
     async fn listen_datagrams(self, datagrams: Datagrams) {
@@ -156,6 +187,48 @@ impl Connection {
             Err(err) => log::error!("[relay] [connection] {err}"),
         }
 
-        is_closed.store(true, Ordering::Release);
+        is_closed.set_closed();
+    }
+}
+
+#[derive(Clone)]
+struct IsClosed(Arc<IsClosedInner>);
+
+struct IsClosedInner {
+    is_closed: AtomicBool,
+    waker: Mutex<Option<Waker>>,
+}
+
+impl IsClosed {
+    fn new() -> Self {
+        Self(Arc::new(IsClosedInner {
+            is_closed: AtomicBool::new(false),
+            waker: Mutex::new(None),
+        }))
+    }
+
+    fn set_closed(&self) {
+        self.0.is_closed.store(true, Ordering::Release);
+
+        if let Some(waker) = self.0.waker.lock().take() {
+            waker.wake();
+        }
+    }
+
+    fn check(&self) -> bool {
+        self.0.is_closed.load(Ordering::Acquire)
+    }
+}
+
+impl Future for IsClosed {
+    type Output = ();
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        if self.0.is_closed.load(Ordering::Acquire) {
+            Poll::Ready(())
+        } else {
+            *self.0.waker.lock() = Some(cx.waker().clone());
+            Poll::Pending
+        }
     }
 }
