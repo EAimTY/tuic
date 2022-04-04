@@ -7,12 +7,12 @@ use getopts::{Fail, Options};
 use log::{LevelFilter, ParseLevelError};
 use quinn::{
     congestion::{BbrConfig, CubicConfig, NewRenoConfig},
-    ClientConfig, TransportConfig,
+    ClientConfig, IdleTimeout, TransportConfig, VarInt,
 };
 use rustls::RootCertStore;
 use std::{
     io::Error as IoError,
-    net::{AddrParseError, SocketAddr},
+    net::{AddrParseError, IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     num::ParseIntError,
     sync::Arc,
 };
@@ -77,6 +77,8 @@ impl<'cfg> ConfigBuilder<'cfg> {
             "SOCKS5_PASSWORD",
         );
 
+        opts.optflag("", "local-ipv6", "Enable IPv6 for local socks5 server");
+
         opts.optflag(
             "",
             "allow-external-connection",
@@ -104,14 +106,28 @@ impl<'cfg> ConfigBuilder<'cfg> {
             "CONGESTION_CONTROLLER",
         );
 
-        opts.optflag("", "reduce-rtt", "Enable 0-RTT QUIC handshake");
+        opts.optopt(
+            "",
+            "max-idle-time",
+            "Set the maximum idle time for connections, in milliseconds. The true idle timeout is the minimum of this and the server's one. Default: 15000",
+            "MAX_IDLE_TIME",
+        );
+
+        opts.optopt(
+            "",
+            "heartbeat-interval",
+            "Set the heartbeat interval, in milliseconds. This ensures that the QUIC connection is not closed when there are relay tasks but no data transfer. Default: 10000",
+            "HEARTBEAT_INTERVAL",
+        );
 
         opts.optopt(
             "",
             "max-udp-packet-size",
-            "Set the maximum UDP packet size. Excess bytes may be discarded. Default: 1536",
+            "Set the maximum UDP packet size, in bytes. Excess bytes may be discarded. Default: 1536",
             "MAX_UDP_PACKET_SIZE",
         );
+
+        opts.optflag("", "reduce-rtt", "Enable 0-RTT QUIC handshake");
 
         opts.optopt(
             "",
@@ -152,6 +168,12 @@ impl<'cfg> ConfigBuilder<'cfg> {
             return Err(ConfigError::UnexpectedArgument(matches.free.join(", ")));
         }
 
+        let heartbeat_interval = if let Some(interval) = matches.opt_str("heartbeat-interval") {
+            interval.parse()?
+        } else {
+            10000
+        };
+
         let config = {
             let mut config = if let Some(path) = matches.opt_str("cert") {
                 let mut certs = RootCertStore::empty();
@@ -176,7 +198,10 @@ impl<'cfg> ConfigBuilder<'cfg> {
                 Some(ctrl) if ctrl.eq_ignore_ascii_case("cubic") => {
                     transport.congestion_controller_factory(Arc::new(CubicConfig::default()));
                 }
-                Some(ctrl) if ctrl.eq_ignore_ascii_case("new_reno") => {
+                Some(ctrl)
+                    if ctrl.eq_ignore_ascii_case("newreno")
+                        || ctrl.eq_ignore_ascii_case("new_reno") =>
+                {
                     transport.congestion_controller_factory(Arc::new(NewRenoConfig::default()));
                 }
                 Some(ctrl) if ctrl.eq_ignore_ascii_case("bbr") => {
@@ -184,6 +209,18 @@ impl<'cfg> ConfigBuilder<'cfg> {
                 }
                 Some(ctrl) => return Err(ConfigError::CongestionController(ctrl)),
             }
+
+            let max_idle_time = if let Some(timeout) = matches.opt_str("max-idle-time") {
+                timeout.parse()?
+            } else {
+                15000
+            };
+
+            if max_idle_time as u64 <= heartbeat_interval {
+                return Err(ConfigError::HeartbeatInterval);
+            }
+
+            transport.max_idle_timeout(Some(IdleTimeout::from(VarInt::from_u32(max_idle_time))));
 
             config.transport = Arc::new(transport);
             config
@@ -228,11 +265,17 @@ impl<'cfg> ConfigBuilder<'cfg> {
                 None => return Err(ConfigError::RequiredOptionMissing("--local-port")),
             };
 
-            if matches.opt_present("allow-external-connection") {
-                SocketAddr::from(([0, 0, 0, 0], local_port))
-            } else {
-                SocketAddr::from(([127, 0, 0, 1], local_port))
-            }
+            let local_ip = match (
+                matches.opt_present("local-ipv6"),
+                matches.opt_present("allow-external-connection"),
+            ) {
+                (false, false) => IpAddr::V4(Ipv4Addr::LOCALHOST),
+                (false, true) => IpAddr::V4(Ipv4Addr::UNSPECIFIED),
+                (true, false) => IpAddr::V6(Ipv6Addr::LOCALHOST),
+                (true, true) => IpAddr::V6(Ipv6Addr::UNSPECIFIED),
+            };
+
+            SocketAddr::from((local_ip, local_port))
         };
 
         let socks5_authentication = match (
@@ -254,13 +297,13 @@ impl<'cfg> ConfigBuilder<'cfg> {
             Some(mode) => return Err(ConfigError::UdpMode(mode)),
         };
 
-        let reduce_rtt = matches.opt_present("reduce-rtt");
-
         let max_udp_packet_size = if let Some(size) = matches.opt_str("max-udp-packet-size") {
             size.parse()?
         } else {
             1536
         };
+
+        let reduce_rtt = matches.opt_present("reduce-rtt");
 
         let log_level = if let Some(level) = matches.opt_str("log-level") {
             level.parse()?
@@ -275,8 +318,9 @@ impl<'cfg> ConfigBuilder<'cfg> {
             local_addr,
             socks5_authentication,
             udp_mode,
-            reduce_rtt,
+            heartbeat_interval,
             max_udp_packet_size,
+            reduce_rtt,
             log_level,
         })
     }
@@ -289,8 +333,9 @@ pub struct Config {
     pub local_addr: SocketAddr,
     pub socks5_authentication: Socks5Authentication,
     pub udp_mode: UdpMode,
-    pub reduce_rtt: bool,
+    pub heartbeat_interval: u64,
     pub max_udp_packet_size: usize,
+    pub reduce_rtt: bool,
     pub log_level: LevelFilter,
 }
 
@@ -316,6 +361,8 @@ pub enum ConfigError<'e> {
     ParseIpAddr(#[from] AddrParseError),
     #[error("Unknown congestion controller: {0}")]
     CongestionController(String),
+    #[error("Heartbeat interval must be less than the max idle time")]
+    HeartbeatInterval,
     #[error("Unknown udp mode: {0}")]
     UdpMode(String),
     #[error("Socks5 username and password must be set together")]

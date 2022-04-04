@@ -33,7 +33,7 @@ impl Connection {
                 let res = tokio::select! {
                     res = listen_packet_to_relay(socket.clone(), ctrl_addr, max_udp_pkt_size, pkt_send_tx) => res,
                     res = listen_packet_from_relay(socket, ctrl_addr, pkt_receive_rx) => res,
-                    () = listen_control_stream(self.stream) => Ok(())
+                    () = listen_control_stream(self.stream) => Ok(()),
                 };
 
                 match res {

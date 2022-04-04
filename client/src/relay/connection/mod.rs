@@ -78,7 +78,7 @@ impl Connection {
         self.is_closed.check()
     }
 
-    pub fn start_heartbeat(&self, task_count: TaskCount) {
+    pub fn start_heartbeat(&self, task_count: TaskCount, heartbeat_interval: u64) {
         async fn heartbeat(conn: &QuinnConnection) -> Result<(), RelayError> {
             let mut stream = conn.open_uni().await?;
             let heartbeat = Command::new_heartbeat();
@@ -86,14 +86,14 @@ impl Connection {
             Ok(())
         }
 
-        let is_closed = self.is_closed.clone();
-        let mut interval = time::interval(Duration::from_secs(10));
         let conn = self.controller.clone();
+        let is_closed = self.is_closed.clone();
+        let mut interval = time::interval(Duration::from_millis(heartbeat_interval));
 
         tokio::spawn(async move {
-            while !tokio::select! {
-                _ = is_closed.clone() => true,
-                _ = interval.tick() => false,
+            while tokio::select! {
+                () = is_closed.clone() => false,
+                _ = interval.tick() => true,
             } {
                 if !task_count.is_zero() {
                     match heartbeat(&conn).await {

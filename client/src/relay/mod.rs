@@ -27,6 +27,7 @@ pub struct Relay {
     server_addr: ServerAddr,
     token_digest: [u8; 32],
     udp_mode: UdpMode,
+    heartbeat_interval: u64,
     reduce_rtt: bool,
 }
 
@@ -36,6 +37,7 @@ impl Relay {
         server_addr: ServerAddr,
         token_digest: [u8; 32],
         udp_mode: UdpMode,
+        heartbeat_interval: u64,
         reduce_rtt: bool,
     ) -> Result<(Self, Sender<Request>), IoError> {
         let mut endpoint = Endpoint::client(SocketAddr::from(([0, 0, 0, 0], 0)))?;
@@ -49,6 +51,7 @@ impl Relay {
             server_addr,
             token_digest,
             udp_mode,
+            heartbeat_interval,
             reduce_rtt,
         };
 
@@ -124,7 +127,7 @@ impl Relay {
                         .await
                         {
                             Ok(conn) => {
-                                conn.start_heartbeat(task_count);
+                                conn.start_heartbeat(task_count, self.heartbeat_interval);
                                 return conn;
                             }
                             Err(err) => log::error!("[relay] [connection] {err}"),

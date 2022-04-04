@@ -31,6 +31,7 @@ async fn main() {
         config.server_addr,
         config.token_digest,
         config.udp_mode,
+        config.heartbeat_interval,
         config.reduce_rtt,
     ) {
         Ok((relay, tx)) => (tokio::spawn(relay.run()), tx),

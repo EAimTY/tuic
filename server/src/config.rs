@@ -3,7 +3,7 @@ use getopts::{Fail, Options};
 use log::{LevelFilter, ParseLevelError};
 use quinn::{
     congestion::{BbrConfig, CubicConfig, NewRenoConfig},
-    ServerConfig, TransportConfig,
+    IdleTimeout, ServerConfig, TransportConfig, VarInt,
 };
 use rustls::Error as RustlsError;
 use std::{io::Error as IoError, num::ParseIntError, sync::Arc, time::Duration};
@@ -49,7 +49,7 @@ impl<'cfg> ConfigBuilder<'cfg> {
         opts.optopt(
             "",
             "authentication-timeout",
-            "Set the maximum time allowed between a QUIC connection established and the TUIC authentication packet received, in milliseconds. Default: 1000ms",
+            "Set the maximum time allowed between a QUIC connection established and the TUIC authentication packet received, in milliseconds. Default: 1000",
             "AUTHENTICATION_TIMEOUT",
         );
 
@@ -62,8 +62,15 @@ impl<'cfg> ConfigBuilder<'cfg> {
 
         opts.optopt(
             "",
+            "max-idle-time",
+            "Set the maximum idle time for connections, in milliseconds. The true idle timeout is the minimum of this and the client's one. Default: 15000",
+            "MAX_IDLE_TIME",
+        );
+
+        opts.optopt(
+            "",
             "max-udp-packet-size",
-            "Set the maximum UDP packet size. Excess bytes may be discarded. Default: 1536",
+            "Set the maximum UDP packet size, in bytes. Excess bytes may be discarded. Default: 1536",
             "MAX_UDP_PACKET_SIZE",
         );
 
@@ -139,6 +146,14 @@ impl<'cfg> ConfigBuilder<'cfg> {
                 }
                 Some(ctrl) => return Err(ConfigError::CongestionController(ctrl)),
             }
+
+            let max_idle_time = if let Some(timeout) = matches.opt_str("max-idle-time") {
+                timeout.parse()?
+            } else {
+                15000
+            };
+
+            transport.max_idle_timeout(Some(IdleTimeout::from(VarInt::from_u32(max_idle_time))));
 
             config.transport = Arc::new(transport);
             config
