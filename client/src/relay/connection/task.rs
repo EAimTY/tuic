@@ -4,7 +4,7 @@ use bytes::{Bytes, BytesMut};
 use quinn::{Connection as QuinnConnection, RecvStream, SendStream};
 use std::sync::Arc;
 use tokio::sync::oneshot::Sender;
-use tuic_protocol::{Address as TuicAddress, Command as TuicCommand, Response as TuicResponse};
+use tuic_protocol::{Address as TuicAddress, Command as TuicCommand};
 
 pub async fn connect(
     conn: QuinnConnection,
@@ -22,9 +22,9 @@ pub async fn connect(
 
         cmd.write_to(&mut send).await?;
 
-        let resp = TuicResponse::read_from(&mut recv).await?;
+        let resp = TuicCommand::read_from(&mut recv).await?;
 
-        if resp.is_succeeded() {
+        if let TuicCommand::Response(true) = resp {
             Ok(Some((send, recv)))
         } else {
             Ok(None)

@@ -65,6 +65,7 @@ impl Connection {
         let cmd = TuicCommand::read_from(&mut stream).await?;
 
         match cmd {
+            TuicCommand::Response(_) => Err(RelayError::BadCommand),
             TuicCommand::Authenticate { .. } => Err(RelayError::BadCommand),
             TuicCommand::Connect { .. } => Err(RelayError::BadCommand),
             TuicCommand::Packet {
@@ -91,6 +92,7 @@ impl Connection {
         let cmd_len = cmd.serialized_len();
 
         match cmd {
+            TuicCommand::Response(_) => Err(RelayError::BadCommand),
             TuicCommand::Authenticate { .. } => Err(RelayError::BadCommand),
             TuicCommand::Connect { .. } => Err(RelayError::BadCommand),
             TuicCommand::Packet { assoc_id, addr, .. } => {

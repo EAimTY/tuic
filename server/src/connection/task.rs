@@ -7,7 +7,7 @@ use quinn::{
 use std::{io::Error as IoError, net::SocketAddr, sync::Arc};
 use thiserror::Error;
 use tokio::{io, net::TcpStream};
-use tuic_protocol::{Address, Command, Response};
+use tuic_protocol::{Address, Command};
 
 pub async fn connect(
     mut send: SendStream,
@@ -25,7 +25,7 @@ pub async fn connect(
     }
 
     if let Some(mut stream) = stream {
-        let resp = Response::new(true);
+        let resp = Command::new_response(true);
         resp.write_to(&mut send).await?;
 
         let (mut target_recv, mut target_send) = stream.split();
@@ -33,7 +33,7 @@ pub async fn connect(
         let tunnel_to_target = io::copy(&mut recv, &mut target_send);
         let _ = tokio::try_join!(target_to_tunnel, tunnel_to_target);
     } else {
-        let resp = Response::new(false);
+        let resp = Command::new_response(false);
         resp.write_to(&mut send).await?;
     };
 

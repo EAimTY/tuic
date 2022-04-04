@@ -14,6 +14,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 /// ```
 #[derive(Clone)]
 pub enum Command {
+    Response(bool),
     Authenticate {
         digest: [u8; 32],
     },
@@ -32,11 +33,19 @@ pub enum Command {
 }
 
 impl Command {
+    const TYPE_RESPONSE: u8 = 0xff;
     const TYPE_AUTHENTICATE: u8 = 0x00;
     const TYPE_CONNECT: u8 = 0x01;
     const TYPE_PACKET: u8 = 0x02;
     const TYPE_DISSOCIATE: u8 = 0x03;
     const TYPE_HEARTBEAT: u8 = 0x04;
+
+    const RESPONSE_SUCCEEDED: u8 = 0x00;
+    const RESPONSE_FAILED: u8 = 0xff;
+
+    pub fn new_response(is_succeeded: bool) -> Self {
+        Self::Response(is_succeeded)
+    }
 
     pub fn new_authenticate(digest: [u8; 32]) -> Self {
         Self::Authenticate { digest }
@@ -118,6 +127,14 @@ impl Command {
         buf.put_u8(TUIC_PROTOCOL_VERSION);
 
         match self {
+            Self::Response(is_succeeded) => {
+                buf.put_u8(Self::TYPE_RESPONSE);
+                if *is_succeeded {
+                    buf.put_u8(Self::RESPONSE_SUCCEEDED);
+                } else {
+                    buf.put_u8(Self::RESPONSE_FAILED);
+                }
+            }
             Self::Authenticate { digest } => {
                 buf.put_u8(Self::TYPE_AUTHENTICATE);
                 buf.put_slice(digest);
@@ -148,6 +165,7 @@ impl Command {
 
     pub fn serialized_len(&self) -> usize {
         2 + match self {
+            Self::Response(_) => 1,
             Self::Authenticate { .. } => 32,
             Self::Connect { addr } => addr.serialized_len(),
             Self::Packet { addr, .. } => 6 + addr.serialized_len(),

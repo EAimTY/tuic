@@ -30,6 +30,7 @@ impl Connection {
             let rmt_addr = self.controller.remote_address();
 
             match cmd {
+                Command::Response(_) => Err(DispatchError::BadCommand),
                 Command::Authenticate { .. } => unreachable!(),
                 Command::Connect { .. } => Err(DispatchError::BadCommand),
                 Command::Packet {
@@ -95,6 +96,7 @@ impl Connection {
             let rmt_addr = self.controller.remote_address();
 
             match cmd {
+                Command::Response(_) => Err(DispatchError::BadCommand),
                 Command::Authenticate { .. } => Err(DispatchError::BadCommand),
                 Command::Connect { addr } => {
                     let dst_addr = addr.to_string();
@@ -126,6 +128,7 @@ impl Connection {
             let rmt_addr = self.controller.remote_address();
 
             match cmd {
+                Command::Response(_) => Err(DispatchError::BadCommand),
                 Command::Authenticate { .. } => Err(DispatchError::BadCommand),
                 Command::Connect { .. } => Err(DispatchError::BadCommand),
                 Command::Packet { assoc_id, addr, .. } => {
