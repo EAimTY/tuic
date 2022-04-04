@@ -18,4 +18,12 @@ impl Command {
             _ => None,
         }
     }
+
+    pub fn as_u8(&self) -> u8 {
+        match self {
+            Self::Connect => Self::CMD_CONNECT,
+            Self::Bind => Self::CMD_BIND,
+            Self::Associate => Self::CMD_ASSOCIATE,
+        }
+    }
 }

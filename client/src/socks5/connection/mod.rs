@@ -11,7 +11,6 @@ use std::{net::SocketAddr, sync::Arc};
 use tokio::{net::TcpStream, sync::mpsc::Sender};
 
 mod associate;
-mod bind;
 mod connect;
 
 pub struct Connection {
@@ -45,10 +44,6 @@ impl Connection {
                     log::info!("[socks5] [{src_addr}] [connect] [{}]", req.address);
                     conn.handle_connect(req.address).await?
                 }
-                Command::Bind => {
-                    log::info!("[socks5] [{src_addr}] [bind] [{}]", req.address);
-                    conn.handle_bind(req.address).await?
-                }
                 Command::Associate => {
                     let req_addr = req.address.to_string();
                     log::info!("[socks5] [{src_addr}] [associate] [{req_addr}]");
@@ -56,6 +51,15 @@ impl Connection {
                     conn.handle_associate(src_addr, max_udp_pkt_size).await?;
 
                     log::info!("[socks5] [{src_addr}] [dissociate] [{req_addr}]");
+                }
+                _ => {
+                    log::warn!(
+                        "[socks5] [{src_addr}] unsupported command: {0:#x}",
+                        req.command.as_u8()
+                    );
+
+                    let resp = Response::new(Reply::CommandNotSupported, req.address);
+                    resp.write_to(&mut conn.stream).await?;
                 }
             },
             Err(ProtocolError::Io(err)) => return Err(Socks5Error::Io(err)),
@@ -92,7 +96,6 @@ impl Connection {
 
             match self.auth.as_ref() {
                 Authentication::None => {}
-                Authentication::Gssapi => todo!(),
                 Authentication::Password { username, password } => {
                     let req = PasswordAuthRequest::read_from(&mut self.stream).await?;
 

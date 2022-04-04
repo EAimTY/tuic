@@ -2,7 +2,7 @@
 #[repr(transparent)]
 pub struct HandshakeMethod(pub u8);
 
-#[allow(non_upper_case_globals)]
+#[allow(unused, non_upper_case_globals)]
 impl HandshakeMethod {
     pub const None: Self = Self(0x00);
     pub const Gssapi: Self = Self(0x01);
