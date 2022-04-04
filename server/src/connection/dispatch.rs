@@ -15,13 +15,13 @@ impl Connection {
                 log::debug!("[{rmt_addr}] [authentication]");
 
                 self.is_authenticated.set_authenticated();
-                self.authenticate_broadcast.wake();
+                self.is_authenticated.wake();
                 return Ok(());
             } else {
                 let err = DispatchError::AuthenticationFailed;
                 self.controller
                     .close(err.as_error_code(), err.to_string().as_bytes());
-                self.authenticate_broadcast.wake();
+                self.is_authenticated.wake();
                 return Err(err);
             }
         }
@@ -74,7 +74,10 @@ impl Connection {
 
                     Ok(())
                 }
-                Command::Heartbeat => Ok(()),
+                Command::Heartbeat => {
+                    log::debug!("[{rmt_addr}] [heartbeat]");
+                    Ok(())
+                }
             }
         } else {
             Err(DispatchError::AuthenticationTimeout)

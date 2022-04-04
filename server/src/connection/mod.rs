@@ -1,18 +1,22 @@
 use self::{
-    authenticate::{AuthenticateBroadcast, IsAuthenticated},
+    authenticate::IsAuthenticated,
     dispatch::DispatchError,
     udp::{RecvPacketReceiver, UdpPacketFrom, UdpPacketSource, UdpSessionMap},
 };
 use futures_util::StreamExt;
+use parking_lot::Mutex;
 use quinn::{
     Connecting, Connection as QuinnConnection, ConnectionError, Datagrams, IncomingBiStreams,
     IncomingUniStreams, NewConnection,
 };
 use std::{
+    future::Future,
+    pin::Pin,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
+    task::{Context, Poll, Waker},
     time::Duration,
 };
 use tokio::time;
@@ -29,7 +33,6 @@ pub struct Connection {
     udp_sessions: Arc<UdpSessionMap>,
     expected_token_digest: [u8; 32],
     is_authenticated: IsAuthenticated,
-    authenticate_broadcast: Arc<AuthenticateBroadcast>,
     max_udp_packet_size: usize,
 }
 
@@ -53,8 +56,8 @@ impl Connection {
                 log::debug!("[{rmt_addr}] [establish]");
 
                 let (udp_sessions, recv_pkt_rx) = UdpSessionMap::new();
-                let is_closed = Arc::new(AtomicBool::new(false));
-                let (is_authed, auth_bcast) = IsAuthenticated::new(is_closed.clone());
+                let is_closed = IsClosed::new();
+                let is_authed = IsAuthenticated::new(is_closed.clone());
 
                 let conn = Self {
                     controller: connection,
@@ -62,25 +65,32 @@ impl Connection {
                     udp_sessions: Arc::new(udp_sessions),
                     expected_token_digest: exp_token_dgst,
                     is_authenticated: is_authed,
-                    authenticate_broadcast: auth_bcast,
                     max_udp_packet_size: max_udp_pkt_size,
                 };
 
-                let res = tokio::try_join!(
-                    Self::listen_uni_streams(conn.clone(), uni_streams),
-                    Self::listen_bi_streams(conn.clone(), bi_streams),
-                    Self::listen_datagrams(conn.clone(), datagrams),
-                    Self::listen_received_udp_packet(conn.clone(), recv_pkt_rx),
-                    Self::handle_authentication_timeout(conn, auth_timeout)
-                );
-
-                is_closed.store(true, Ordering::Release);
+                let res = tokio::select! {
+                    res = Self::listen_uni_streams(conn.clone(), uni_streams) => res,
+                    res = Self::listen_bi_streams(conn.clone(), bi_streams) => res,
+                    res = Self::listen_datagrams(conn.clone(), datagrams) => res,
+                    res = Self::listen_received_udp_packet(conn.clone(), recv_pkt_rx) => res,
+                    Err(err) = Self::handle_authentication_timeout(conn, auth_timeout) => Err(err),
+                };
 
                 match res {
-                    Ok(_)
-                    | Err(ConnectionError::LocallyClosed)
-                    | Err(ConnectionError::TimedOut) => log::debug!("[{rmt_addr}] [disconnect]"),
-                    Err(err) => log::error!("[{rmt_addr}] {err}"),
+                    Ok(()) => unreachable!(),
+                    Err(err) => {
+                        is_closed.set_closed();
+
+                        match err {
+                            ConnectionError::TimedOut => {
+                                log::debug!("[{rmt_addr}] [disconnect] [connection timeout]")
+                            }
+                            ConnectionError::LocallyClosed => {
+                                log::debug!("[{rmt_addr}] [disconnect] [locally closed]")
+                            }
+                            err => log::error!("[{rmt_addr}] [disconnect] {err}"),
+                        }
+                    }
                 }
             }
             Err(err) => log::error!("[{rmt_addr}] {err}"),
@@ -180,25 +190,70 @@ impl Connection {
             });
         }
 
-        Ok(())
+        Err(ConnectionError::LocallyClosed)
     }
 
     async fn handle_authentication_timeout(self, timeout: Duration) -> Result<(), ConnectionError> {
-        time::sleep(timeout).await;
+        let is_timeout = tokio::select! {
+            _ = self.is_authenticated.clone() => false,
+            () = time::sleep(timeout) => true,
+        };
 
-        if self.is_authenticated.check() {
+        if !is_timeout {
             Ok(())
         } else {
             let err = DispatchError::AuthenticationTimeout;
 
             self.controller
                 .close(err.as_error_code(), err.to_string().as_bytes());
-            self.authenticate_broadcast.wake();
+            self.is_authenticated.wake();
 
             let rmt_addr = self.controller.remote_address();
             log::error!("[{rmt_addr}] {err}");
 
             Err(ConnectionError::LocallyClosed)
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct IsClosed(Arc<IsClosedInner>);
+
+struct IsClosedInner {
+    is_closed: AtomicBool,
+    waker: Mutex<Option<Waker>>,
+}
+
+impl IsClosed {
+    fn new() -> Self {
+        Self(Arc::new(IsClosedInner {
+            is_closed: AtomicBool::new(false),
+            waker: Mutex::new(None),
+        }))
+    }
+
+    fn set_closed(&self) {
+        self.0.is_closed.store(true, Ordering::Release);
+
+        if let Some(waker) = self.0.waker.lock().take() {
+            waker.wake();
+        }
+    }
+
+    fn check(&self) -> bool {
+        self.0.is_closed.load(Ordering::Acquire)
+    }
+}
+
+impl Future for IsClosed {
+    type Output = ();
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        if self.0.is_closed.load(Ordering::Acquire) {
+            Poll::Ready(())
+        } else {
+            *self.0.waker.lock() = Some(cx.waker().clone());
+            Poll::Pending
         }
     }
 }
