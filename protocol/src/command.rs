@@ -86,6 +86,11 @@ impl Command {
         }
 
         match cmd {
+            Self::TYPE_RESPONSE => match r.read_u8().await? {
+                Self::RESPONSE_SUCCEEDED => Ok(Self::new_response(true)),
+                Self::RESPONSE_FAILED => Ok(Self::new_response(false)),
+                resp => Err(Error::InvalidResponse(resp)),
+            },
             Self::TYPE_AUTHENTICATE => {
                 let mut digest = [0; 32];
                 r.read_exact(&mut digest).await?;

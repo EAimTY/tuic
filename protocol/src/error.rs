@@ -11,8 +11,8 @@ pub enum Error {
     UnsupportedCommand(u8),
     #[error("unsupported address type {0:#x}")]
     UnsupportedAddressType(u8),
-    #[error("unsupported reply {0:#x}")]
-    UnsupportedReply(u8),
+    #[error("invalid response {0:#x}")]
+    InvalidResponse(u8),
     #[error("address domain name must be in UTF-8")]
     AddressInvalidEncoding,
 }
