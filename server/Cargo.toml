@@ -19,10 +19,12 @@ crossbeam-utils = { version = "0.8", default-features = false }
 env_logger = { version = "0.9", features = ["humantime"], default-features = false }
 futures-util = { version = "0.3", default-features = false }
 getopts = "0.2"
-log = "0.4"
+log = { version = "0.4", features = ["serde", "std"] }
 parking_lot = { version = "0.12", features = ["send_guard"] }
 quinn = "0.8"
 rustls = { version = "0.20", features = ["quic"], default-features = false }
 rustls-pemfile = "0.3"
+serde = { version = "1.0", features = ["derive", "std"], default-features = false }
+serde_json = { version = "1.0", features = ["std"], default-features = false }
 thiserror = "1.0"
 tokio = { version = "1.17", features = ["io-util", "macros", "rt-multi-thread", "sync", "time"] }

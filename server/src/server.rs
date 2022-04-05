@@ -22,9 +22,9 @@ impl Server {
         exp_tkn_dgst: [u8; 32],
         auth_timeout: Duration,
         max_udp_pkt_size: usize,
-        ipv6: bool,
+        enable_ipv6: bool,
     ) -> Result<Self, IoError> {
-        let (_, incoming) = if ipv6 {
+        let (_, incoming) = if enable_ipv6 {
             Endpoint::server(config, SocketAddr::from((Ipv6Addr::UNSPECIFIED, port)))?
         } else {
             Endpoint::server(config, SocketAddr::from((Ipv4Addr::UNSPECIFIED, port)))?

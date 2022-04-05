@@ -1,4 +1,6 @@
-use crate::{config::ConfigBuilder, server::Server};
+use config::ConfigError;
+
+use crate::{config::Config, server::Server};
 use std::{env, process};
 
 mod certificate;
@@ -8,13 +10,16 @@ mod server;
 
 #[tokio::main]
 async fn main() {
-    let mut cfg_builder = ConfigBuilder::new();
-    let args = env::args().collect::<Vec<_>>();
+    let args = env::args_os();
 
-    let config = match cfg_builder.parse(&args) {
+    let config = match Config::parse(args) {
         Ok(cfg) => cfg,
         Err(err) => {
-            eprintln!("{err}");
+            match err {
+                ConfigError::Help(help) => println!("{help}"),
+                ConfigError::Version(version) => println!("{version}"),
+                err => eprintln!("{err}"),
+            }
             return;
         }
     };
@@ -27,12 +32,12 @@ async fn main() {
         .init();
 
     let server = match Server::init(
-        config.config,
+        config.server_config,
         config.port,
         config.token_digest,
         config.authentication_timeout,
         config.max_udp_packet_size,
-        config.ipv6,
+        config.enable_ipv6,
     ) {
         Ok(server) => server,
         Err(err) => {
