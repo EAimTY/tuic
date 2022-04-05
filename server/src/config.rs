@@ -104,7 +104,7 @@ struct RawConfig {
     #[serde(default = "default::enable_ipv6")]
     enable_ipv6: bool,
 
-    #[serde(default = "default::level_filter")]
+    #[serde(default = "default::log_level")]
     log_level: LevelFilter,
 }
 
@@ -120,7 +120,7 @@ impl Default for RawConfig {
             authentication_timeout: default::authentication_timeout(),
             max_udp_packet_size: default::max_udp_packet_size(),
             enable_ipv6: default::enable_ipv6(),
-            log_level: default::level_filter(),
+            log_level: default::log_level(),
         }
     }
 }
@@ -256,12 +256,12 @@ impl RawConfig {
             }
         };
 
-        if let Some(congestion) = matches.opt_str("congestion-controller") {
-            raw.congestion_controller = congestion.parse()?;
+        if let Some(cgstn_ctrl) = matches.opt_str("congestion-controller") {
+            raw.congestion_controller = cgstn_ctrl.parse()?;
         };
 
-        if let Some(max_idle_time) = matches.opt_str("max-idle-time") {
-            raw.max_idle_time = max_idle_time.parse()?;
+        if let Some(timeout) = matches.opt_str("max-idle-time") {
+            raw.max_idle_time = timeout.parse()?;
         };
 
         if let Some(timeout) = matches.opt_str("authentication-timeout") {
@@ -300,7 +300,7 @@ impl FromStr for CongestionController {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.eq_ignore_ascii_case("cubic") {
             Ok(CongestionController::Cubic)
-        } else if s.eq_ignore_ascii_case("new_reno") {
+        } else if s.eq_ignore_ascii_case("new_reno") || s.eq_ignore_ascii_case("newreno") {
             Ok(CongestionController::NewReno)
         } else if s.eq_ignore_ascii_case("bbr") {
             Ok(CongestionController::Bbr)
@@ -327,10 +327,6 @@ mod default {
         CongestionController::Cubic
     }
 
-    pub(super) const fn level_filter() -> LevelFilter {
-        LevelFilter::Info
-    }
-
     pub(super) const fn max_idle_time() -> u32 {
         15000
     }
@@ -345,6 +341,10 @@ mod default {
 
     pub(super) const fn enable_ipv6() -> bool {
         false
+    }
+
+    pub(super) const fn log_level() -> LevelFilter {
+        LevelFilter::Info
     }
 }
 

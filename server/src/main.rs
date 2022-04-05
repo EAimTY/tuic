@@ -1,6 +1,7 @@
-use config::ConfigError;
-
-use crate::{config::Config, server::Server};
+use crate::{
+    config::{Config, ConfigError},
+    server::Server,
+};
 use std::{env, process};
 
 mod certificate;
