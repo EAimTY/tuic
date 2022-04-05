@@ -447,7 +447,7 @@ impl RawConfig {
             raw.relay.heartbeat_interval = interval.parse()?;
         };
 
-        raw.relay.reduce_rtt |= matches.opt_present("reduce_rtt");
+        raw.relay.reduce_rtt |= matches.opt_present("reduce-rtt");
 
         raw.local.username = matches.opt_str("local-username").or(raw.local.username);
         raw.local.password = matches.opt_str("local-password").or(raw.local.password);
