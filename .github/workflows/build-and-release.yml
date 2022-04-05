@@ -77,6 +77,48 @@ jobs:
             target: aarch64-apple-ios
             cross: true
             file-ext:
+          # i686-linux-gnu
+          - arch-name: i686-linux-gnu
+            os: ubuntu-latest
+            target: i686-unknown-linux-gnu
+            cross: true
+            file-ext:
+          # i686-linux-musl
+          - arch-name: i686-linux-musl
+            os: ubuntu-latest
+            target: i686-unknown-linux-musl
+            cross: true
+            file-ext:
+          # i686-windows-msvc
+          - arch-name: i686-windows-msvc
+            os: windows-latest
+            target: i686-pc-windows-msvc
+            cross: true
+            file-ext: .exe
+          # i686-android
+          - arch-name: i686-android
+            os: ubuntu-latest
+            target: i686-linux-android
+            cross: true
+            file-ext:
+          # arm-linux-gnueabihf
+          - arch-name: arm-linux-gnueabihf
+            os: ubuntu-latest
+            target: arm-unknown-linux-gnueabihf
+            cross: true
+            file-ext:
+          # armv7-linux-musleabihf
+          - arch-name: armv7-linux-musleabihf
+            os: ubuntu-latest
+            target: armv7-unknown-linux-musleabihf
+            cross: true
+            file-ext:
+          # armv7-android
+          - arch-name: armv7-android
+            os: ubuntu-latest
+            target: armv7-linux-androideabi
+            cross: true
+            file-ext:
 
     runs-on: ${{ matrix.os }}
 
