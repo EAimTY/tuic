@@ -40,6 +40,7 @@ async fn main() {
         config.udp_mode,
         config.heartbeat_interval,
         config.reduce_rtt,
+        config.enable_ipv6,
     ) {
         Ok((relay, tx)) => (tokio::spawn(relay.run()), tx),
         Err(err) => {

@@ -5,7 +5,7 @@ use quinn::{
 use std::{
     fmt::{Display, Formatter, Result as FmtResult},
     io::Error as IoError,
-    net::SocketAddr,
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr},
     sync::Arc,
 };
 use thiserror::Error;
@@ -39,8 +39,15 @@ impl Relay {
         udp_mode: UdpMode,
         heartbeat_interval: u64,
         reduce_rtt: bool,
+        enable_ipv6: bool,
     ) -> Result<(Self, Sender<Request>), IoError> {
-        let mut endpoint = Endpoint::client(SocketAddr::from(([0, 0, 0, 0], 0)))?;
+        let addr = if enable_ipv6 {
+            SocketAddr::from((Ipv6Addr::UNSPECIFIED, 0))
+        } else {
+            SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0))
+        };
+
+        let mut endpoint = Endpoint::client(addr)?;
         endpoint.set_default_client_config(config);
 
         let (req_tx, req_rx) = mpsc::channel(1);
