@@ -1,4 +1,8 @@
-use crate::{config::ConfigBuilder, relay::Relay, socks5::Socks5};
+use crate::{
+    config::{Config, ConfigError},
+    relay::Relay,
+    socks5::Socks5,
+};
 use std::{env, process};
 
 mod certificate;
@@ -8,13 +12,16 @@ mod socks5;
 
 #[tokio::main]
 async fn main() {
-    let mut cfg_builder = ConfigBuilder::new();
-    let args = env::args().collect::<Vec<_>>();
+    let args = env::args_os();
 
-    let config = match cfg_builder.parse(&args) {
+    let config = match Config::parse(args) {
         Ok(cfg) => cfg,
         Err(err) => {
-            eprintln!("{err}");
+            match err {
+                ConfigError::Help(help) => println!("{help}"),
+                ConfigError::Version(version) => println!("{version}"),
+                err => eprintln!("{err}"),
+            }
             return;
         }
     };
@@ -27,7 +34,7 @@ async fn main() {
         .init();
 
     let (relay, req_tx) = match Relay::init(
-        config.config,
+        config.client_config,
         config.server_addr,
         config.token_digest,
         config.udp_mode,
@@ -56,6 +63,15 @@ async fn main() {
         }
     };
 
-    let _ = tokio::join!(relay, socks5);
+    let res = tokio::select! {
+        res = relay => res,
+        res = socks5 => res,
+    };
+
+    match res {
+        Ok(()) => unreachable!(),
+        Err(err) => eprintln!("{err}"),
+    }
+
     process::exit(1);
 }
