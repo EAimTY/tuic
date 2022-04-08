@@ -31,7 +31,10 @@ impl Connection {
             let remote_to_local = io::copy(&mut remote_recv, &mut local_send);
             let local_to_remote = io::copy(&mut local_recv, &mut remote_send);
 
-            let _ = tokio::try_join!(remote_to_local, local_to_remote);
+            tokio::select! {
+                _ = remote_to_local => {},
+                _ = local_to_remote => {},
+            };
         } else {
             let resp = Response::new(
                 Reply::NetworkUnreachable,
