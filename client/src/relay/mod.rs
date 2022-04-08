@@ -3,7 +3,7 @@ use quinn::{
     ClientConfig, ConnectionError, Endpoint, EndpointConfig, ReadExactError, SendDatagramError,
     WriteError,
 };
-use socket2::Socket;
+use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use std::{
     fmt::{Display, Formatter, Result as FmtResult},
     io::Error as IoError,
@@ -43,14 +43,19 @@ impl Relay {
         reduce_rtt: bool,
         enable_ipv6: bool,
     ) -> Result<(Self, Sender<Request>), IoError> {
-        let addr = if enable_ipv6 {
-            SocketAddr::from((Ipv6Addr::UNSPECIFIED, 0))
+        let (addr, domain) = if enable_ipv6 {
+            (SocketAddr::from((Ipv6Addr::UNSPECIFIED, 0)), Domain::IPV6)
         } else {
-            SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0))
+            (SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0)), Domain::IPV4)
         };
 
-        let socket = Socket::from(UdpSocket::bind(addr)?);
-        socket.set_only_v6(false)?;
+        let socket = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))?;
+
+        if enable_ipv6 {
+            socket.set_only_v6(false)?;
+        }
+
+        socket.bind(&SockAddr::from(addr))?;
         let socket = UdpSocket::from(socket);
 
         let (mut endpoint, _) = Endpoint::new(EndpointConfig::default(), None, socket)?;

@@ -1,6 +1,6 @@
 use self::{connection::Connection, protocol::Error as ProtocolError};
 use crate::relay::Request as RelayRequest;
-use socket2::Socket;
+use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use std::{
     io::Error as IoError,
     net::{SocketAddr, TcpListener as StdTcpListener},
@@ -29,10 +29,22 @@ impl Socks5 {
         local_addr: SocketAddr,
         auth: Authentication,
         max_udp_pkt_size: usize,
+        enable_ipv6: bool,
         req_tx: Sender<RelayRequest>,
     ) -> Result<Self, Socks5Error> {
-        let socket = Socket::from(StdTcpListener::bind(local_addr)?);
-        socket.set_only_v6(false)?;
+        let domain = if enable_ipv6 {
+            Domain::IPV6
+        } else {
+            Domain::IPV4
+        };
+
+        let socket = Socket::new(domain, Type::STREAM, Some(Protocol::TCP))?;
+
+        if enable_ipv6 {
+            socket.set_only_v6(false)?;
+        }
+
+        socket.bind(&SockAddr::from(local_addr))?;
         let listener = TcpListener::from_std(StdTcpListener::from(socket))?;
 
         let auth = Arc::new(auth);
