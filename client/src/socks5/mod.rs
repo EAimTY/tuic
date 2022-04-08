@@ -45,6 +45,7 @@ impl Socks5 {
         }
 
         socket.bind(&SockAddr::from(local_addr))?;
+        socket.listen(128)?;
         let listener = TcpListener::from_std(StdTcpListener::from(socket))?;
 
         let auth = Arc::new(auth);

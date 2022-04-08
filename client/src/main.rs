@@ -71,7 +71,7 @@ async fn main() {
     };
 
     match res {
-        Ok(()) => unreachable!(),
+        Ok(()) => {}
         Err(err) => eprintln!("{err}"),
     }
 
