@@ -1,6 +1,11 @@
 use self::{connection::Connection, protocol::Error as ProtocolError};
 use crate::relay::Request as RelayRequest;
-use std::{io::Error as IoError, net::SocketAddr, sync::Arc};
+use socket2::Socket;
+use std::{
+    io::Error as IoError,
+    net::{SocketAddr, TcpListener as StdTcpListener},
+    sync::Arc,
+};
 use thiserror::Error;
 use tokio::{net::TcpListener, sync::mpsc::Sender};
 
@@ -26,7 +31,10 @@ impl Socks5 {
         max_udp_pkt_size: usize,
         req_tx: Sender<RelayRequest>,
     ) -> Result<Self, Socks5Error> {
-        let listener = TcpListener::bind(local_addr).await?;
+        let socket = Socket::from(StdTcpListener::bind(local_addr)?);
+        socket.set_only_v6(false)?;
+        let listener = TcpListener::from_std(StdTcpListener::from(socket))?;
+
         let auth = Arc::new(auth);
 
         Ok(Self {
