@@ -1,9 +1,10 @@
 use crate::connection::Connection;
 use futures_util::StreamExt;
-use quinn::{Endpoint, Incoming, ServerConfig};
+use quinn::{Endpoint, EndpointConfig, Incoming, ServerConfig};
+use socket2::Socket;
 use std::{
     io::Error as IoError,
-    net::{Ipv4Addr, Ipv6Addr, SocketAddr},
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket},
     time::Duration,
 };
 
@@ -24,11 +25,17 @@ impl Server {
         max_udp_pkt_size: usize,
         enable_ipv6: bool,
     ) -> Result<Self, IoError> {
-        let (_, incoming) = if enable_ipv6 {
-            Endpoint::server(config, SocketAddr::from((Ipv6Addr::UNSPECIFIED, port)))?
+        let addr = if enable_ipv6 {
+            SocketAddr::from((Ipv6Addr::UNSPECIFIED, port))
         } else {
-            Endpoint::server(config, SocketAddr::from((Ipv4Addr::UNSPECIFIED, port)))?
+            SocketAddr::from((Ipv4Addr::UNSPECIFIED, port))
         };
+
+        let socket = Socket::from(UdpSocket::bind(addr)?);
+        socket.set_only_v6(false)?;
+        let socket = UdpSocket::from(socket);
+
+        let (_, incoming) = Endpoint::new(EndpointConfig::default(), Some(config), socket)?;
 
         Ok(Self {
             incoming,
