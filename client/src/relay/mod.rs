@@ -1,11 +1,13 @@
 use self::connection::Connection;
 use quinn::{
-    ClientConfig, ConnectionError, Endpoint, ReadExactError, SendDatagramError, WriteError,
+    ClientConfig, ConnectionError, Endpoint, EndpointConfig, ReadExactError, SendDatagramError,
+    WriteError,
 };
+use socket2::Socket;
 use std::{
     fmt::{Display, Formatter, Result as FmtResult},
     io::Error as IoError,
-    net::{Ipv4Addr, Ipv6Addr, SocketAddr},
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket},
     sync::Arc,
 };
 use thiserror::Error;
@@ -47,7 +49,11 @@ impl Relay {
             SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0))
         };
 
-        let mut endpoint = Endpoint::client(addr)?;
+        let socket = Socket::from(UdpSocket::bind(addr)?);
+        socket.set_only_v6(false)?;
+        let socket = UdpSocket::from(socket);
+
+        let (mut endpoint, _) = Endpoint::new(EndpointConfig::default(), None, socket)?;
         endpoint.set_default_client_config(config);
 
         let (req_tx, req_rx) = mpsc::channel(1);
