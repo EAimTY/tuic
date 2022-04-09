@@ -1,13 +1,11 @@
 use self::connection::Connection;
 use quinn::{
-    ClientConfig, ConnectionError, Endpoint, EndpointConfig, ReadExactError, SendDatagramError,
-    WriteError,
+    ClientConfig, ConnectionError, Endpoint, ReadExactError, SendDatagramError, WriteError,
 };
-use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use std::{
     fmt::{Display, Formatter, Result as FmtResult},
     io::Error as IoError,
-    net::{Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket},
+    net::{Ipv4Addr, SocketAddr},
     sync::Arc,
 };
 use thiserror::Error;
@@ -41,24 +39,8 @@ impl Relay {
         udp_mode: UdpMode,
         heartbeat_interval: u64,
         reduce_rtt: bool,
-        enable_ipv6: bool,
     ) -> Result<(Self, Sender<Request>), IoError> {
-        let (addr, domain) = if enable_ipv6 {
-            (SocketAddr::from((Ipv6Addr::UNSPECIFIED, 0)), Domain::IPV6)
-        } else {
-            (SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0)), Domain::IPV4)
-        };
-
-        let socket = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))?;
-
-        if enable_ipv6 {
-            socket.set_only_v6(false)?;
-        }
-
-        socket.bind(&SockAddr::from(addr))?;
-        let socket = UdpSocket::from(socket);
-
-        let (mut endpoint, _) = Endpoint::new(EndpointConfig::default(), None, socket)?;
+        let mut endpoint = Endpoint::client(SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0)))?;
         endpoint.set_default_client_config(config);
 
         let (req_tx, req_rx) = mpsc::channel(1);

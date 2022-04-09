@@ -29,24 +29,17 @@ impl Socks5 {
         local_addr: SocketAddr,
         auth: Authentication,
         max_udp_pkt_size: usize,
-        enable_ipv6: bool,
         req_tx: Sender<RelayRequest>,
     ) -> Result<Self, Socks5Error> {
-        let domain = if enable_ipv6 {
-            Domain::IPV6
+        let listener = if local_addr.is_ipv4() {
+            TcpListener::bind(local_addr).await?
         } else {
-            Domain::IPV4
-        };
-
-        let socket = Socket::new(domain, Type::STREAM, Some(Protocol::TCP))?;
-
-        if enable_ipv6 {
+            let socket = Socket::new(Domain::IPV6, Type::STREAM, Some(Protocol::TCP))?;
             socket.set_only_v6(false)?;
-        }
-
-        socket.bind(&SockAddr::from(local_addr))?;
-        socket.listen(128)?;
-        let listener = TcpListener::from_std(StdTcpListener::from(socket))?;
+            socket.bind(&SockAddr::from(local_addr))?;
+            socket.listen(128)?;
+            TcpListener::from_std(StdTcpListener::from(socket))?
+        };
 
         let auth = Arc::new(auth);
 

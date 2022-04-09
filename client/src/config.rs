@@ -17,7 +17,7 @@ use std::{
     fmt::Display,
     fs::File,
     io::Error as IoError,
-    net::{AddrParseError, IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    net::{AddrParseError, IpAddr, Ipv4Addr, SocketAddr},
     num::ParseIntError,
     str::FromStr,
     sync::Arc,
@@ -29,12 +29,11 @@ pub struct Config {
     pub client_config: ClientConfig,
     pub server_addr: ServerAddr,
     pub token_digest: [u8; 32],
-    pub local_addr: SocketAddr,
-    pub socks5_authentication: Socks5Authentication,
     pub udp_mode: UdpMode,
     pub heartbeat_interval: u64,
     pub reduce_rtt: bool,
-    pub enable_ipv6: bool,
+    pub local_addr: SocketAddr,
+    pub socks5_authentication: Socks5Authentication,
     pub max_udp_packet_size: usize,
     pub log_level: LevelFilter,
 }
@@ -72,10 +71,6 @@ impl Config {
                 }
             }
 
-            if raw.relay.max_idle_time as u64 <= raw.relay.heartbeat_interval {
-                return Err(ConfigError::HeartbeatInterval);
-            }
-
             transport.max_idle_timeout(Some(IdleTimeout::from(VarInt::from_u32(
                 raw.relay.max_idle_time,
             ))));
@@ -102,19 +97,11 @@ impl Config {
         };
 
         let token_digest = *blake3::hash(&raw.relay.token.unwrap().into_bytes()).as_bytes();
+        let udp_mode = raw.relay.udp_mode;
+        let heartbeat_interval = raw.relay.heartbeat_interval;
+        let reduce_rtt = raw.relay.reduce_rtt;
 
-        let local_addr = {
-            let local_port = raw.local.port.unwrap();
-
-            let local_ip = match (raw.enable_ipv6, raw.local.allow_external_connection) {
-                (false, false) => IpAddr::V4(Ipv4Addr::LOCALHOST),
-                (false, true) => IpAddr::V4(Ipv4Addr::UNSPECIFIED),
-                (true, false) => IpAddr::V6(Ipv6Addr::LOCALHOST),
-                (true, true) => IpAddr::V6(Ipv6Addr::UNSPECIFIED),
-            };
-
-            SocketAddr::from((local_ip, local_port))
-        };
+        let local_addr = SocketAddr::from((raw.local.ip, raw.local.port.unwrap()));
 
         let socks5_authentication = match (raw.local.username, raw.local.password) {
             (None, None) => Socks5Authentication::None,
@@ -125,10 +112,6 @@ impl Config {
             _ => return Err(ConfigError::LocalAuthentication),
         };
 
-        let udp_mode = raw.relay.udp_mode;
-        let heartbeat_interval = raw.relay.heartbeat_interval;
-        let reduce_rtt = raw.relay.reduce_rtt;
-        let enable_ipv6 = raw.enable_ipv6;
         let max_udp_packet_size = raw.max_udp_packet_size;
         let log_level = raw.log_level;
 
@@ -136,12 +119,11 @@ impl Config {
             client_config,
             server_addr,
             token_digest,
-            local_addr,
-            socks5_authentication,
             udp_mode,
             heartbeat_interval,
             reduce_rtt,
-            enable_ipv6,
+            local_addr,
+            socks5_authentication,
             max_udp_packet_size,
             log_level,
         })
@@ -153,10 +135,10 @@ impl Config {
 struct RawConfig {
     relay: RawRelayConfig,
     local: RawLocalConfig,
-    #[serde(default = "default::enable_ipv6")]
-    enable_ipv6: bool,
+
     #[serde(default = "default::max_udp_packet_size")]
     max_udp_packet_size: usize,
+
     #[serde(default = "default::log_level")]
     log_level: LevelFilter,
 }
@@ -166,8 +148,8 @@ struct RawConfig {
 struct RawRelayConfig {
     server: Option<String>,
     port: Option<u16>,
-    ip: Option<IpAddr>,
     token: Option<String>,
+    ip: Option<IpAddr>,
     certificate: Option<String>,
 
     #[serde(
@@ -181,10 +163,13 @@ struct RawRelayConfig {
         deserialize_with = "deserialize_from_str"
     )]
     congestion_controller: CongestionController,
+
     #[serde(default = "default::max_idle_time")]
     max_idle_time: u32,
+
     #[serde(default = "default::heartbeat_interval")]
     heartbeat_interval: u64,
+
     #[serde(default = "default::reduce_rtt")]
     reduce_rtt: bool,
 }
@@ -193,10 +178,12 @@ struct RawRelayConfig {
 #[serde(deny_unknown_fields)]
 struct RawLocalConfig {
     port: Option<u16>,
+
+    #[serde(default = "default::local_ip")]
+    ip: IpAddr,
+
     username: Option<String>,
     password: Option<String>,
-    #[serde(default = "default::allow_external_connection")]
-    allow_external_connection: bool,
 }
 
 impl Default for RawConfig {
@@ -204,7 +191,6 @@ impl Default for RawConfig {
         Self {
             relay: RawRelayConfig::default(),
             local: RawLocalConfig::default(),
-            enable_ipv6: default::enable_ipv6(),
             max_udp_packet_size: default::max_udp_packet_size(),
             log_level: default::log_level(),
         }
@@ -232,9 +218,9 @@ impl Default for RawLocalConfig {
     fn default() -> Self {
         Self {
             port: None,
+            ip: default::local_ip(),
             username: None,
             password: None,
-            allow_external_connection: default::allow_external_connection(),
         }
     }
 }
@@ -261,16 +247,16 @@ impl RawConfig {
 
         opts.optopt(
             "",
-            "server-ip",
-            "Set the server IP, for overwriting the DNS lookup result of the server address set in option 'server'",
-            "SERVER_IP",
+            "token",
+            "Set the token for TUIC authentication",
+            "TOKEN",
         );
 
         opts.optopt(
             "",
-            "token",
-            "Set the token for TUIC authentication",
-            "TOKEN",
+            "server-ip",
+            "Set the server IP, for overwriting the DNS lookup result of the server address set in option 'server'",
+            "SERVER_IP",
         );
 
         opts.optopt(
@@ -304,7 +290,7 @@ impl RawConfig {
         opts.optopt(
             "",
             "heartbeat-interval",
-            "Set the heartbeat interval, in milliseconds. This ensures that the QUIC connection is not closed when there are relay tasks but no data transfer. Default: 10000",
+            "Set the heartbeat interval to ensures that the QUIC connection is not closed when there are relay tasks but no data transfer, in milliseconds. This value needs to be smaller than the maximum idle time of the server and client. Default: 10000",
             "HEARTBEAT_INTERVAL",
         );
 
@@ -315,6 +301,13 @@ impl RawConfig {
             "local-port",
             "Set the listening port for the local socks5 server",
             "LOCAL_PORT",
+        );
+
+        opts.optopt(
+            "",
+            "local-ip",
+            r#"Set the listening IP for the local socks5 server. Note that the sock5 server socket will be a dual-stack socket if it is IPv6. Default: "127.0.0.1""#,
+            "LOCAL_IP",
         );
 
         opts.optopt(
@@ -330,14 +323,6 @@ impl RawConfig {
             "Set the password for the local socks5 server authentication",
             "LOCAL_PASSWORD",
         );
-
-        opts.optflag(
-            "",
-            "allow-external-connection",
-            "Allow external connections for local socks5 server",
-        );
-
-        opts.optflag("", "enable-ipv6", "Enable IPv6 support");
 
         opts.optopt(
             "",
@@ -449,12 +434,12 @@ impl RawConfig {
 
         raw.relay.reduce_rtt |= matches.opt_present("reduce-rtt");
 
+        if let Some(local_ip) = matches.opt_str("local-ip") {
+            raw.local.ip = local_ip.parse()?;
+        };
+
         raw.local.username = matches.opt_str("local-username").or(raw.local.username);
         raw.local.password = matches.opt_str("local-password").or(raw.local.password);
-
-        raw.local.allow_external_connection |= matches.opt_present("allow-external-connection");
-
-        raw.enable_ipv6 |= matches.opt_present("enable-ipv6");
 
         if let Some(max_udp_packet_size) = matches.opt_str("max-udp-packet-size") {
             raw.max_udp_packet_size = max_udp_packet_size.parse()?;
@@ -543,12 +528,8 @@ mod default {
         false
     }
 
-    pub(super) const fn allow_external_connection() -> bool {
-        false
-    }
-
-    pub(super) const fn enable_ipv6() -> bool {
-        false
+    pub(super) const fn local_ip() -> IpAddr {
+        IpAddr::V4(Ipv4Addr::LOCALHOST)
     }
 
     pub(super) const fn max_udp_packet_size() -> usize {
@@ -584,8 +565,6 @@ pub enum ConfigError {
     InvalidCongestionController,
     #[error("Invalid udp relay mode")]
     InvalidUdpRelayMode,
-    #[error("Heartbeat interval must be less than the max idle time")]
-    HeartbeatInterval,
     #[error("Failed to load the certificate: {0}")]
     Certificate(#[from] WebpkiError),
     #[error("Username and password must be set together for the local socks5 server")]
