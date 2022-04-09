@@ -142,6 +142,8 @@ Options:
                         but no data transfer, in milliseconds. This value
                         needs to be smaller than the maximum idle time of the
                         server and client. Default: 10000
+        --ipv6-endpoint 
+                        Construct the endpoint from the IPv6 stack
         --reduce-rtt    Enable 0-RTT QUIC handshake
         --local-port LOCAL_PORT
                         Set the listening port for the local socks5 server
@@ -180,6 +182,7 @@ The configuration file is in the JSON format:
         "congestion_controller": "cubic",
         "max_idle_time": 15000,
         "heartbeat_interval": 10000,
+        "ipv6_endpoint": false,
         "reduce_rtt": false
     },
     "local": {
