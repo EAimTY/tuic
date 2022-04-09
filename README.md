@@ -2,6 +2,8 @@
 
 Delicately-TUICed high-performance proxy built on top of the [QUIC](https://en.wikipedia.org/wiki/QUIC) protocol
 
+**TUIC's goal is to provide a highly usable and efficient proxy even on poor quality network, and minimize the handshake latency as much as possible.**
+
 ## Features
 
 - 1-RTT TCP relaying
@@ -16,8 +18,6 @@ Delicately-TUICed high-performance proxy built on top of the [QUIC](https://en.w
 ## Design
 
 TUIC was designed on the basis of the QUIC protocol from the very beginning. It can make full use of the advantages brought by QUIC. You can find more information about the TUIC protocol [here](https://github.com/EAimTY/tuic/tree/master/protocol).
-
-TUIC's goal is to provide a highly usable and efficient proxy even on poor quality network, and minimize the handshake latency as much as possible.
 
 ### Multiplexing
 
@@ -35,7 +35,7 @@ TUIC has 2 UDP relay modes:
 
 Since QUIC is implemented over UDP, its congestion control implementation is not limited by platform and operating system. For poor quality network, [BBR algorithm](https://en.wikipedia.org/wiki/TCP_congestion_control#TCP_BBR) can be used on both the server and the client to achieve better transmission performance.
 
-### Security and Detectability
+### Security
 
 As mentioned above, TUIC is based on the QUIC protocol, which uses TLS to encrypt data. TUIC protocol itself does not provide any security, but the QUIC protocol provides a strong security guarantee. TUIC also supports QUIC's 0-RTT handshake, but it came with a cost of weakened security, [read more about QUIC 0-RTT handshake](https://blog.cloudflare.com/even-faster-connection-establishment-with-quic-0-rtt-resumption/#attack-of-the-clones).
 
@@ -102,7 +102,7 @@ The configuration file is in the JSON format:
 }
 ```
 
-Fields `congestion_controller`, `max_idle_time`, `authentication_timeout`, `max_udp_packet_size`, `enable_ipv6` and `log_level` are optional.
+Fields `port`, `token`, `certificate`, `private_key` are required.
 
 Note that command line arguments can override the configuration file.
 
@@ -119,10 +119,10 @@ Options:
                         in the certificate
         --server-port SERVER_PORT
                         Set the server port
+        --token TOKEN   Set the token for TUIC authentication
         --server-ip SERVER_IP
                         Set the server IP, for overwriting the DNS lookup
                         result of the server address set in option 'server'
-        --token TOKEN   Set the token for TUIC authentication
         --certificate CERTIFICATE
                         Set the X.509 certificate for QUIC handshake. If not
                         set, native CA roots will be trusted
@@ -137,22 +137,24 @@ Options:
                         milliseconds. The true idle timeout is the minimum of
                         this and the client's one. Default: 15000
         --heartbeat-interval HEARTBEAT_INTERVAL
-                        Set the heartbeat interval, in milliseconds. This
-                        ensures that the QUIC connection is not closed when
-                        there are relay tasks but no data transfer. Default:
-                        10000
+                        Set the heartbeat interval to ensures that the QUIC
+                        connection is not closed when there are relay tasks
+                        but no data transfer, in milliseconds. This value
+                        needs to be smaller than the maximum idle time of the
+                        server and client. Default: 10000
         --reduce-rtt    Enable 0-RTT QUIC handshake
         --local-port LOCAL_PORT
                         Set the listening port for the local socks5 server
+        --local-ip LOCAL_IP
+                        Set the listening IP for the local socks5 server. Note
+                        that the sock5 server socket will be a dual-stack
+                        socket if it is IPv6. Default: "127.0.0.1"
         --local-username LOCAL_USERNAME
                         Set the username for the local socks5 server
                         authentication
         --local-password LOCAL_PASSWORD
                         Set the password for the local socks5 server
                         authentication
-        --allow-external-connection 
-                        Allow external connections for local socks5 server
-        --enable-ipv6   Enable IPv6 support
         --max-udp-packet-size MAX_UDP_PACKET_SIZE
                         Set the maximum UDP packet size, in bytes. Excess
                         bytes may be discarded. Default: 1536
@@ -183,16 +185,15 @@ The configuration file is in the JSON format:
     "local": {
         "port": 1080,
 
+        "ip": "127.0.0.1",
         "username": "SOCKS5_USERNAME",
         "password": "SOCKS5_PASSWORD",
-        "allow_external_connection": false
     },
-    "enable_ipv6": false,
     "log_level": "info"
 }
 ```
 
-Fields `ip`, `certificate`, `udp_mode`, `congestion_controller`, `max_idle_time`, `heartbeat_interval` ,`reduce_rtt` in `relay` section ,fields `username`, `password`, `allow_external_connection` in `local` section and fields `enable_ipv6` and `log_level` are optional.
+Fields `server`, `token` and `port` in both sections are required.
 
 Note that command line arguments can override the configuration file.
 
