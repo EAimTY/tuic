@@ -31,6 +31,7 @@ pub struct Config {
     pub token_digest: [u8; 32],
     pub udp_mode: UdpMode,
     pub heartbeat_interval: u64,
+    pub ipv6_endpoint: bool,
     pub reduce_rtt: bool,
     pub local_addr: SocketAddr,
     pub socks5_authentication: Socks5Authentication,
@@ -99,6 +100,7 @@ impl Config {
         let token_digest = *blake3::hash(&raw.relay.token.unwrap().into_bytes()).as_bytes();
         let udp_mode = raw.relay.udp_mode;
         let heartbeat_interval = raw.relay.heartbeat_interval;
+        let ipv6_endpoint = raw.relay.ipv6_endpoint;
         let reduce_rtt = raw.relay.reduce_rtt;
 
         let local_addr = SocketAddr::from((raw.local.ip, raw.local.port.unwrap()));
@@ -121,6 +123,7 @@ impl Config {
             token_digest,
             udp_mode,
             heartbeat_interval,
+            ipv6_endpoint,
             reduce_rtt,
             local_addr,
             socks5_authentication,
@@ -170,6 +173,9 @@ struct RawRelayConfig {
     #[serde(default = "default::heartbeat_interval")]
     heartbeat_interval: u64,
 
+    #[serde(default = "default::ipv6_endpoint")]
+    ipv6_endpoint: bool,
+
     #[serde(default = "default::reduce_rtt")]
     reduce_rtt: bool,
 }
@@ -209,6 +215,7 @@ impl Default for RawRelayConfig {
             congestion_controller: default::congestion_controller(),
             max_idle_time: default::max_idle_time(),
             heartbeat_interval: default::heartbeat_interval(),
+            ipv6_endpoint: default::ipv6_endpoint(),
             reduce_rtt: default::reduce_rtt(),
         }
     }
@@ -292,6 +299,12 @@ impl RawConfig {
             "heartbeat-interval",
             "Set the heartbeat interval to ensures that the QUIC connection is not closed when there are relay tasks but no data transfer, in milliseconds. This value needs to be smaller than the maximum idle time of the server and client. Default: 10000",
             "HEARTBEAT_INTERVAL",
+        );
+
+        opts.optflag(
+            "",
+            "ipv6-endpoint",
+            "Construct the endpoint from the IPv6 stack",
         );
 
         opts.optflag("", "reduce-rtt", "Enable 0-RTT QUIC handshake");
@@ -432,6 +445,7 @@ impl RawConfig {
             raw.relay.heartbeat_interval = interval.parse()?;
         };
 
+        raw.relay.ipv6_endpoint |= matches.opt_present("ipv6-endpoint");
         raw.relay.reduce_rtt |= matches.opt_present("reduce-rtt");
 
         if let Some(local_ip) = matches.opt_str("local-ip") {
@@ -522,6 +536,10 @@ mod default {
 
     pub(super) const fn heartbeat_interval() -> u64 {
         10000
+    }
+
+    pub(super) const fn ipv6_endpoint() -> bool {
+        false
     }
 
     pub(super) const fn reduce_rtt() -> bool {
