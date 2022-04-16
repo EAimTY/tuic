@@ -60,8 +60,15 @@ impl Socks5 {
             let req_tx = self.req_tx.clone();
 
             tokio::spawn(async move {
-                match Connection::handle(conn, src_addr, auth, self.max_udp_packet_size, req_tx)
-                    .await
+                match Connection::handle(
+                    conn,
+                    src_addr,
+                    self.local_addr,
+                    auth,
+                    self.max_udp_packet_size,
+                    req_tx,
+                )
+                .await
                 {
                     Ok(()) => {}
                     Err(err) => log::warn!("[socks5] [{src_addr}] {err}"),

@@ -6,7 +6,6 @@ use crate::{
         Socks5Error,
     },
 };
-use std::net::SocketAddr;
 use tokio::io;
 
 impl Connection {
@@ -20,11 +19,7 @@ impl Connection {
             .map_err(|_| Socks5Error::RelayConnectivity)?;
 
         if let Some((mut remote_send, mut remote_recv)) = relay_resp {
-            let resp = Response::new(
-                Reply::Succeeded,
-                Address::SocketAddress(SocketAddr::from(([0, 0, 0, 0], 0))),
-            );
-
+            let resp = Response::new(Reply::Succeeded, Address::SocketAddress(self.local_addr));
             resp.write_to(&mut self.stream).await?;
 
             let (mut local_recv, mut local_send) = self.stream.split();
@@ -38,7 +33,7 @@ impl Connection {
         } else {
             let resp = Response::new(
                 Reply::NetworkUnreachable,
-                Address::SocketAddress(SocketAddr::from(([0, 0, 0, 0], 0))),
+                Address::SocketAddress(self.local_addr),
             );
 
             resp.write_to(&mut self.stream).await?;

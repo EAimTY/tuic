@@ -7,7 +7,10 @@ use crate::{
     },
 };
 use bytes::{Bytes, BytesMut};
-use std::{net::SocketAddr, sync::Arc};
+use std::{
+    net::{IpAddr, SocketAddr},
+    sync::Arc,
+};
 use tokio::{
     io::AsyncReadExt,
     net::{TcpStream, UdpSocket},
@@ -20,7 +23,7 @@ impl Connection {
         ctrl_addr: SocketAddr,
         max_udp_pkt_size: usize,
     ) -> Result<(), Socks5Error> {
-        match create_udp_socket().await {
+        match create_udp_socket(self.local_addr.ip()).await {
             Ok((socket, socket_addr)) => {
                 let socket = Arc::new(socket);
 
@@ -46,7 +49,7 @@ impl Connection {
             Err(err) => {
                 let resp = Response::new(
                     Reply::GeneralFailure,
-                    Address::SocketAddress(SocketAddr::from(([0, 0, 0, 0], 0))),
+                    Address::SocketAddress(self.local_addr),
                 );
 
                 resp.write_to(&mut self.stream).await?;
@@ -57,8 +60,8 @@ impl Connection {
     }
 }
 
-async fn create_udp_socket() -> Result<(UdpSocket, SocketAddr), Socks5Error> {
-    let socket = UdpSocket::bind(SocketAddr::from(([0, 0, 0, 0], 0))).await?;
+async fn create_udp_socket(ip: IpAddr) -> Result<(UdpSocket, SocketAddr), Socks5Error> {
+    let socket = UdpSocket::bind(SocketAddr::from((ip, 0))).await?;
     let addr = socket.local_addr()?;
 
     Ok((socket, addr))

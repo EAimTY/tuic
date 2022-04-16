@@ -15,6 +15,7 @@ mod connect;
 
 pub struct Connection {
     stream: TcpStream,
+    local_addr: SocketAddr,
     auth: Arc<Authentication>,
     req_tx: Sender<RelayRequest>,
 }
@@ -23,6 +24,7 @@ impl Connection {
     pub async fn handle(
         conn: TcpStream,
         src_addr: SocketAddr,
+        local_addr: SocketAddr,
         auth: Arc<Authentication>,
         max_udp_pkt_size: usize,
         req_tx: Sender<RelayRequest>,
@@ -31,6 +33,7 @@ impl Connection {
 
         let mut conn = Self {
             stream: conn,
+            local_addr,
             auth,
             req_tx,
         };
@@ -71,10 +74,7 @@ impl Connection {
                     _ => Reply::GeneralFailure,
                 };
 
-                let resp = Response::new(
-                    reply,
-                    Address::SocketAddress(SocketAddr::from(([0, 0, 0, 0], 0))),
-                );
+                let resp = Response::new(reply, Address::SocketAddress(conn.local_addr));
                 resp.write_to(&mut conn.stream).await?;
 
                 return Err(Socks5Error::Protocol(err));
