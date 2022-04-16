@@ -3,9 +3,9 @@ use getopts::{Fail, Options};
 use log::{LevelFilter, ParseLevelError};
 use quinn::{
     congestion::{BbrConfig, CubicConfig, NewRenoConfig},
-    IdleTimeout, ServerConfig, TransportConfig, VarInt,
+    IdleTimeout, ServerConfig, VarInt,
 };
-use rustls::Error as RustlsError;
+use rustls::{version::TLS13, Error as RustlsError, ServerConfig as RustlsServerConfig};
 use serde::{de::Error as DeError, Deserialize, Deserializer};
 use serde_json::Error as JsonError;
 use std::{
@@ -37,8 +37,19 @@ impl Config {
             let priv_key = certificate::load_private_key(&priv_key_path)
                 .map_err(|err| ConfigError::Io(priv_key_path, err))?;
 
-            let mut config = ServerConfig::with_single_cert(certs, priv_key)?;
-            let mut transport = TransportConfig::default();
+            let mut crypto = RustlsServerConfig::builder()
+                .with_safe_default_cipher_suites()
+                .with_safe_default_kx_groups()
+                .with_protocol_versions(&[&TLS13])
+                .unwrap()
+                .with_no_client_auth()
+                .with_single_cert(certs, priv_key)?;
+
+            crypto.max_early_data_size = u32::MAX;
+            crypto.alpn_protocols = raw.alpn.into_iter().map(|alpn| alpn.into_bytes()).collect();
+
+            let mut config = ServerConfig::with_crypto(Arc::new(crypto));
+            let transport = Arc::get_mut(&mut config.transport).unwrap();
 
             match raw.congestion_controller {
                 CongestionController::Bbr => {
@@ -55,7 +66,6 @@ impl Config {
             transport
                 .max_idle_timeout(Some(IdleTimeout::from(VarInt::from_u32(raw.max_idle_time))));
 
-            config.transport = Arc::new(transport);
             config
         };
 
@@ -98,6 +108,9 @@ struct RawConfig {
     #[serde(default = "default::authentication_timeout")]
     authentication_timeout: u64,
 
+    #[serde(default = "default::alpn")]
+    alpn: Vec<String>,
+
     #[serde(default = "default::max_udp_packet_size")]
     max_udp_packet_size: usize,
 
@@ -118,6 +131,7 @@ impl Default for RawConfig {
             congestion_controller: default::congestion_controller(),
             max_idle_time: default::max_idle_time(),
             authentication_timeout: default::authentication_timeout(),
+            alpn: default::alpn(),
             max_udp_packet_size: default::max_udp_packet_size(),
             enable_ipv6: default::enable_ipv6(),
             log_level: default::log_level(),
@@ -178,6 +192,13 @@ impl RawConfig {
             "authentication-timeout",
             "Set the maximum time allowed between a QUIC connection established and the TUIC authentication packet received, in milliseconds. Default: 1000",
             "AUTHENTICATION_TIMEOUT",
+        );
+
+        opts.optopt(
+            "",
+            "alpn",
+            "Set ALPN protocols that the server accepts. This option can be used multiple times to set multiple ALPN protocols. If not set, the server will not check ALPN at all",
+            "ALPN_PROTOCOL",
         );
 
         opts.optopt(
@@ -268,6 +289,12 @@ impl RawConfig {
             raw.authentication_timeout = timeout.parse()?;
         };
 
+        let alpn = matches.opt_strs("alpn");
+
+        if !alpn.is_empty() {
+            raw.alpn = alpn;
+        }
+
         if let Some(max_udp_packet_size) = matches.opt_str("max-udp-packet-size") {
             raw.max_udp_packet_size = max_udp_packet_size.parse()?;
         };
@@ -333,6 +360,10 @@ mod default {
 
     pub(super) const fn authentication_timeout() -> u64 {
         1000
+    }
+
+    pub(super) const fn alpn() -> Vec<String> {
+        Vec::new()
     }
 
     pub(super) const fn max_udp_packet_size() -> usize {
