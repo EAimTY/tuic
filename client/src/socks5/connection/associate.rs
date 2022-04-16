@@ -121,7 +121,7 @@ async fn listen_packet_from_relay(
 }
 
 async fn listen_control_stream(mut stream: TcpStream) {
-    while let true = stream.read_u8().await.is_ok() {}
+    while stream.read_u8().await.is_ok() {}
 }
 
 async fn process_packet_to_relay(pkt: Bytes) -> Result<(Bytes, RelayAddress), Socks5Error> {
