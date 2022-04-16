@@ -73,6 +73,11 @@ Options:
                         Set the maximum time allowed between a QUIC connection
                         established and the TUIC authentication packet
                         received, in milliseconds. Default: 1000
+        --alpn ALPN_PROTOCOL
+                        Set ALPN protocols that the server accepts. This
+                        option can be used multiple times to set multiple ALPN
+                        protocols. If not set, the server will not check ALPN
+                        at all
         --max-udp-packet-size MAX_UDP_PACKET_SIZE
                         Set the maximum UDP packet size, in bytes. Excess
                         bytes may be discarded. Default: 1536
@@ -84,7 +89,7 @@ Options:
     -h, --help          Print this help menu
 ```
 
-The configuration file is in the JSON format:
+The configuration file is in JSON format:
 
 ```json
 {
@@ -96,6 +101,7 @@ The configuration file is in the JSON format:
     "congestion_controller": "cubic",
     "max_idle_time": 15000,
     "authentication_timeout": 1000,
+    "alpn": ["h3"],
     "max_udp_packet_size": 1536,
     "enable_ipv6": false,
     "log_level": "info"
@@ -142,6 +148,13 @@ Options:
                         but no data transfer, in milliseconds. This value
                         needs to be smaller than the maximum idle time of the
                         server and client. Default: 10000
+        --alpn ALPN_PROTOCOL
+                        Set ALPN protocols included in the TLS client hello.
+                        This option can be used multiple times to set multiple
+                        ALPN protocols. If not set, no ALPN extension will be
+                        sent
+        --disable-sni   Not sending the Server Name Indication (SNI) extension
+                        during the client TLS handshake
         --ipv6-endpoint 
                         Construct the endpoint from the IPv6 stack
         --reduce-rtt    Enable 0-RTT QUIC handshake
@@ -167,7 +180,7 @@ Options:
     -h, --help          Print this help menu
 ```
 
-The configuration file is in the JSON format:
+The configuration file is in JSON format:
 
 ```json
 {
@@ -182,6 +195,8 @@ The configuration file is in the JSON format:
         "congestion_controller": "cubic",
         "max_idle_time": 15000,
         "heartbeat_interval": 10000,
+        "alpn": ["h3"],
+        "disable_sni": false,
         "ipv6_endpoint": false,
         "reduce_rtt": false
     },
@@ -199,6 +214,16 @@ The configuration file is in the JSON format:
 Fields `server`, `token` and `port` in both sections are required.
 
 Note that command line arguments can override the configuration file.
+
+## FAQ
+
+### Why TUIC client doesn't support other inbound / advanced route settings?
+
+Since there are already many great proxy convert / distribute solutions, there really is no need for me to reimplement those again. If you need those functions, the best choice to chain a v2ray layer in front of the TUIC client. For a typical network program, there is basically no performance cost for local relaying.
+
+### How to use TUIC client on my smartphone?
+
+TUIC doesn't have any GUI client yet. The current best way to use TUIC on smartphones is to run it on the router.
 
 ## License
 GNU General Public License v3.0
