@@ -1,6 +1,6 @@
 [package]
 name = "tuic-client"
-version = "0.5.0"
+version = "0.6.0"
 authors = ["EAimTY <ea.imty@gmail.com>"]
 description = "Delicately-TUICed high-performance proxy built on top of the QUIC protocol"
 categories = ["network-programming", "command-line-utilities"]
@@ -25,7 +25,7 @@ quinn = "0.8"
 rand = "0.8"
 rustls = { version = "0.20", features = ["quic"], default-features = false }
 rustls-native-certs = "0.6"
-rustls-pemfile = "0.3"
+rustls-pemfile = "1.0"
 serde = { version = "1.0", features = ["derive", "std"], default-features = false }
 serde_json = { version = "1.0", features = ["std"], default-features = false }
 socket2 = "0.4"
