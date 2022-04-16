@@ -1,7 +1,7 @@
 use super::{Error, SUBNEGOTIATION_VERSION};
 use tokio::io::{AsyncRead, AsyncReadExt};
 
-/// SOCKS5 password handshake request packet
+/// SOCKS5 password handshake request
 ///
 /// ```plain
 /// +-----+------+----------+------+----------+

@@ -30,9 +30,7 @@ impl Connection {
             let rmt_addr = self.controller.remote_address();
 
             match cmd {
-                Command::Response(_) => Err(DispatchError::BadCommand),
                 Command::Authenticate { .. } => unreachable!(),
-                Command::Connect { .. } => Err(DispatchError::BadCommand),
                 Command::Packet {
                     assoc_id,
                     len,
@@ -79,6 +77,7 @@ impl Connection {
                     log::debug!("[{rmt_addr}] [heartbeat]");
                     Ok(())
                 }
+                _ => Err(DispatchError::BadCommand),
             }
         } else {
             Err(DispatchError::AuthenticationTimeout)
@@ -96,8 +95,6 @@ impl Connection {
             let rmt_addr = self.controller.remote_address();
 
             match cmd {
-                Command::Response(_) => Err(DispatchError::BadCommand),
-                Command::Authenticate { .. } => Err(DispatchError::BadCommand),
                 Command::Connect { addr } => {
                     let dst_addr = addr.to_string();
                     log::info!("[{rmt_addr}] [connect] [{dst_addr}]");
@@ -111,9 +108,7 @@ impl Connection {
 
                     Ok(())
                 }
-                Command::Packet { .. } => Err(DispatchError::BadCommand),
-                Command::Dissociate { .. } => Err(DispatchError::BadCommand),
-                Command::Heartbeat => Err(DispatchError::BadCommand),
+                _ => Err(DispatchError::BadCommand),
             }
         } else {
             Err(DispatchError::AuthenticationTimeout)
@@ -128,9 +123,6 @@ impl Connection {
             let rmt_addr = self.controller.remote_address();
 
             match cmd {
-                Command::Response(_) => Err(DispatchError::BadCommand),
-                Command::Authenticate { .. } => Err(DispatchError::BadCommand),
-                Command::Connect { .. } => Err(DispatchError::BadCommand),
                 Command::Packet { assoc_id, addr, .. } => {
                     if self.udp_packet_from.datagram() {
                         let dst_addr = addr.to_string();
@@ -160,8 +152,7 @@ impl Connection {
                         Err(DispatchError::BadCommand)
                     }
                 }
-                Command::Dissociate { .. } => Err(DispatchError::BadCommand),
-                Command::Heartbeat => Err(DispatchError::BadCommand),
+                _ => Err(DispatchError::BadCommand),
             }
         } else {
             Err(DispatchError::AuthenticationTimeout)

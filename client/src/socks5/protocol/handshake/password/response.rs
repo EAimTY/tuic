@@ -3,7 +3,7 @@ use bytes::{BufMut, BytesMut};
 use std::io::Result as IoResult;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
-/// SOCKS5 password handshake response packet
+/// SOCKS5 password handshake response
 ///
 /// ```plain
 /// +-----+--------+

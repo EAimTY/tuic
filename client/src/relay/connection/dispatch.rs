@@ -65,9 +65,6 @@ impl Connection {
         let cmd = TuicCommand::read_from(&mut stream).await?;
 
         match cmd {
-            TuicCommand::Response(_) => Err(RelayError::BadCommand),
-            TuicCommand::Authenticate { .. } => Err(RelayError::BadCommand),
-            TuicCommand::Connect { .. } => Err(RelayError::BadCommand),
             TuicCommand::Packet {
                 assoc_id,
                 len,
@@ -82,8 +79,7 @@ impl Connection {
                 task::packet_from_server(pkt, self.udp_sessions, assoc_id, Address::from(addr))
                     .await
             }
-            TuicCommand::Dissociate { .. } => Err(RelayError::BadCommand),
-            TuicCommand::Heartbeat => Err(RelayError::BadCommand),
+            _ => Err(RelayError::BadCommand),
         }
     }
 
@@ -92,9 +88,6 @@ impl Connection {
         let cmd_len = cmd.serialized_len();
 
         match cmd {
-            TuicCommand::Response(_) => Err(RelayError::BadCommand),
-            TuicCommand::Authenticate { .. } => Err(RelayError::BadCommand),
-            TuicCommand::Connect { .. } => Err(RelayError::BadCommand),
             TuicCommand::Packet { assoc_id, addr, .. } => {
                 log::debug!("[relay] [task] [associate] [{assoc_id}] [packet-from-native] {addr}");
 
@@ -106,8 +99,7 @@ impl Connection {
                 )
                 .await
             }
-            TuicCommand::Dissociate { .. } => Err(RelayError::BadCommand),
-            TuicCommand::Heartbeat => Err(RelayError::BadCommand),
+            _ => Err(RelayError::BadCommand),
         }
     }
 }

@@ -12,6 +12,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 /// |  1  |  1   | Variable |
 /// +-----+------+----------+
 /// ```
+#[non_exhaustive]
 #[derive(Clone)]
 pub enum Command {
     Response(bool),

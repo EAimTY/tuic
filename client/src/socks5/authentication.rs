@@ -1,6 +1,5 @@
 use super::protocol::HandshakeMethod;
 
-#[allow(unused)]
 pub enum Authentication {
     None,
     Password {
