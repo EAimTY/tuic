@@ -54,7 +54,7 @@ impl Config {
                 }
             } else {
                 for cert in rustls_native_certs::load_native_certs()
-                    .map_err(|err| ConfigError::NativeCertificate(err))?
+                    .map_err(ConfigError::NativeCertificate)?
                 {
                     roots.add(&Certificate(cert.0))?;
                 }
@@ -75,6 +75,7 @@ impl Config {
                 .map(|alpn| alpn.into_bytes())
                 .collect();
 
+            crypto.enable_early_data = true;
             crypto.enable_sni = !raw.relay.disable_sni;
 
             let mut config = ClientConfig::new(Arc::new(crypto));
