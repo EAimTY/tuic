@@ -7,9 +7,9 @@ use getopts::{Fail, Options};
 use log::{LevelFilter, ParseLevelError};
 use quinn::{
     congestion::{BbrConfig, CubicConfig, NewRenoConfig},
-    ClientConfig, IdleTimeout, TransportConfig, VarInt,
+    ClientConfig, IdleTimeout, VarInt,
 };
-use rustls::RootCertStore;
+use rustls::{version::TLS13, Certificate, ClientConfig as RustlsClientConfig, RootCertStore};
 use serde::{de::Error as DeError, Deserialize, Deserializer};
 use serde_json::Error as JsonError;
 use std::{
@@ -44,21 +44,41 @@ impl Config {
         let raw = RawConfig::parse(args)?;
 
         let client_config = {
-            let mut config = if let Some(path) = raw.relay.certificate {
-                let mut certs = RootCertStore::empty();
+            let mut roots = RootCertStore::empty();
 
+            if let Some(path) = raw.relay.certificate {
                 for cert in certificate::load_certificates(&path)
                     .map_err(|err| ConfigError::Io(path, err))?
                 {
-                    certs.add(&cert)?;
+                    roots.add(&cert)?;
                 }
-
-                ClientConfig::with_root_certificates(certs)
             } else {
-                ClientConfig::with_native_roots()
-            };
+                for cert in rustls_native_certs::load_native_certs()
+                    .map_err(|err| ConfigError::NativeCertificate(err))?
+                {
+                    roots.add(&Certificate(cert.0))?;
+                }
+            }
 
-            let mut transport = TransportConfig::default();
+            let mut crypto = RustlsClientConfig::builder()
+                .with_safe_default_cipher_suites()
+                .with_safe_default_kx_groups()
+                .with_protocol_versions(&[&TLS13])
+                .unwrap()
+                .with_root_certificates(roots)
+                .with_no_client_auth();
+
+            crypto.alpn_protocols = raw
+                .relay
+                .alpn
+                .into_iter()
+                .map(|alpn| alpn.into_bytes())
+                .collect();
+
+            crypto.enable_sni = !raw.relay.disable_sni;
+
+            let mut config = ClientConfig::new(Arc::new(crypto));
+            let transport = Arc::get_mut(&mut config.transport).unwrap();
 
             match raw.relay.congestion_controller {
                 CongestionController::Bbr => {
@@ -76,7 +96,6 @@ impl Config {
                 raw.relay.max_idle_time,
             ))));
 
-            config.transport = Arc::new(transport);
             config
         };
 
@@ -173,6 +192,12 @@ struct RawRelayConfig {
     #[serde(default = "default::heartbeat_interval")]
     heartbeat_interval: u64,
 
+    #[serde(default = "default::alpn")]
+    alpn: Vec<String>,
+
+    #[serde(default = "default::disable_sni")]
+    disable_sni: bool,
+
     #[serde(default = "default::ipv6_endpoint")]
     ipv6_endpoint: bool,
 
@@ -215,6 +240,8 @@ impl Default for RawRelayConfig {
             congestion_controller: default::congestion_controller(),
             max_idle_time: default::max_idle_time(),
             heartbeat_interval: default::heartbeat_interval(),
+            alpn: default::alpn(),
+            disable_sni: default::disable_sni(),
             ipv6_endpoint: default::ipv6_endpoint(),
             reduce_rtt: default::reduce_rtt(),
         }
@@ -299,6 +326,19 @@ impl RawConfig {
             "heartbeat-interval",
             "Set the heartbeat interval to ensures that the QUIC connection is not closed when there are relay tasks but no data transfer, in milliseconds. This value needs to be smaller than the maximum idle time of the server and client. Default: 10000",
             "HEARTBEAT_INTERVAL",
+        );
+
+        opts.optopt(
+            "",
+            "alpn",
+            "Set ALPN protocols included in the TLS client hello. This option can be used multiple times to set multiple ALPN protocols. If not set, no ALPN extension will be sent",
+            "ALPN_PROTOCOL",
+        );
+
+        opts.optflag(
+            "",
+            "disable-sni",
+            "Not sending the Server Name Indication (SNI) extension during the client TLS handshake",
         );
 
         opts.optflag(
@@ -445,6 +485,13 @@ impl RawConfig {
             raw.relay.heartbeat_interval = interval.parse()?;
         };
 
+        let alpn = matches.opt_strs("alpn");
+
+        if !alpn.is_empty() {
+            raw.relay.alpn = alpn;
+        }
+
+        raw.relay.disable_sni |= matches.opt_present("disable-sni");
         raw.relay.ipv6_endpoint |= matches.opt_present("ipv6-endpoint");
         raw.relay.reduce_rtt |= matches.opt_present("reduce-rtt");
 
@@ -538,6 +585,14 @@ mod default {
         10000
     }
 
+    pub(super) const fn alpn() -> Vec<String> {
+        Vec::new()
+    }
+
+    pub(super) const fn disable_sni() -> bool {
+        false
+    }
+
     pub(super) const fn ipv6_endpoint() -> bool {
         false
     }
@@ -585,6 +640,8 @@ pub enum ConfigError {
     InvalidUdpRelayMode,
     #[error("Failed to load the certificate: {0}")]
     Certificate(#[from] WebpkiError),
+    #[error("Could not load platform certs: {0}")]
+    NativeCertificate(#[source] IoError),
     #[error("Username and password must be set together for the local socks5 server")]
     LocalAuthentication,
     #[error(transparent)]

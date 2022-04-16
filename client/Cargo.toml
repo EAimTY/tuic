@@ -24,6 +24,7 @@ parking_lot = "0.12"
 quinn = "0.8"
 rand = "0.8"
 rustls = { version = "0.20", features = ["quic"], default-features = false }
+rustls-native-certs = "0.6"
 rustls-pemfile = "0.3"
 serde = { version = "1.0", features = ["derive", "std"], default-features = false }
 serde_json = { version = "1.0", features = ["std"], default-features = false }
