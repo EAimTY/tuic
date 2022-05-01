@@ -1,16 +1,15 @@
-use super::Address;
+use super::{Address, Stream};
 use bytes::Bytes;
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
-use quinn::{RecvStream, SendStream};
 use rand::{rngs::StdRng, RngCore, SeedableRng};
 use tokio::sync::{
     mpsc::{self, Receiver as MpscReceiver, Sender as MpscSender},
     oneshot::{self, Receiver as OneshotReceiver, Sender as OneshotSender},
 };
 
-type ConnectResponseSender = OneshotSender<Option<(SendStream, RecvStream)>>;
-type ConnectResponseReceiver = OneshotReceiver<Option<(SendStream, RecvStream)>>;
+type ConnectResponseSender = OneshotSender<Option<Stream>>;
+type ConnectResponseReceiver = OneshotReceiver<Option<Stream>>;
 type AssociateSendPacketSender = MpscSender<(Bytes, Address)>;
 type AssociateSendPacketReceiver = MpscReceiver<(Bytes, Address)>;
 type AssociateRecvPacketSender = MpscSender<(Bytes, Address)>;

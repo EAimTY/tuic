@@ -17,11 +17,12 @@ use tokio::{
 };
 use tuic_protocol::Error as ProtocolError;
 
-pub use self::{address::Address, request::Request};
+pub use self::{address::Address, request::Request, stream::Stream};
 
 mod address;
 mod connection;
 mod request;
+mod stream;
 
 pub struct Relay {
     req_rx: Receiver<Request>,

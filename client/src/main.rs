@@ -49,14 +49,7 @@ async fn main() {
         }
     };
 
-    let socks5 = match Socks5::init(
-        config.local_addr,
-        config.socks5_authentication,
-        config.max_udp_packet_size,
-        req_tx,
-    )
-    .await
-    {
+    let socks5 = match Socks5::init(config.local_addr, config.socks5_auth, req_tx).await {
         Ok(socks5) => tokio::spawn(socks5.run()),
         Err(err) => {
             eprintln!("{err}");

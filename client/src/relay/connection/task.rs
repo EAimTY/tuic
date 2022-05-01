@@ -1,32 +1,33 @@
 use super::UdpSessionMap;
-use crate::relay::{Address, RelayError};
+use crate::relay::{Address, RelayError, Stream};
 use bytes::{Bytes, BytesMut};
-use quinn::{Connection as QuinnConnection, RecvStream, SendStream};
+use quinn::Connection as QuinnConnection;
 use std::sync::Arc;
-use tokio::sync::oneshot::Sender;
+use tokio::{io::AsyncWriteExt, sync::oneshot::Sender};
 use tuic_protocol::{Address as TuicAddress, Command as TuicCommand};
 
 pub async fn connect(
     conn: QuinnConnection,
     addr: Address,
-    tx: Sender<Option<(SendStream, RecvStream)>>,
+    tx: Sender<Option<Stream>>,
 ) -> Result<(), RelayError> {
     async fn get_streams(
         conn: QuinnConnection,
         addr: Address,
-    ) -> Result<Option<(SendStream, RecvStream)>, RelayError> {
-        let (mut send, mut recv) = conn.open_bi().await?;
-
+    ) -> Result<Option<Stream>, RelayError> {
+        let (send, recv) = conn.open_bi().await?;
+        let mut stream = Stream::new(send, recv);
         let addr = TuicAddress::from(addr);
+
         let cmd = TuicCommand::new_connect(addr);
+        cmd.write_to(&mut stream).await?;
 
-        cmd.write_to(&mut send).await?;
-
-        let resp = TuicCommand::read_from(&mut recv).await?;
+        let resp = TuicCommand::read_from(&mut stream).await?;
 
         if let TuicCommand::Response(true) = resp {
-            Ok(Some((send, recv)))
+            Ok(Some(stream))
         } else {
+            let _ = stream.shutdown().await;
             Ok(None)
         }
     }
@@ -56,6 +57,7 @@ pub async fn packet_to_uni_stream(
 
     cmd.write_to(&mut stream).await?;
     stream.write_all(&pkt).await?;
+    let _ = stream.shutdown().await;
 
     Ok(())
 }
@@ -100,6 +102,7 @@ pub async fn dissociate(conn: QuinnConnection, assoc_id: u32) -> Result<(), Rela
     let mut stream = conn.open_uni().await?;
     let cmd = TuicCommand::new_dissociate(assoc_id);
     cmd.write_to(&mut stream).await?;
+    let _ = stream.shutdown().await;
 
     Ok(())
 }

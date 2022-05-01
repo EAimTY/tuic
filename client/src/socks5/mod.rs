@@ -1,36 +1,29 @@
-use self::{connection::Connection, protocol::Error as ProtocolError};
 use crate::relay::Request as RelayRequest;
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
+use socks5_server::{Auth, Connection, IncomingConnection, Server};
 use std::{
     io::Error as IoError,
     net::{SocketAddr, TcpListener as StdTcpListener},
     sync::Arc,
 };
-use thiserror::Error;
 use tokio::{net::TcpListener, sync::mpsc::Sender};
 
-pub use self::authentication::Authentication;
-
-mod authentication;
-mod connection;
-mod convert;
-mod protocol;
+mod associate;
+mod bind;
+mod connect;
 
 pub struct Socks5 {
-    listener: TcpListener,
+    server: Server,
     local_addr: SocketAddr,
-    authentication: Arc<Authentication>,
-    max_udp_packet_size: usize,
     req_tx: Sender<RelayRequest>,
 }
 
 impl Socks5 {
     pub async fn init(
         local_addr: SocketAddr,
-        auth: Authentication,
-        max_udp_pkt_size: usize,
+        auth: Arc<dyn Auth + Send + Sync + 'static>,
         req_tx: Sender<RelayRequest>,
-    ) -> Result<Self, Socks5Error> {
+    ) -> Result<Self, IoError> {
         let listener = if local_addr.is_ipv4() {
             TcpListener::bind(local_addr).await?
         } else {
@@ -41,53 +34,39 @@ impl Socks5 {
             TcpListener::from_std(StdTcpListener::from(socket))?
         };
 
-        let auth = Arc::new(auth);
+        let local_addr = listener.local_addr()?;
+        let server = Server::new(listener, auth);
 
         Ok(Self {
-            listener,
+            server,
             local_addr,
-            authentication: auth,
-            max_udp_packet_size: max_udp_pkt_size,
             req_tx,
         })
     }
 
     pub async fn run(self) {
+        async fn handle_connection(
+            conn: IncomingConnection,
+            req_tx: Sender<RelayRequest>,
+        ) -> Result<(), IoError> {
+            match conn.handshake().await? {
+                Connection::Connect(conn, addr) => connect::handle(conn, req_tx, addr).await,
+                Connection::Bind(conn, addr) => bind::handle(conn, req_tx, addr).await,
+                Connection::Associate(conn, addr) => associate::handle(conn, req_tx, addr).await,
+            }
+        }
+
         log::info!("[socks5] started. Listening: {}", self.local_addr);
 
-        while let Ok((conn, src_addr)) = self.listener.accept().await {
-            let auth = self.authentication.clone();
+        while let Ok((conn, src_addr)) = self.server.accept().await {
             let req_tx = self.req_tx.clone();
 
             tokio::spawn(async move {
-                match Connection::handle(
-                    conn,
-                    src_addr,
-                    self.local_addr,
-                    auth,
-                    self.max_udp_packet_size,
-                    req_tx,
-                )
-                .await
-                {
+                match handle_connection(conn, req_tx).await {
                     Ok(()) => {}
                     Err(err) => log::warn!("[socks5] [{src_addr}] {err}"),
                 }
             });
         }
     }
-}
-
-#[derive(Debug, Error)]
-pub enum Socks5Error {
-    #[error(transparent)]
-    Protocol(#[from] ProtocolError),
-    #[error(transparent)]
-    Io(#[from] IoError),
-    #[error("failed to connect to the relay layer")]
-    RelayConnectivity,
-    #[error("fragmented UDP packet is not supported")]
-    FragmentedUdpPacket,
-    #[error("authentication failed")]
-    Authentication,
 }

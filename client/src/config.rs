@@ -1,7 +1,6 @@
 use crate::{
     certificate,
     relay::{ServerAddr, UdpMode},
-    socks5::Authentication as Socks5Authentication,
 };
 use getopts::{Fail, Options};
 use log::{LevelFilter, ParseLevelError};
@@ -12,6 +11,10 @@ use quinn::{
 use rustls::{version::TLS13, Certificate, ClientConfig as RustlsClientConfig, RootCertStore};
 use serde::{de::Error as DeError, Deserialize, Deserializer};
 use serde_json::Error as JsonError;
+use socks5_server::{
+    auth::{NoAuth, Password},
+    Auth,
+};
 use std::{
     env::ArgsOs,
     fmt::Display,
@@ -34,7 +37,7 @@ pub struct Config {
     pub ipv6_endpoint: bool,
     pub reduce_rtt: bool,
     pub local_addr: SocketAddr,
-    pub socks5_authentication: Socks5Authentication,
+    pub socks5_auth: Arc<dyn Auth + Send + Sync + 'static>,
     pub max_udp_packet_size: usize,
     pub log_level: LevelFilter,
 }
@@ -125,12 +128,12 @@ impl Config {
 
         let local_addr = SocketAddr::from((raw.local.ip, raw.local.port.unwrap()));
 
-        let socks5_authentication = match (raw.local.username, raw.local.password) {
-            (None, None) => Socks5Authentication::None,
-            (Some(username), Some(password)) => Socks5Authentication::Password {
-                username: username.into_bytes(),
-                password: password.into_bytes(),
-            },
+        let socks5_auth = match (raw.local.username, raw.local.password) {
+            (None, None) => Arc::new(NoAuth) as Arc<dyn Auth + Send + Sync>,
+            (Some(username), Some(password)) => {
+                Arc::new(Password::new(username.into_bytes(), password.into_bytes()))
+                    as Arc<dyn Auth + Send + Sync>
+            }
             _ => return Err(ConfigError::LocalAuthentication),
         };
 
@@ -146,7 +149,7 @@ impl Config {
             ipv6_endpoint,
             reduce_rtt,
             local_addr,
-            socks5_authentication,
+            socks5_auth,
             max_udp_packet_size,
             log_level,
         })
