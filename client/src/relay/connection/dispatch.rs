@@ -15,7 +15,7 @@ impl Connection {
                 log::info!("[relay] [task] [connect] [{addr}]");
                 let res = task::connect(self.controller, addr, tx).await;
                 drop(task_count);
-                res?
+                res
             }
             Request::Associate {
                 assoc_id,
@@ -51,11 +51,9 @@ impl Connection {
                 log::info!("[relay] [task] [dissociate] [{assoc_id}]");
                 let res = task::dissociate(self.controller, assoc_id).await;
                 drop(task_count);
-                res?
+                res
             }
         }
-
-        Ok(())
     }
 
     pub async fn process_incoming_uni_stream(

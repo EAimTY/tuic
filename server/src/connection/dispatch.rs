@@ -11,7 +11,7 @@ impl Connection {
         if let Command::Authenticate { digest } = cmd {
             let rmt_addr = self.controller.remote_address();
 
-            if digest == self.expected_token_digest {
+            if self.token.contains(&digest) {
                 log::debug!("[{rmt_addr}] [authentication]");
 
                 self.is_authenticated.set_authenticated();

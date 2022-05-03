@@ -10,6 +10,7 @@ use quinn::{
     IncomingUniStreams, NewConnection,
 };
 use std::{
+    collections::HashSet,
     future::Future,
     pin::Pin,
     sync::{
@@ -31,12 +32,12 @@ pub struct Connection {
     controller: QuinnConnection,
     udp_packet_from: UdpPacketFrom,
     udp_sessions: Arc<UdpSessionMap>,
-    expected_token_digest: [u8; 32],
+    token: Arc<HashSet<[u8; 32]>>,
     is_authenticated: IsAuthenticated,
 }
 
 impl Connection {
-    pub async fn handle(conn: Connecting, exp_token_dgst: [u8; 32], auth_timeout: Duration) {
+    pub async fn handle(conn: Connecting, token: Arc<HashSet<[u8; 32]>>, auth_timeout: Duration) {
         let rmt_addr = conn.remote_address();
 
         match conn.await {
@@ -57,7 +58,7 @@ impl Connection {
                     controller: connection,
                     udp_packet_from: UdpPacketFrom::new(),
                     udp_sessions: Arc::new(udp_sessions),
-                    expected_token_digest: exp_token_dgst,
+                    token,
                     is_authenticated: is_authed,
                 };
 

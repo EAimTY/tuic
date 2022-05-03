@@ -9,15 +9,15 @@ use rustls::{version::TLS13, Error as RustlsError, ServerConfig as RustlsServerC
 use serde::{de::Error as DeError, Deserialize, Deserializer};
 use serde_json::Error as JsonError;
 use std::{
-    env::ArgsOs, fmt::Display, fs::File, io::Error as IoError, num::ParseIntError, str::FromStr,
-    sync::Arc, time::Duration,
+    collections::HashSet, env::ArgsOs, fmt::Display, fs::File, io::Error as IoError,
+    num::ParseIntError, str::FromStr, sync::Arc, time::Duration,
 };
 use thiserror::Error;
 
 pub struct Config {
     pub server_config: ServerConfig,
     pub port: u16,
-    pub token_digest: [u8; 32],
+    pub token: HashSet<[u8; 32]>,
     pub authentication_timeout: Duration,
     pub log_level: LevelFilter,
 }
@@ -68,14 +68,20 @@ impl Config {
         };
 
         let port = raw.port.unwrap();
-        let token_digest = *blake3::hash(&raw.token.unwrap().into_bytes()).as_bytes();
+
+        let token = raw
+            .token
+            .into_iter()
+            .map(|token| *blake3::hash(&token.into_bytes()).as_bytes())
+            .collect();
+
         let authentication_timeout = Duration::from_secs(raw.authentication_timeout);
         let log_level = raw.log_level;
 
         Ok(Self {
             server_config,
             port,
-            token_digest,
+            token,
             authentication_timeout,
             log_level,
         })
@@ -86,7 +92,7 @@ impl Config {
 #[serde(deny_unknown_fields)]
 struct RawConfig {
     port: Option<u16>,
-    token: Option<String>,
+    token: Vec<String>,
     certificate: Option<String>,
     private_key: Option<String>,
 
@@ -113,7 +119,7 @@ impl Default for RawConfig {
     fn default() -> Self {
         Self {
             port: None,
-            token: None,
+            token: Vec::new(),
             certificate: None,
             private_key: None,
             congestion_controller: default::congestion_controller(),
@@ -141,7 +147,7 @@ impl RawConfig {
         opts.optopt(
             "",
             "token",
-            "Set the token for TUIC authentication",
+            "Set the token for TUIC authentication. This option can be used multiple times to set multiple tokens.",
             "TOKEN",
         );
 
@@ -212,7 +218,7 @@ impl RawConfig {
         }
 
         let port = matches.opt_str("port").map(|port| port.parse());
-        let token = matches.opt_str("token");
+        let token = matches.opt_strs("token");
         let certificate = matches.opt_str("certificate");
         let private_key = matches.opt_str("private-key");
 
@@ -225,11 +231,11 @@ impl RawConfig {
                     .ok_or(ConfigError::MissingOption("port"))?,
             );
 
-            raw.token = Some(
-                token
-                    .or(raw.token)
-                    .ok_or(ConfigError::MissingOption("token"))?,
-            );
+            if !token.is_empty() {
+                raw.token = token;
+            } else if raw.token.is_empty() {
+                return Err(ConfigError::MissingOption("token"));
+            }
 
             raw.certificate = Some(
                 certificate
@@ -247,7 +253,9 @@ impl RawConfig {
         } else {
             RawConfig {
                 port: Some(port.ok_or(ConfigError::MissingOption("port"))??),
-                token: Some(token.ok_or(ConfigError::MissingOption("token"))?),
+                token: (!token.is_empty())
+                    .then(|| token)
+                    .ok_or(ConfigError::MissingOption("token"))?,
                 certificate: Some(certificate.ok_or(ConfigError::MissingOption("certificate"))?),
                 private_key: Some(private_key.ok_or(ConfigError::MissingOption("private key"))?),
                 ..Default::default()

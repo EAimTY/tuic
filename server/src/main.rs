@@ -35,7 +35,7 @@ async fn main() {
     let server = match Server::init(
         config.server_config,
         config.port,
-        config.token_digest,
+        config.token,
         config.authentication_timeout,
     ) {
         Ok(server) => server,
