@@ -19,8 +19,6 @@ pub struct Config {
     pub port: u16,
     pub token_digest: [u8; 32],
     pub authentication_timeout: Duration,
-    pub max_udp_packet_size: usize,
-    pub enable_ipv6: bool,
     pub log_level: LevelFilter,
 }
 
@@ -72,8 +70,6 @@ impl Config {
         let port = raw.port.unwrap();
         let token_digest = *blake3::hash(&raw.token.unwrap().into_bytes()).as_bytes();
         let authentication_timeout = Duration::from_secs(raw.authentication_timeout);
-        let max_udp_packet_size = raw.max_udp_packet_size;
-        let enable_ipv6 = raw.enable_ipv6;
         let log_level = raw.log_level;
 
         Ok(Self {
@@ -81,8 +77,6 @@ impl Config {
             port,
             token_digest,
             authentication_timeout,
-            max_udp_packet_size,
-            enable_ipv6,
             log_level,
         })
     }
@@ -111,12 +105,6 @@ struct RawConfig {
     #[serde(default = "default::alpn")]
     alpn: Vec<String>,
 
-    #[serde(default = "default::max_udp_packet_size")]
-    max_udp_packet_size: usize,
-
-    #[serde(default = "default::enable_ipv6")]
-    enable_ipv6: bool,
-
     #[serde(default = "default::log_level")]
     log_level: LevelFilter,
 }
@@ -132,8 +120,6 @@ impl Default for RawConfig {
             max_idle_time: default::max_idle_time(),
             authentication_timeout: default::authentication_timeout(),
             alpn: default::alpn(),
-            max_udp_packet_size: default::max_udp_packet_size(),
-            enable_ipv6: default::enable_ipv6(),
             log_level: default::log_level(),
         }
     }
@@ -200,15 +186,6 @@ impl RawConfig {
             "Set ALPN protocols that the server accepts. This option can be used multiple times to set multiple ALPN protocols. If not set, the server will not check ALPN at all",
             "ALPN_PROTOCOL",
         );
-
-        opts.optopt(
-            "",
-            "max-udp-packet-size",
-            "Set the maximum UDP packet size, in bytes. Excess bytes may be discarded. Default: 1536",
-            "MAX_UDP_PACKET_SIZE",
-        );
-
-        opts.optflag("", "enable-ipv6", "Enable IPv6 support");
 
         opts.optopt(
             "",
@@ -295,12 +272,6 @@ impl RawConfig {
             raw.alpn = alpn;
         }
 
-        if let Some(max_udp_packet_size) = matches.opt_str("max-udp-packet-size") {
-            raw.max_udp_packet_size = max_udp_packet_size.parse()?;
-        };
-
-        raw.enable_ipv6 |= matches.opt_present("enable-ipv6");
-
         if let Some(log_level) = matches.opt_str("log-level") {
             raw.log_level = log_level.parse()?;
         };
@@ -364,14 +335,6 @@ mod default {
 
     pub(super) const fn alpn() -> Vec<String> {
         Vec::new()
-    }
-
-    pub(super) const fn max_udp_packet_size() -> usize {
-        1536
-    }
-
-    pub(super) const fn enable_ipv6() -> bool {
-        false
     }
 
     pub(super) const fn log_level() -> LevelFilter {

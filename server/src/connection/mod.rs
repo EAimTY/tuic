@@ -33,16 +33,10 @@ pub struct Connection {
     udp_sessions: Arc<UdpSessionMap>,
     expected_token_digest: [u8; 32],
     is_authenticated: IsAuthenticated,
-    max_udp_packet_size: usize,
 }
 
 impl Connection {
-    pub async fn handle(
-        conn: Connecting,
-        exp_token_dgst: [u8; 32],
-        auth_timeout: Duration,
-        max_udp_pkt_size: usize,
-    ) {
+    pub async fn handle(conn: Connecting, exp_token_dgst: [u8; 32], auth_timeout: Duration) {
         let rmt_addr = conn.remote_address();
 
         match conn.await {
@@ -65,7 +59,6 @@ impl Connection {
                     udp_sessions: Arc::new(udp_sessions),
                     expected_token_digest: exp_token_dgst,
                     is_authenticated: is_authed,
-                    max_udp_packet_size: max_udp_pkt_size,
                 };
 
                 let res = tokio::select! {

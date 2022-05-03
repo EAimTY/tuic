@@ -37,8 +37,6 @@ async fn main() {
         config.port,
         config.token_digest,
         config.authentication_timeout,
-        config.max_udp_packet_size,
-        config.enable_ipv6,
     ) {
         Ok(server) => server,
         Err(err) => {
