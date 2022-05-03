@@ -1,5 +1,5 @@
 use super::{task, Connection};
-use crate::relay::{Address, RelayError, Request, TaskCount, UdpMode};
+use crate::relay::{Address, RelayError, Request, TaskCount, UdpRelayMode};
 use bytes::Bytes;
 use quinn::RecvStream;
 use tuic_protocol::Command as TuicCommand;
@@ -29,12 +29,12 @@ impl Connection {
                     let conn = self.controller.clone();
 
                     tokio::spawn(async move {
-                        let res = match self.udp_mode {
-                            UdpMode::Native => {
+                        let res = match self.udp_relay_mode {
+                            UdpRelayMode::Native => {
                                 log::debug!("[relay] [task] [associate] [{assoc_id}] [packet-to-native] {addr}");
                                 task::packet_to_datagram(conn, assoc_id, pkt, addr).await
                             }
-                            UdpMode::Quic => {
+                            UdpRelayMode::Quic => {
                                 log::debug!("[relay] [task] [associate] [{assoc_id}] [packet-to-quic] {addr}");
                                 task::packet_to_uni_stream(conn, assoc_id, pkt, addr).await
                             }

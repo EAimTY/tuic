@@ -37,7 +37,7 @@ async fn main() {
         config.client_config,
         config.server_addr,
         config.token_digest,
-        config.udp_mode,
+        config.udp_relay_mode,
         config.heartbeat_interval,
         config.reduce_rtt,
     ) {

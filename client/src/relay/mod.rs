@@ -29,7 +29,7 @@ pub struct Relay {
     endpoint: Endpoint,
     server_addr: ServerAddr,
     token_digest: [u8; 32],
-    udp_mode: UdpMode,
+    udp_relay_mode: UdpRelayMode,
     heartbeat_interval: u64,
     reduce_rtt: bool,
 }
@@ -39,7 +39,7 @@ impl Relay {
         config: ClientConfig,
         server_addr: ServerAddr,
         token_digest: [u8; 32],
-        udp_mode: UdpMode,
+        udp_relay_mode: UdpRelayMode,
         heartbeat_interval: u64,
         reduce_rtt: bool,
     ) -> Result<(Self, Sender<Request>), IoError> {
@@ -64,7 +64,7 @@ impl Relay {
             endpoint,
             server_addr,
             token_digest,
-            udp_mode,
+            udp_relay_mode,
             heartbeat_interval,
             reduce_rtt,
         };
@@ -135,7 +135,7 @@ impl Relay {
                         match Connection::init(
                             conn,
                             self.token_digest,
-                            self.udp_mode,
+                            self.udp_relay_mode,
                             self.reduce_rtt,
                         )
                         .await
@@ -181,7 +181,7 @@ impl Display for ServerAddr {
 }
 
 #[derive(Clone, Copy)]
-pub enum UdpMode {
+pub enum UdpRelayMode {
     Native,
     Quic,
 }

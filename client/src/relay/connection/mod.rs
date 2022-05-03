@@ -1,4 +1,4 @@
-use super::{Address, RelayError, TaskCount, UdpMode};
+use super::{Address, RelayError, TaskCount, UdpRelayMode};
 use bytes::Bytes;
 use futures_util::StreamExt;
 use parking_lot::Mutex;
@@ -26,7 +26,7 @@ mod task;
 #[derive(Clone)]
 pub struct Connection {
     controller: QuinnConnection,
-    udp_mode: UdpMode,
+    udp_relay_mode: UdpRelayMode,
     udp_sessions: Arc<UdpSessionMap>,
     is_closed: IsClosed,
 }
@@ -37,7 +37,7 @@ impl Connection {
     pub async fn init(
         conn: Connecting,
         token_digest: [u8; 32],
-        udp_mode: UdpMode,
+        udp_relay_mode: UdpRelayMode,
         reduce_rtt: bool,
     ) -> Result<Self, RelayError> {
         let NewConnection {
@@ -59,16 +59,16 @@ impl Connection {
 
         let conn = Self {
             controller: connection,
-            udp_mode,
+            udp_relay_mode,
             udp_sessions,
             is_closed,
         };
 
         tokio::spawn(Self::authenticate(conn.clone(), token_digest));
 
-        match udp_mode {
-            UdpMode::Native => tokio::spawn(Self::listen_datagrams(conn.clone(), datagrams)),
-            UdpMode::Quic => tokio::spawn(Self::listen_uni_streams(conn.clone(), uni_streams)),
+        match udp_relay_mode {
+            UdpRelayMode::Native => tokio::spawn(Self::listen_datagrams(conn.clone(), datagrams)),
+            UdpRelayMode::Quic => tokio::spawn(Self::listen_uni_streams(conn.clone(), uni_streams)),
         };
 
         Ok(conn)

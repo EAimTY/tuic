@@ -1,6 +1,6 @@
 use crate::{
     certificate,
-    relay::{ServerAddr, UdpMode},
+    relay::{ServerAddr, UdpRelayMode},
 };
 use getopts::{Fail, Options};
 use log::{LevelFilter, ParseLevelError};
@@ -32,7 +32,7 @@ pub struct Config {
     pub client_config: ClientConfig,
     pub server_addr: ServerAddr,
     pub token_digest: [u8; 32],
-    pub udp_mode: UdpMode,
+    pub udp_relay_mode: UdpRelayMode,
     pub heartbeat_interval: u64,
     pub reduce_rtt: bool,
     pub local_addr: SocketAddr,
@@ -119,7 +119,7 @@ impl Config {
         };
 
         let token_digest = *blake3::hash(&raw.relay.token.unwrap().into_bytes()).as_bytes();
-        let udp_mode = raw.relay.udp_mode;
+        let udp_relay_mode = raw.relay.udp_relay_mode;
         let heartbeat_interval = raw.relay.heartbeat_interval;
         let reduce_rtt = raw.relay.reduce_rtt;
 
@@ -140,7 +140,7 @@ impl Config {
             client_config,
             server_addr,
             token_digest,
-            udp_mode,
+            udp_relay_mode,
             heartbeat_interval,
             reduce_rtt,
             local_addr,
@@ -170,10 +170,10 @@ struct RawRelayConfig {
     certificate: Option<String>,
 
     #[serde(
-        default = "default::udp_mode",
+        default = "default::udp_relay_mode",
         deserialize_with = "deserialize_from_str"
     )]
-    udp_mode: UdpMode,
+    udp_relay_mode: UdpRelayMode,
 
     #[serde(
         default = "default::congestion_controller",
@@ -227,7 +227,7 @@ impl Default for RawRelayConfig {
             ip: None,
             token: None,
             certificate: None,
-            udp_mode: default::udp_mode(),
+            udp_relay_mode: default::udp_relay_mode(),
             congestion_controller: default::congestion_controller(),
             max_idle_time: default::max_idle_time(),
             heartbeat_interval: default::heartbeat_interval(),
@@ -292,7 +292,7 @@ impl RawConfig {
 
         opts.optopt(
             "",
-            "udp-mode",
+            "udp-relay-mode",
             r#"Set the UDP relay mode. Available: "native", "quic". Default: "native""#,
             "UDP_MODE",
         );
@@ -331,12 +331,6 @@ impl RawConfig {
             "Not sending the Server Name Indication (SNI) extension during the client TLS handshake",
         );
 
-        opts.optflag(
-            "",
-            "ipv6-endpoint",
-            "Construct the endpoint from the IPv6 stack",
-        );
-
         opts.optflag("", "reduce-rtt", "Enable 0-RTT QUIC handshake");
 
         opts.optopt(
@@ -365,13 +359,6 @@ impl RawConfig {
             "local-password",
             "Set the password for the local socks5 server authentication",
             "LOCAL_PASSWORD",
-        );
-
-        opts.optopt(
-            "",
-            "max-udp-packet-size",
-            "Set the maximum UDP packet size, in bytes. Excess bytes may be discarded. Default: 1536",
-            "MAX_UDP_PACKET_SIZE",
         );
 
         opts.optopt(
@@ -459,8 +446,8 @@ impl RawConfig {
 
         raw.relay.certificate = matches.opt_str("certificate").or(raw.relay.certificate);
 
-        if let Some(mode) = matches.opt_str("udp-mode") {
-            raw.relay.udp_mode = mode.parse()?;
+        if let Some(mode) = matches.opt_str("udp-relay-mode") {
+            raw.relay.udp_relay_mode = mode.parse()?;
         };
 
         if let Some(cgstn_ctrl) = matches.opt_str("congestion-controller") {
@@ -527,7 +514,7 @@ impl FromStr for CongestionController {
     }
 }
 
-impl FromStr for UdpMode {
+impl FromStr for UdpRelayMode {
     type Err = ConfigError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -554,8 +541,8 @@ where
 mod default {
     use super::*;
 
-    pub(super) const fn udp_mode() -> UdpMode {
-        UdpMode::Native
+    pub(super) const fn udp_relay_mode() -> UdpRelayMode {
+        UdpRelayMode::Native
     }
 
     pub(super) const fn congestion_controller() -> CongestionController {
