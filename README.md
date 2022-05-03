@@ -56,7 +56,8 @@ Options:
                         arguments will override the configuration file
         --port SERVER_PORT
                         Set the server listening port
-        --token TOKEN   Set the token for TUIC authentication
+        --token TOKEN   Set the token for TUIC authentication. This option can
+                        be used multiple times to set multiple tokens.
         --certificate CERTIFICATE
                         Set the X.509 certificate. This must be an end-entity
                         certificate
@@ -78,10 +79,6 @@ Options:
                         option can be used multiple times to set multiple ALPN
                         protocols. If not set, the server will not check ALPN
                         at all
-        --max-udp-packet-size MAX_UDP_PACKET_SIZE
-                        Set the maximum UDP packet size, in bytes. Excess
-                        bytes may be discarded. Default: 1536
-        --enable-ipv6   Enable IPv6 support
         --log-level LOG_LEVEL
                         Set the log level. Available: "off", "error", "warn",
                         "info", "debug", "trace". Default: "info"
@@ -94,7 +91,7 @@ The configuration file is in JSON format:
 ```json
 {
     "port": 443,
-    "token": "TOKEN",
+    "token": ["TOKEN0", "TOKEN1"],
     "certificate": "/PATH/TO/CERT",
     "private_key": "/PATH/TO/PRIV_KEY",
 
@@ -102,8 +99,6 @@ The configuration file is in JSON format:
     "max_idle_time": 15000,
     "authentication_timeout": 1000,
     "alpn": ["h3"],
-    "max_udp_packet_size": 1536,
-    "enable_ipv6": false,
     "log_level": "info"
 }
 ```
@@ -132,7 +127,7 @@ Options:
         --certificate CERTIFICATE
                         Set the X.509 certificate for QUIC handshake. If not
                         set, native CA roots will be trusted
-        --udp-mode UDP_MODE
+        --udp-relay-mode UDP_MODE
                         Set the UDP relay mode. Available: "native", "quic".
                         Default: "native"
         --congestion-controller CONGESTION_CONTROLLER
@@ -155,8 +150,6 @@ Options:
                         sent
         --disable-sni   Not sending the Server Name Indication (SNI) extension
                         during the client TLS handshake
-        --ipv6-endpoint 
-                        Construct the endpoint from the IPv6 stack
         --reduce-rtt    Enable 0-RTT QUIC handshake
         --local-port LOCAL_PORT
                         Set the listening port for the local socks5 server
@@ -170,9 +163,6 @@ Options:
         --local-password LOCAL_PASSWORD
                         Set the password for the local socks5 server
                         authentication
-        --max-udp-packet-size MAX_UDP_PACKET_SIZE
-                        Set the maximum UDP packet size, in bytes. Excess
-                        bytes may be discarded. Default: 1536
         --log-level LOG_LEVEL
                         Set the log level. Available: "off", "error", "warn",
                         "info", "debug", "trace". Default: "info"
@@ -191,13 +181,12 @@ The configuration file is in JSON format:
 
         "ip": "SERVER_IP",
         "certificate": "/PATH/TO/CERT",
-        "udp_mode": "native",
+        "udp_relay_mode": "native",
         "congestion_controller": "cubic",
         "max_idle_time": 15000,
         "heartbeat_interval": 10000,
         "alpn": ["h3"],
         "disable_sni": false,
-        "ipv6_endpoint": false,
         "reduce_rtt": false
     },
     "local": {
@@ -223,7 +212,7 @@ Since there are already many great proxy convert / distribute solutions, there r
 
 ### How to use TUIC client on my smartphone?
 
-TUIC doesn't have any GUI client yet. The current best way to use TUIC on smartphones is to run it on the router.
+TUIC doesn't have GUI client yet. The current best way to use TUIC on smartphones is to run it on the router.
 
 ## License
 GNU General Public License v3.0
