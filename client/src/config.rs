@@ -34,11 +34,9 @@ pub struct Config {
     pub token_digest: [u8; 32],
     pub udp_mode: UdpMode,
     pub heartbeat_interval: u64,
-    pub ipv6_endpoint: bool,
     pub reduce_rtt: bool,
     pub local_addr: SocketAddr,
     pub socks5_auth: Arc<dyn Auth + Send + Sync>,
-    pub max_udp_packet_size: usize,
     pub log_level: LevelFilter,
 }
 
@@ -123,7 +121,6 @@ impl Config {
         let token_digest = *blake3::hash(&raw.relay.token.unwrap().into_bytes()).as_bytes();
         let udp_mode = raw.relay.udp_mode;
         let heartbeat_interval = raw.relay.heartbeat_interval;
-        let ipv6_endpoint = raw.relay.ipv6_endpoint;
         let reduce_rtt = raw.relay.reduce_rtt;
 
         let local_addr = SocketAddr::from((raw.local.ip, raw.local.port.unwrap()));
@@ -137,7 +134,6 @@ impl Config {
             _ => return Err(ConfigError::LocalAuthentication),
         };
 
-        let max_udp_packet_size = raw.max_udp_packet_size;
         let log_level = raw.log_level;
 
         Ok(Self {
@@ -146,11 +142,9 @@ impl Config {
             token_digest,
             udp_mode,
             heartbeat_interval,
-            ipv6_endpoint,
             reduce_rtt,
             local_addr,
             socks5_auth,
-            max_udp_packet_size,
             log_level,
         })
     }
@@ -161,9 +155,6 @@ impl Config {
 struct RawConfig {
     relay: RawRelayConfig,
     local: RawLocalConfig,
-
-    #[serde(default = "default::max_udp_packet_size")]
-    max_udp_packet_size: usize,
 
     #[serde(default = "default::log_level")]
     log_level: LevelFilter,
@@ -202,9 +193,6 @@ struct RawRelayConfig {
     #[serde(default = "default::disable_sni")]
     disable_sni: bool,
 
-    #[serde(default = "default::ipv6_endpoint")]
-    ipv6_endpoint: bool,
-
     #[serde(default = "default::reduce_rtt")]
     reduce_rtt: bool,
 }
@@ -226,7 +214,6 @@ impl Default for RawConfig {
         Self {
             relay: RawRelayConfig::default(),
             local: RawLocalConfig::default(),
-            max_udp_packet_size: default::max_udp_packet_size(),
             log_level: default::log_level(),
         }
     }
@@ -246,7 +233,6 @@ impl Default for RawRelayConfig {
             heartbeat_interval: default::heartbeat_interval(),
             alpn: default::alpn(),
             disable_sni: default::disable_sni(),
-            ipv6_endpoint: default::ipv6_endpoint(),
             reduce_rtt: default::reduce_rtt(),
         }
     }
@@ -496,7 +482,6 @@ impl RawConfig {
         }
 
         raw.relay.disable_sni |= matches.opt_present("disable-sni");
-        raw.relay.ipv6_endpoint |= matches.opt_present("ipv6-endpoint");
         raw.relay.reduce_rtt |= matches.opt_present("reduce-rtt");
 
         if let Some(local_ip) = matches.opt_str("local-ip") {
@@ -505,10 +490,6 @@ impl RawConfig {
 
         raw.local.username = matches.opt_str("local-username").or(raw.local.username);
         raw.local.password = matches.opt_str("local-password").or(raw.local.password);
-
-        if let Some(max_udp_packet_size) = matches.opt_str("max-udp-packet-size") {
-            raw.max_udp_packet_size = max_udp_packet_size.parse()?;
-        };
 
         if let Some(log_level) = matches.opt_str("log-level") {
             raw.log_level = log_level.parse()?;
@@ -597,20 +578,12 @@ mod default {
         false
     }
 
-    pub(super) const fn ipv6_endpoint() -> bool {
-        false
-    }
-
     pub(super) const fn reduce_rtt() -> bool {
         false
     }
 
     pub(super) const fn local_ip() -> IpAddr {
         IpAddr::V4(Ipv4Addr::LOCALHOST)
-    }
-
-    pub(super) const fn max_udp_packet_size() -> usize {
-        1536
     }
 
     pub(super) const fn log_level() -> LevelFilter {

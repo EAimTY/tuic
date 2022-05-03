@@ -7,7 +7,7 @@ use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use std::{
     fmt::{Display, Formatter, Result as FmtResult},
     io::Error as IoError,
-    net::{Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket},
+    net::{Ipv6Addr, SocketAddr, UdpSocket},
     sync::Arc,
 };
 use thiserror::Error;
@@ -41,10 +41,9 @@ impl Relay {
         token_digest: [u8; 32],
         udp_mode: UdpMode,
         heartbeat_interval: u64,
-        ipv6_endpoint: bool,
         reduce_rtt: bool,
     ) -> Result<(Self, Sender<Request>), IoError> {
-        let mut endpoint = if ipv6_endpoint {
+        let mut endpoint = {
             let socket = Socket::new(Domain::IPV6, Type::DGRAM, Some(Protocol::UDP))?;
 
             socket.set_only_v6(false)?;
@@ -54,8 +53,6 @@ impl Relay {
             ))))?;
 
             Endpoint::new(EndpointConfig::default(), None, UdpSocket::from(socket))?.0
-        } else {
-            Endpoint::client(SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0)))?
         };
 
         endpoint.set_default_client_config(config);
