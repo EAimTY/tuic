@@ -37,7 +37,7 @@ pub struct Config {
     pub ipv6_endpoint: bool,
     pub reduce_rtt: bool,
     pub local_addr: SocketAddr,
-    pub socks5_auth: Arc<dyn Auth + Send + Sync + 'static>,
+    pub socks5_auth: Arc<dyn Auth + Send + Sync>,
     pub max_udp_packet_size: usize,
     pub log_level: LevelFilter,
 }

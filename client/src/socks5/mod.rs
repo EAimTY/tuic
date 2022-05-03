@@ -14,14 +14,13 @@ mod connect;
 
 pub struct Socks5 {
     server: Server,
-    local_addr: SocketAddr,
     req_tx: Sender<RelayRequest>,
 }
 
 impl Socks5 {
     pub async fn init(
         local_addr: SocketAddr,
-        auth: Arc<dyn Auth + Send + Sync + 'static>,
+        auth: Arc<dyn Auth + Send + Sync>,
         req_tx: Sender<RelayRequest>,
     ) -> Result<Self, IoError> {
         let listener = if local_addr.is_ipv4() {
@@ -34,14 +33,9 @@ impl Socks5 {
             TcpListener::from_std(StdTcpListener::from(socket))?
         };
 
-        let local_addr = listener.local_addr()?;
         let server = Server::new(listener, auth);
 
-        Ok(Self {
-            server,
-            local_addr,
-            req_tx,
-        })
+        Ok(Self { server, req_tx })
     }
 
     pub async fn run(self) {
@@ -56,15 +50,32 @@ impl Socks5 {
             }
         }
 
-        log::info!("[socks5] started. Listening: {}", self.local_addr);
+        match self.server.local_addr() {
+            Ok(addr) => log::info!("[socks5] Started. Listening: {addr}"),
+            Err(err) => {
+                log::error!("[socks5] Failed to get local socks5 server address: {err}");
+                return;
+            }
+        }
 
-        while let Ok((conn, src_addr)) = self.server.accept().await {
+        loop {
+            let (conn, addr) = match self.server.accept().await {
+                Ok((conn, addr)) => {
+                    log::debug!("[socks5] [{addr}] [establish]");
+                    (conn, addr)
+                }
+                Err(err) => {
+                    log::warn!("[socks5] Failed to accept connection: {err}");
+                    continue;
+                }
+            };
+
             let req_tx = self.req_tx.clone();
 
             tokio::spawn(async move {
                 match handle_connection(conn, req_tx).await {
-                    Ok(()) => {}
-                    Err(err) => log::warn!("[socks5] [{src_addr}] {err}"),
+                    Ok(()) => log::debug!("[socks5] [{addr}] [disconnect]"),
+                    Err(err) => log::warn!("[socks5] [{addr}] {err}"),
                 }
             });
         }

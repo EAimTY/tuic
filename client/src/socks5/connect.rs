@@ -12,6 +12,8 @@ pub async fn handle(
     req_tx: Sender<RelayRequest>,
     target_addr: Address,
 ) -> Result<(), IoError> {
+    log::info!("[socks5] [{}] [connect] [{target_addr}]", conn.peer_addr()?);
+
     let target_addr = match target_addr {
         Address::DomainAddress(domain, port) => RelayAddress::DomainAddress(domain, port),
         Address::SocketAddress(addr) => RelayAddress::SocketAddress(addr),

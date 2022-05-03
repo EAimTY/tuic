@@ -17,7 +17,7 @@ use std::{
     task::{Context, Poll, Waker},
     time::Duration,
 };
-use tokio::{sync::mpsc::Sender, time};
+use tokio::{io::AsyncWriteExt, sync::mpsc::Sender, time};
 use tuic_protocol::Command;
 
 mod dispatch;
@@ -83,6 +83,7 @@ impl Connection {
             let mut stream = conn.open_uni().await?;
             let heartbeat = Command::new_heartbeat();
             heartbeat.write_to(&mut stream).await?;
+            let _ = stream.shutdown().await;
             Ok(())
         }
 
@@ -113,6 +114,7 @@ impl Connection {
             let mut stream = conn.open_uni().await?;
             let cmd = Command::new_authenticate(token_digest);
             cmd.write_to(&mut stream).await?;
+            let _ = stream.shutdown().await;
             Ok(())
         }
 

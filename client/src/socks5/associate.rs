@@ -7,7 +7,6 @@ use socks5_server::{
 };
 use std::{io::Error as IoError, net::SocketAddr, sync::Arc};
 use tokio::{
-    io::AsyncWriteExt,
     net::UdpSocket,
     sync::mpsc::{Receiver, Sender},
 };
@@ -15,8 +14,13 @@ use tokio::{
 pub async fn handle(
     conn: Associate<NeedReply>,
     req_tx: Sender<RelayRequest>,
-    _target_addr: Address,
+    target_addr: Address,
 ) -> Result<(), IoError> {
+    log::info!(
+        "[socks5] [{}] [associate] [{target_addr}]",
+        conn.peer_addr()?
+    );
+
     match bind_udp_socket(&conn)
         .await
         .and_then(|socket| socket.local_addr().map(|addr| (socket, addr)))
@@ -30,14 +34,21 @@ pub async fn handle(
                 .await?;
 
             let socket = Arc::new(AssociateUdpSocket::from(socket));
+            let ctrl_addr = conn.peer_addr()?;
 
             let res = tokio::select! {
-                _ = conn.wait_for_close() => Ok(()),
-                res = socks5_to_relay(socket.clone(), pkt_send_tx) => res,
-                res = relay_to_socks5(socket, pkt_recv_rx) => res,
+                _ = conn.wait_until_closed() => Ok(()),
+                res = socks5_to_relay(socket.clone(),ctrl_addr, pkt_send_tx) => res,
+                res = relay_to_socks5(socket,ctrl_addr, pkt_recv_rx) => res,
             };
 
             let _ = conn.shutdown().await;
+
+            log::info!(
+                "[socks5] [{}] [dissociate] [{target_addr}]",
+                conn.peer_addr()?
+            );
+
             res
         }
         Err(err) => {
@@ -57,12 +68,15 @@ async fn bind_udp_socket(conn: &Associate<NeedReply>) -> Result<UdpSocket, IoErr
 
 async fn socks5_to_relay(
     socket: Arc<AssociateUdpSocket>,
+    ctrl_addr: SocketAddr,
     pkt_send_tx: Sender<(Bytes, RelayAddress)>,
 ) -> Result<(), IoError> {
     loop {
         let (pkt, frag, dst_addr, src_addr) = socket.recv_from().await?;
 
         if frag == 0 {
+            log::debug!("[socks5] [{ctrl_addr}] [associate] [packet-to] {dst_addr}");
+
             let dst_addr = match dst_addr {
                 Address::DomainAddress(domain, port) => RelayAddress::DomainAddress(domain, port),
                 Address::SocketAddress(addr) => RelayAddress::SocketAddress(addr),
@@ -78,6 +92,8 @@ async fn socks5_to_relay(
         let (pkt, frag, dst_addr) = socket.recv().await?;
 
         if frag == 0 {
+            log::debug!("[socks5] [{ctrl_addr}] [associate] [packet-to] {dst_addr}");
+
             let dst_addr = match dst_addr {
                 Address::DomainAddress(domain, port) => RelayAddress::DomainAddress(domain, port),
                 Address::SocketAddress(addr) => RelayAddress::SocketAddress(addr),
@@ -90,9 +106,12 @@ async fn socks5_to_relay(
 
 async fn relay_to_socks5(
     socket: Arc<AssociateUdpSocket>,
+    ctrl_addr: SocketAddr,
     mut pkt_recv_rx: Receiver<(Bytes, RelayAddress)>,
 ) -> Result<(), IoError> {
     while let Some((pkt, src_addr)) = pkt_recv_rx.recv().await {
+        log::debug!("[socks5] [{ctrl_addr}] [associate] [packet-from] {src_addr}");
+
         let src_addr = match src_addr {
             RelayAddress::DomainAddress(domain, port) => Address::DomainAddress(domain, port),
             RelayAddress::SocketAddress(addr) => Address::SocketAddress(addr),
