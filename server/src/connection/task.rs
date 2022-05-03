@@ -4,37 +4,44 @@ use quinn::{
     Connection as QuinnConnection, ConnectionError, ReadExactError, RecvStream, SendDatagramError,
     SendStream, WriteError,
 };
-use std::{io::Error as IoError, net::SocketAddr, sync::Arc};
+use std::{
+    io::{Error as IoError, IoSlice},
+    net::SocketAddr,
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll},
+};
 use thiserror::Error;
-use tokio::{io, net::TcpStream};
+use tokio::{
+    io::{self, AsyncRead, AsyncWrite, AsyncWriteExt, ReadBuf},
+    net::TcpStream,
+};
 use tuic_protocol::{Address, Command};
 
 pub async fn connect(
     mut send: SendStream,
-    mut recv: RecvStream,
+    recv: RecvStream,
     addr: Address,
 ) -> Result<(), TaskError> {
-    let mut stream = None;
+    let mut target = None;
     let addrs = addr.to_socket_addrs().await?;
 
     for addr in addrs {
-        if let Ok(tcp_stream) = TcpStream::connect(addr).await {
-            stream = Some(tcp_stream);
+        if let Ok(target_stream) = TcpStream::connect(addr).await {
+            target = Some(target_stream);
             break;
         }
     }
 
-    if let Some(mut stream) = stream {
+    if let Some(mut target) = target {
         let resp = Command::new_response(true);
         resp.write_to(&mut send).await?;
-
-        let (mut target_recv, mut target_send) = stream.split();
-        let target_to_tunnel = io::copy(&mut target_recv, &mut send);
-        let tunnel_to_target = io::copy(&mut recv, &mut target_send);
-        let _ = tokio::try_join!(target_to_tunnel, tunnel_to_target);
+        let mut tunnel = BiStream(send, recv);
+        io::copy_bidirectional(&mut target, &mut tunnel).await?;
     } else {
         let resp = Command::new_response(false);
         resp.write_to(&mut send).await?;
+        let _ = send.shutdown().await;
     };
 
     Ok(())
@@ -84,8 +91,8 @@ pub async fn packet_to_uni_stream(
 
     let cmd = Command::new_packet(assoc_id, pkt.len() as u16, addr);
     cmd.write_to(&mut stream).await?;
-
     stream.write_all(&pkt).await?;
+    let _ = stream.shutdown().await;
 
     Ok(())
 }
@@ -115,6 +122,53 @@ pub async fn dissociate(
 ) -> Result<(), TaskError> {
     udp_sessions.dissociate(assoc_id, src_addr);
     Ok(())
+}
+
+struct BiStream(SendStream, RecvStream);
+
+impl AsyncRead for BiStream {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<Result<(), IoError>> {
+        Pin::new(&mut self.1).poll_read(cx, buf)
+    }
+}
+
+impl AsyncWrite for BiStream {
+    #[inline]
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<Result<usize, IoError>> {
+        Pin::new(&mut self.0).poll_write(cx, buf)
+    }
+
+    #[inline]
+    fn poll_write_vectored(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        bufs: &[IoSlice<'_>],
+    ) -> Poll<Result<usize, IoError>> {
+        Pin::new(&mut self.0).poll_write_vectored(cx, bufs)
+    }
+
+    #[inline]
+    fn is_write_vectored(&self) -> bool {
+        self.0.is_write_vectored()
+    }
+
+    #[inline]
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), IoError>> {
+        Pin::new(&mut self.0).poll_flush(cx)
+    }
+
+    #[inline]
+    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), IoError>> {
+        Pin::new(&mut self.0).poll_shutdown(cx)
+    }
 }
 
 #[derive(Error, Debug)]
