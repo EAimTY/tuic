@@ -6,7 +6,8 @@ description = ""
 categories = ["network-programming"]
 keywords = ["tuic", "proxy", "quic"]
 edition = "2021"
-readme = "README.md"
+rust-version = "1.59"
+readme = "../README.md"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/EAimTY/tuic"
 

@@ -6,7 +6,8 @@ description = "Delicately-TUICed high-performance proxy built on top of the QUIC
 categories = ["network-programming", "command-line-utilities"]
 keywords = ["tuic", "proxy", "quic"]
 edition = "2021"
-readme = "README.md"
+rust-version = "1.59"
+readme = "../README.md"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/EAimTY/tuic"
 
