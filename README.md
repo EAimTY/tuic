@@ -133,10 +133,6 @@ Options:
         --congestion-controller CONGESTION_CONTROLLER
                         Set the congestion control algorithm. Available:
                         "cubic", "new_reno", "bbr". Default: "cubic"
-        --max-idle-time MAX_IDLE_TIME
-                        Set the maximum idle time for connections, in
-                        milliseconds. The true idle timeout is the minimum of
-                        this and the client's one. Default: 15000
         --heartbeat-interval HEARTBEAT_INTERVAL
                         Set the heartbeat interval to ensures that the QUIC
                         connection is not closed when there are relay tasks
@@ -183,7 +179,6 @@ The configuration file is in JSON format:
         "certificate": "/PATH/TO/CERT",
         "udp_relay_mode": "native",
         "congestion_controller": "cubic",
-        "max_idle_time": 15000,
         "heartbeat_interval": 10000,
         "alpn": ["h3"],
         "disable_sni": false,
