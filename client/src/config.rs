@@ -6,7 +6,7 @@ use getopts::{Fail, Options};
 use log::{LevelFilter, ParseLevelError};
 use quinn::{
     congestion::{BbrConfig, CubicConfig, NewRenoConfig},
-    ClientConfig, IdleTimeout, VarInt,
+    ClientConfig,
 };
 use rustls::{version::TLS13, Certificate, ClientConfig as RustlsClientConfig, RootCertStore};
 use serde::{de::Error as DeError, Deserialize, Deserializer};
@@ -94,9 +94,7 @@ impl Config {
                 }
             }
 
-            transport.max_idle_timeout(Some(IdleTimeout::from(VarInt::from_u32(
-                raw.relay.max_idle_time,
-            ))));
+            transport.max_idle_timeout(None);
 
             config
         };
@@ -181,9 +179,6 @@ struct RawRelayConfig {
     )]
     congestion_controller: CongestionController,
 
-    #[serde(default = "default::max_idle_time")]
-    max_idle_time: u32,
-
     #[serde(default = "default::heartbeat_interval")]
     heartbeat_interval: u64,
 
@@ -229,7 +224,6 @@ impl Default for RawRelayConfig {
             certificate: None,
             udp_relay_mode: default::udp_relay_mode(),
             congestion_controller: default::congestion_controller(),
-            max_idle_time: default::max_idle_time(),
             heartbeat_interval: default::heartbeat_interval(),
             alpn: default::alpn(),
             disable_sni: default::disable_sni(),
@@ -302,13 +296,6 @@ impl RawConfig {
             "congestion-controller",
             r#"Set the congestion control algorithm. Available: "cubic", "new_reno", "bbr". Default: "cubic""#,
             "CONGESTION_CONTROLLER",
-        );
-
-        opts.optopt(
-            "",
-            "max-idle-time",
-            "Set the maximum idle time for connections, in milliseconds. The true idle timeout is the minimum of this and the client's one. Default: 15000",
-            "MAX_IDLE_TIME",
         );
 
         opts.optopt(
@@ -454,10 +441,6 @@ impl RawConfig {
             raw.relay.congestion_controller = cgstn_ctrl.parse()?;
         };
 
-        if let Some(timeout) = matches.opt_str("max-idle-time") {
-            raw.relay.max_idle_time = timeout.parse()?;
-        };
-
         if let Some(interval) = matches.opt_str("heartbeat-interval") {
             raw.relay.heartbeat_interval = interval.parse()?;
         };
@@ -547,10 +530,6 @@ mod default {
 
     pub(super) const fn congestion_controller() -> CongestionController {
         CongestionController::Cubic
-    }
-
-    pub(super) const fn max_idle_time() -> u32 {
-        15000
     }
 
     pub(super) const fn heartbeat_interval() -> u64 {
