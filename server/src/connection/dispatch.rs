@@ -1,4 +1,4 @@
-use super::{task, Connection, UdpPacketSource};
+use super::{task, Connection, RestoreIpv4, UdpPacketSource};
 use bytes::Bytes;
 use quinn::{RecvStream, SendStream, VarInt};
 use thiserror::Error;
@@ -6,11 +6,10 @@ use tuic_protocol::{Address, Command, Error as ProtocolError};
 
 impl Connection {
     pub async fn process_uni_stream(&self, mut stream: RecvStream) -> Result<(), DispatchError> {
+        let rmt_addr = self.controller.remote_address().restore_ipv4();
         let cmd = Command::read_from(&mut stream).await?;
 
         if let Command::Authenticate { digest } = cmd {
-            let rmt_addr = self.controller.remote_address();
-
             if self.token.contains(&digest) {
                 log::debug!("[{rmt_addr}] [authentication]");
 
@@ -27,8 +26,6 @@ impl Connection {
         }
 
         if self.is_authenticated.clone().await {
-            let rmt_addr = self.controller.remote_address();
-
             match cmd {
                 Command::Authenticate { .. } => unreachable!(),
                 Command::Packet {
@@ -89,10 +86,9 @@ impl Connection {
         mut recv: RecvStream,
     ) -> Result<(), DispatchError> {
         let cmd = Command::read_from(&mut recv).await?;
+        let rmt_addr = self.controller.remote_address().restore_ipv4();
 
         if self.is_authenticated.clone().await {
-            let rmt_addr = self.controller.remote_address();
-
             match cmd {
                 Command::Connect { addr } => {
                     let dst_addr = addr.to_string();
@@ -116,11 +112,10 @@ impl Connection {
 
     pub async fn process_datagram(&self, datagram: Bytes) -> Result<(), DispatchError> {
         let cmd = Command::read_from(&mut datagram.as_ref()).await?;
+        let rmt_addr = self.controller.remote_address().restore_ipv4();
         let cmd_len = cmd.serialized_len();
 
         if self.is_authenticated.clone().await {
-            let rmt_addr = self.controller.remote_address();
-
             match cmd {
                 Command::Packet { assoc_id, addr, .. } => {
                     if self.udp_packet_from.datagram() {
@@ -163,7 +158,7 @@ impl Connection {
         pkt: Bytes,
         addr: Address,
     ) -> Result<(), DispatchError> {
-        let rmt_addr = self.controller.remote_address();
+        let rmt_addr = self.controller.remote_address().restore_ipv4();
         let dst_addr = addr.to_string();
 
         match self.udp_packet_from.check().unwrap() {
