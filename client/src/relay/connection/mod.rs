@@ -48,7 +48,10 @@ impl Connection {
         } = if reduce_rtt {
             match conn.into_0rtt() {
                 Ok((conn, _)) => conn,
-                Err(conn) => conn.await?,
+                Err(conn) => {
+                    log::warn!("[relay] [connection] Failed to convert connection into 0-RTT");
+                    conn.await?
+                }
             }
         } else {
             conn.await?
