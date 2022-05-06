@@ -175,7 +175,7 @@ impl RawConfig {
         opts.optopt(
             "",
             "max-idle-time",
-            "Set the maximum idle time for connections, in milliseconds. The true idle timeout is the minimum of this and the client's one. Default: 15000",
+            "Set the maximum idle time for QUIC connections, in milliseconds. Default: 15000",
             "MAX_IDLE_TIME",
         );
 

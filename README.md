@@ -43,7 +43,7 @@ As mentioned above, TUIC is based on the QUIC protocol, which uses TLS to encryp
 
 TUIC depends on [rustls](https://github.com/rustls/rustls), which uses [ring](https://github.com/briansmith/ring) for implementing the cryptography in TLS. As a result, TUIC only runs on platforms supported by ring. At the time of writing this means x86, x86-64, armv7, and aarch64.
 
-You can find pre-compiled binaries in the latest [releases](https://github.com/EAimTY/tuic/releases/latest).
+You can find pre-compiled binaries in the latest [releases](https://github.com/EAimTY/tuic/releases).
 
 ### Server
 
