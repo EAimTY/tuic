@@ -9,11 +9,13 @@ use std::{
     io::Error as IoError,
     net::{Ipv6Addr, SocketAddr, UdpSocket},
     sync::Arc,
+    time::Duration,
 };
 use thiserror::Error;
 use tokio::{
     net,
     sync::mpsc::{self, Receiver, Sender},
+    time,
 };
 use tuic_protocol::Error as ProtocolError;
 
@@ -124,6 +126,7 @@ impl Relay {
                     Ok(resolved) => addrs = resolved.collect(),
                     Err(err) => {
                         log::error!("[relay] [connection] {err}");
+                        time::sleep(Duration::from_secs(1)).await;
                         continue;
                     }
                 }
