@@ -67,9 +67,8 @@ Options:
                         Set the congestion control algorithm. Available:
                         "cubic", "new_reno", "bbr". Default: "cubic"
         --max-idle-time MAX_IDLE_TIME
-                        Set the maximum idle time for connections, in
-                        milliseconds. The true idle timeout is the minimum of
-                        this and the client's one. Default: 15000
+                        Set the maximum idle time for QUIC connections, in
+                        milliseconds. Default: 15000
         --authentication-timeout AUTHENTICATION_TIMEOUT
                         Set the maximum time allowed between a QUIC connection
                         established and the TUIC authentication packet
