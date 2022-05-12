@@ -19,7 +19,7 @@ use tokio::{
 };
 use tuic_protocol::Error as ProtocolError;
 
-pub use self::{address::Address, request::Request, stream::Stream};
+pub use self::{address::Address, request::Request, stream::BiStream};
 
 mod address;
 mod connection;

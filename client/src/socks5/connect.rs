@@ -22,7 +22,7 @@ pub async fn handle(
     let (relay_req, relay_resp_rx) = RelayRequest::new_connect(target_addr);
     let _ = req_tx.send(relay_req).await;
 
-    if let Some(mut relay) = relay_resp_rx.await.unwrap() {
+    if let Ok(mut relay) = relay_resp_rx.await {
         let mut conn = conn.reply(Reply::Succeeded, Address::unspecified()).await?;
         io::copy_bidirectional(&mut conn, &mut relay).await?;
     } else {

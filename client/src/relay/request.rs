@@ -1,4 +1,4 @@
-use super::{Address, Stream};
+use super::{Address, BiStream};
 use bytes::Bytes;
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
@@ -8,8 +8,8 @@ use tokio::sync::{
     oneshot::{self, Receiver as OneshotReceiver, Sender as OneshotSender},
 };
 
-type ConnectResponseSender = OneshotSender<Option<Stream>>;
-type ConnectResponseReceiver = OneshotReceiver<Option<Stream>>;
+type ConnectResponseSender = OneshotSender<BiStream>;
+type ConnectResponseReceiver = OneshotReceiver<BiStream>;
 type AssociateSendPacketSender = MpscSender<(Bytes, Address)>;
 type AssociateSendPacketReceiver = MpscReceiver<(Bytes, Address)>;
 type AssociateRecvPacketSender = MpscSender<(Bytes, Address)>;

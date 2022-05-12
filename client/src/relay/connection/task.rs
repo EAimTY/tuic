@@ -1,5 +1,5 @@
 use super::UdpSessionMap;
-use crate::relay::{Address, RelayError, Stream};
+use crate::relay::{Address, BiStream, RelayError};
 use bytes::{Bytes, BytesMut};
 use quinn::Connection as QuinnConnection;
 use std::sync::Arc;
@@ -9,20 +9,26 @@ use tuic_protocol::{Address as TuicAddress, Command as TuicCommand};
 pub async fn connect(
     conn: QuinnConnection,
     addr: Address,
-    tx: Sender<Option<Stream>>,
+    tx: Sender<BiStream>,
 ) -> Result<(), RelayError> {
     async fn get_streams(
         conn: QuinnConnection,
         addr: Address,
-    ) -> Result<Option<Stream>, RelayError> {
+    ) -> Result<Option<BiStream>, RelayError> {
         let (send, recv) = conn.open_bi().await?;
-        let mut stream = Stream::new(send, recv);
+        let mut stream = BiStream::new(send, recv);
         let addr = TuicAddress::from(addr);
 
         let cmd = TuicCommand::new_connect(addr);
         cmd.write_to(&mut stream).await?;
 
-        let resp = TuicCommand::read_from(&mut stream).await?;
+        let resp = match TuicCommand::read_from(&mut stream).await {
+            Ok(resp) => resp,
+            Err(err) => {
+                let _ = stream.shutdown().await;
+                return Err(RelayError::Protocol(err));
+            }
+        };
 
         if let TuicCommand::Response(true) = resp {
             Ok(Some(stream))
@@ -33,14 +39,12 @@ pub async fn connect(
     }
 
     match get_streams(conn, addr).await {
-        Ok(res) => {
-            let _ = tx.send(res);
+        Ok(Some(stream)) => {
+            let _ = tx.send(stream);
             Ok(())
         }
-        Err(err) => {
-            let _ = tx.send(None);
-            Err(err)
-        }
+        Ok(None) => Ok(()),
+        Err(err) => Err(err),
     }
 }
 

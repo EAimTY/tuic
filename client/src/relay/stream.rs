@@ -6,15 +6,15 @@ use std::{
 };
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
-pub struct Stream(SendStream, RecvStream);
+pub struct BiStream(SendStream, RecvStream);
 
-impl Stream {
+impl BiStream {
     pub fn new(send: SendStream, recv: RecvStream) -> Self {
         Self(send, recv)
     }
 }
 
-impl AsyncRead for Stream {
+impl AsyncRead for BiStream {
     fn poll_read(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -24,7 +24,7 @@ impl AsyncRead for Stream {
     }
 }
 
-impl AsyncWrite for Stream {
+impl AsyncWrite for BiStream {
     #[inline]
     fn poll_write(
         mut self: Pin<&mut Self>,
