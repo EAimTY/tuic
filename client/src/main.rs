@@ -8,6 +8,7 @@ use std::{env, process};
 mod certificate;
 mod config;
 mod relay;
+mod relay2;
 mod socks5;
 
 #[tokio::main]
