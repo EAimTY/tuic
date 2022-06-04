@@ -3,22 +3,31 @@ use bytes::Bytes;
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use rand::{rngs::StdRng, RngCore, SeedableRng};
-use std::sync::Arc;
-use tokio::sync::{
-    mpsc::{self, Receiver as MpscReceiver, Sender as MpscSender},
-    oneshot::{self, Receiver as OneshotReceiver, Sender as OneshotSender},
-    Mutex as AsyncMutex,
+use std::{ops::Deref, sync::Arc, time::Duration};
+use tokio::{
+    sync::{
+        mpsc::{self, Receiver as MpscReceiver, Sender as MpscSender},
+        oneshot::{self, Receiver as OneshotReceiver, Sender as OneshotSender},
+        Mutex as AsyncMutex,
+    },
+    time,
 };
 
-type ConnectResponseSender = OneshotSender<BiStream>;
-type ConnectResponseReceiver = OneshotReceiver<BiStream>;
-type AssociateSendPacketSender = MpscSender<(Bytes, Address)>;
-type AssociateSendPacketReceiver = MpscReceiver<(Bytes, Address)>;
-type AssociateRecvPacketSender = MpscSender<(Bytes, Address)>;
-type AssociateRecvPacketReceiver = MpscReceiver<(Bytes, Address)>;
-
 pub async fn listen_request(conn: Arc<AsyncMutex<Connection>>, mut req_rx: MpscReceiver<Request>) {
-    while let Some(req) = req_rx.recv().await {}
+    while let Some(req) = req_rx.recv().await {
+        tokio::spawn(process_request(conn.clone(), req));
+    }
+}
+
+async fn process_request(conn: Arc<AsyncMutex<Connection>>, req: Request) {
+    if let Ok(lock) = time::timeout(Duration::from_secs(5), conn.lock()).await {
+        let conn = lock.deref().clone();
+        drop(lock);
+
+        todo!()
+    } else {
+        log::warn!("timeout");
+    }
 }
 
 pub enum Request {
@@ -32,6 +41,13 @@ pub enum Request {
         pkt_receive_tx: AssociateRecvPacketSender,
     },
 }
+
+type ConnectResponseSender = OneshotSender<BiStream>;
+type ConnectResponseReceiver = OneshotReceiver<BiStream>;
+type AssociateSendPacketSender = MpscSender<(Bytes, Address)>;
+type AssociateSendPacketReceiver = MpscReceiver<(Bytes, Address)>;
+type AssociateRecvPacketSender = MpscSender<(Bytes, Address)>;
+type AssociateRecvPacketReceiver = MpscReceiver<(Bytes, Address)>;
 
 impl Request {
     pub fn new_connect(addr: Address) -> (Self, ConnectResponseReceiver) {
