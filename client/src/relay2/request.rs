@@ -1,11 +1,13 @@
-use super::{Address, BiStream};
+use super::{Address, BiStream, Connection};
 use bytes::Bytes;
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use rand::{rngs::StdRng, RngCore, SeedableRng};
+use std::sync::Arc;
 use tokio::sync::{
     mpsc::{self, Receiver as MpscReceiver, Sender as MpscSender},
     oneshot::{self, Receiver as OneshotReceiver, Sender as OneshotSender},
+    Mutex as AsyncMutex,
 };
 
 type ConnectResponseSender = OneshotSender<BiStream>;
@@ -14,6 +16,10 @@ type AssociateSendPacketSender = MpscSender<(Bytes, Address)>;
 type AssociateSendPacketReceiver = MpscReceiver<(Bytes, Address)>;
 type AssociateRecvPacketSender = MpscSender<(Bytes, Address)>;
 type AssociateRecvPacketReceiver = MpscReceiver<(Bytes, Address)>;
+
+pub async fn listen_request(conn: Arc<AsyncMutex<Connection>>, mut req_rx: MpscReceiver<Request>) {
+    while let Some(req) = req_rx.recv().await {}
+}
 
 pub enum Request {
     Connect {
