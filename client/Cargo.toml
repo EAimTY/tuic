@@ -33,5 +33,5 @@ socket2 = "0.4"
 socks5-proto = "0.2"
 socks5-server = "0.6"
 thiserror = "1.0"
-tokio = { version = "1.18", features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
+tokio = { version = "1.18", features = ["io-util", "macros", "net", "parking_lot", "rt-multi-thread", "sync", "time"] }
 webpki = { version = "0.22", default-features = false }
