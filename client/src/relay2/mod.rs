@@ -1,10 +1,7 @@
 #![allow(unused)]
 
-use self::{
-    connection::ConnectionConfig,
-    incoming::{NextDatagrams, NextIncomingUniStreams},
-};
-use quinn::{ClientConfig, Endpoint, EndpointConfig};
+use self::{connection::ConnectionConfig, incoming::NextIncomingReceiver};
+use quinn::{ClientConfig, Datagrams, Endpoint, EndpointConfig, IncomingUniStreams};
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use std::{
     fmt::{Display, Formatter, Result as FmtResult},
@@ -39,7 +36,7 @@ pub async fn init(
     token_digest: [u8; 32],
     heartbeat_interval: u64,
     reduce_rtt: bool,
-    udp_relay_mode: UdpRelayMode,
+    udp_relay_mode: UdpRelayMode<(), ()>,
 ) -> (JoinHandle<()>, Sender<Request>) {
     let (req_tx, req_rx) = mpsc::channel(1);
 
@@ -55,21 +52,15 @@ pub async fn init(
     let conn_lock = conn_uninit.clone().lock_owned().await;
     let conn = conn_uninit.clone();
 
-    let (dg_next_rx, dg_next_tx, dg_is_closed) = NextDatagrams::new();
-    let (uni_next_rx, uni_next_tx, uni_is_closed) = NextIncomingUniStreams::new();
+    let (next_rx, next_tx, is_closed) = match udp_relay_mode {
+        UdpRelayMode::Native(()) => NextIncomingReceiver::<Datagrams>::new(),
+        UdpRelayMode::Quic(()) => NextIncomingReceiver::<IncomingUniStreams>::new(),
+    };
 
-    let guard_connection = connection::guard_connection(
-        config,
-        conn_uninit,
-        conn_lock,
-        udp_relay_mode,
-        dg_next_tx,
-        uni_next_tx,
-        dg_is_closed,
-        uni_is_closed,
-    );
+    let guard_connection =
+        connection::guard_connection(config, conn_uninit, conn_lock, next_tx, is_closed);
     let listen_request = request::listen_request(conn, req_rx);
-    let listen_incoming = incoming::listen_incoming(udp_relay_mode, dg_next_rx, uni_next_rx);
+    let listen_incoming = incoming::listen_incoming(next_rx);
 
     let task = tokio::spawn(async move {
         tokio::select! {
@@ -96,8 +87,7 @@ impl Display for ServerAddr {
     }
 }
 
-#[derive(Clone, Copy)]
-pub enum UdpRelayMode {
-    Native,
-    Quic,
+pub enum UdpRelayMode<N, Q> {
+    Native(N),
+    Quic(Q),
 }

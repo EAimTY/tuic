@@ -1,7 +1,4 @@
-use super::{
-    incoming::{NextDatagramsSender, NextIncomingUniStreamsSender},
-    Address, ServerAddr, UdpRelayMode,
-};
+use super::{incoming::NextIncomingModeSender, Address, ServerAddr, UdpRelayMode};
 use bytes::Bytes;
 use parking_lot::Mutex;
 use quinn::{
@@ -33,22 +30,12 @@ pub async fn guard_connection(
     config: ConnectionConfig,
     conn: Arc<AsyncMutex<Connection>>,
     lock: OwnedMutexGuard<Connection>,
-    udp_relay_mode: UdpRelayMode,
-    dg_next_tx: NextDatagramsSender,
-    uni_next_tx: NextIncomingUniStreamsSender,
-    mut dg_is_closed: IsClosed,
-    mut uni_is_closed: IsClosed,
+    next_tx: NextIncomingModeSender,
+    mut is_closed: IsClosed,
 ) {
     let mut lock = Some(lock);
     loop {
         todo!();
-        // TODO: establish connection
-        let (conn, dg, uni) = Connection::connect(&config).await.unwrap();
-
-        match udp_relay_mode {
-            UdpRelayMode::Native => dg_is_closed.await,
-            UdpRelayMode::Quic => uni_is_closed.await,
-        }
     }
 }
 
