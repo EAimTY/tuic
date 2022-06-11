@@ -1,4 +1,7 @@
-use super::{incoming::NextIncomingModeSender, Address, ServerAddr, UdpRelayMode};
+use super::{
+    incoming::NextIncomingModeSender, request::Wait as WaitRequest, Address, ServerAddr,
+    UdpRelayMode,
+};
 use bytes::Bytes;
 use parking_lot::Mutex;
 use quinn::{
@@ -10,6 +13,7 @@ use std::{
     future::Future,
     io::{Error, ErrorKind, Result},
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket},
+    ops::DerefMut,
     pin::Pin,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -32,10 +36,40 @@ pub async fn guard_connection(
     lock: OwnedMutexGuard<Connection>,
     next_tx: NextIncomingModeSender,
     mut is_closed: IsClosed,
+    wait_req: WaitRequest,
 ) {
     let mut lock = Some(lock);
+
     loop {
-        todo!();
+        // establish a new connection
+        loop {
+            // start the procedure only if there is a request waiting
+            wait_req.clone().await;
+
+            // try to establish a new connection
+            let (new_conn, dg, uni) = match Connection::connect(&config).await {
+                Ok(conn) => conn,
+                Err(err) => {
+                    log::error!("{err}");
+                    continue;
+                }
+            };
+
+            // renew the connection in the mutex
+            let mut lock = lock.take().unwrap(); // safety: the mutex must be locked before
+            *lock.deref_mut() = new_conn;
+
+            // send the incoming streams to `incoming::listen_incoming`
+            todo!();
+
+            // fully established, unlock
+            drop(lock);
+            break;
+        }
+
+        // wait for the connection to be closed
+        is_closed.await;
+        lock = Some(conn.clone().lock_owned().await);
     }
 }
 
@@ -110,6 +144,7 @@ impl Connection {
     async fn new(conn: QuinnConnection) -> Result<Self> {
         // send auth
         // heartbeat
+        todo!();
         Ok(Self { conn })
     }
 }

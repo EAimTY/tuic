@@ -57,9 +57,9 @@ pub async fn init(
         UdpRelayMode::Quic(()) => NextIncomingReceiver::<IncomingUniStreams>::new(),
     };
 
+    let (listen_request, wait_req) = request::listen_request(conn, req_rx);
     let guard_connection =
-        connection::guard_connection(config, conn_uninit, conn_lock, next_tx, is_closed);
-    let listen_request = request::listen_request(conn, req_rx);
+        connection::guard_connection(config, conn_uninit, conn_lock, next_tx, is_closed, wait_req);
     let listen_incoming = incoming::listen_incoming(next_rx);
 
     let task = tokio::spawn(async move {
