@@ -55,14 +55,27 @@ pub async fn init(
     let conn_lock = conn_uninit.clone().lock_owned().await;
     let conn = conn_uninit.clone();
 
-    let (dg_next_rx, dg_next_tx) = NextDatagrams::new();
-    let (uni_next_rx, uni_next_tx) = NextIncomingUniStreams::new();
+    let (dg_next_rx, dg_next_tx, dg_is_closed) = NextDatagrams::new();
+    let (uni_next_rx, uni_next_tx, uni_is_closed) = NextIncomingUniStreams::new();
+
+    let guard_connection = connection::guard_connection(
+        config,
+        conn_uninit,
+        conn_lock,
+        udp_relay_mode,
+        dg_next_tx,
+        uni_next_tx,
+        dg_is_closed,
+        uni_is_closed,
+    );
+    let listen_request = request::listen_request(conn, req_rx);
+    let listen_incoming = incoming::listen_incoming(udp_relay_mode, dg_next_rx, uni_next_rx);
 
     let task = tokio::spawn(async move {
         tokio::select! {
-            () = connection::guard_connection(config, conn_uninit, conn_lock, udp_relay_mode, dg_next_tx, uni_next_tx) => (),
-            () = request::listen_request(conn, req_rx) => (),
-            () = incoming::listen_incoming(udp_relay_mode, dg_next_rx, uni_next_rx) => (),
+            () = guard_connection => (),
+            () = listen_request => (),
+            () = listen_incoming => (),
         }
     });
 

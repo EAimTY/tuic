@@ -1,4 +1,4 @@
-use super::UdpRelayMode;
+use super::{connection::IsClosed, UdpRelayMode};
 use futures_util::StreamExt;
 use quinn::{ConnectionError, Datagrams, IncomingUniStreams};
 use std::sync::Arc;
@@ -11,7 +11,7 @@ pub async fn listen_incoming(
 ) {
     match udp_relay_mode {
         UdpRelayMode::Native => loop {
-            let (mut datagrams, even_next) = dg_next.next().await;
+            let (mut datagrams, even_next, is_closed) = dg_next.next().await;
             dg_next = even_next;
 
             let err = loop {
@@ -33,10 +33,10 @@ pub async fn listen_incoming(
                 err => log::error!("[relay] [connection] {err}"),
             }
 
-            // TODO: close connection
+            is_closed.set_closed();
         },
         UdpRelayMode::Quic => loop {
-            let (mut uni_streams, even_next) = uni_next.next().await;
+            let (mut uni_streams, even_next, is_closed) = uni_next.next().await;
             uni_next = even_next;
 
             let err = loop {
@@ -58,35 +58,38 @@ pub async fn listen_incoming(
                 err => log::error!("[relay] [connection] {err}"),
             }
 
-            // TODO: close connection
+            is_closed.set_closed();
         },
     }
 }
 
-pub struct NextIncomingUniStreams(Receiver<(IncomingUniStreams, NextIncomingUniStreams)>);
-pub type NextIncomingUniStreamsSender = Sender<(IncomingUniStreams, NextIncomingUniStreams)>;
+pub struct NextDatagrams(Receiver<(Datagrams, NextDatagrams, IsClosed)>);
+pub type NextDatagramsSender = Sender<(Datagrams, NextDatagrams, IsClosed)>;
 
-impl NextIncomingUniStreams {
-    pub fn new() -> (Self, NextIncomingUniStreamsSender) {
+impl NextDatagrams {
+    pub fn new() -> (Self, NextDatagramsSender, IsClosed) {
         let (tx, rx) = oneshot::channel();
-        (Self(rx), tx)
+        let is_closed = IsClosed::new();
+        (Self(rx), tx, is_closed)
     }
 
-    async fn next(self) -> (IncomingUniStreams, Self) {
+    async fn next(self) -> (Datagrams, Self, IsClosed) {
         self.0.await.unwrap() // safety: the current task that waiting new incoming will be cancelled if the sender's scope is dropped
     }
 }
 
-pub struct NextDatagrams(Receiver<(Datagrams, NextDatagrams)>);
-pub type NextDatagramsSender = Sender<(Datagrams, NextDatagrams)>;
+pub struct NextIncomingUniStreams(Receiver<(IncomingUniStreams, NextIncomingUniStreams, IsClosed)>);
+pub type NextIncomingUniStreamsSender =
+    Sender<(IncomingUniStreams, NextIncomingUniStreams, IsClosed)>;
 
-impl NextDatagrams {
-    pub fn new() -> (Self, NextDatagramsSender) {
+impl NextIncomingUniStreams {
+    pub fn new() -> (Self, NextIncomingUniStreamsSender, IsClosed) {
         let (tx, rx) = oneshot::channel();
-        (Self(rx), tx)
+        let is_closed = IsClosed::new();
+        (Self(rx), tx, is_closed)
     }
 
-    async fn next(self) -> (Datagrams, Self) {
+    async fn next(self) -> (IncomingUniStreams, Self, IsClosed) {
         self.0.await.unwrap() // safety: the current task that waiting new incoming will be cancelled if the sender's scope is dropped
     }
 }

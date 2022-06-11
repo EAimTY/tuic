@@ -10,9 +10,15 @@ use quinn::{
 };
 use std::{
     collections::HashMap,
+    future::Future,
     io::{Error, ErrorKind, Result},
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket},
-    sync::Arc,
+    pin::Pin,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    task::{Context, Poll, Waker},
 };
 use tokio::{
     net,
@@ -30,8 +36,20 @@ pub async fn guard_connection(
     udp_relay_mode: UdpRelayMode,
     dg_next_tx: NextDatagramsSender,
     uni_next_tx: NextIncomingUniStreamsSender,
+    mut dg_is_closed: IsClosed,
+    mut uni_is_closed: IsClosed,
 ) {
-    loop {}
+    let mut lock = Some(lock);
+    loop {
+        todo!();
+        // TODO: establish connection
+        let (conn, dg, uni) = Connection::connect(&config).await.unwrap();
+
+        match udp_relay_mode {
+            UdpRelayMode::Native => dg_is_closed.await,
+            UdpRelayMode::Quic => uni_is_closed.await,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -136,3 +154,44 @@ impl ConnectionConfig {
 }
 
 pub type UdpSessionMap = Mutex<HashMap<u32, MpscSender<(Bytes, Address)>>>;
+
+pub struct IsClosed(Arc<IsClosedInner>);
+
+struct IsClosedInner {
+    is_closed: AtomicBool,
+    waker: Mutex<Option<Waker>>,
+}
+
+impl IsClosed {
+    pub fn new() -> Self {
+        Self(Arc::new(IsClosedInner {
+            is_closed: AtomicBool::new(false),
+            waker: Mutex::new(None),
+        }))
+    }
+
+    pub fn set_closed(&self) {
+        self.0.is_closed.store(true, Ordering::Release);
+
+        if let Some(waker) = self.0.waker.lock().take() {
+            waker.wake();
+        }
+    }
+
+    fn check(&self) -> bool {
+        self.0.is_closed.load(Ordering::Acquire)
+    }
+}
+
+impl Future for IsClosed {
+    type Output = ();
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        if self.0.is_closed.load(Ordering::Acquire) {
+            Poll::Ready(())
+        } else {
+            *self.0.waker.lock() = Some(cx.waker().clone());
+            Poll::Pending
+        }
+    }
+}
