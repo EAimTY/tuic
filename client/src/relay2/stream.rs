@@ -1,8 +1,14 @@
-use quinn::{RecvStream as QuinnRecvStream, SendStream as QuinnSendStream};
+use bytes::Bytes;
+use futures_util::Stream;
+use quinn::{
+    ConnectionError, Datagrams, IncomingUniStreams as QuinnIncomingUniStreams,
+    RecvStream as QuinnRecvStream, SendStream as QuinnSendStream,
+};
 use std::{
     io::{IoSlice, Result},
     pin::Pin,
-    sync::Arc,
+    result::Result as StdResult,
+    sync::{Arc, Weak},
     task::{Context, Poll},
 };
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
@@ -14,6 +20,7 @@ pub struct BiStream {
 }
 
 impl BiStream {
+    #[inline]
     pub fn new(send: QuinnSendStream, recv: QuinnRecvStream, reg: Register) -> Self {
         Self {
             send,
@@ -75,6 +82,7 @@ pub struct SendStream {
 }
 
 impl SendStream {
+    #[inline]
     pub fn new(send: QuinnSendStream, reg: Register) -> Self {
         Self { send, _reg: reg }
     }
@@ -121,6 +129,7 @@ pub struct RecvStream {
 }
 
 impl RecvStream {
+    #[inline]
     pub fn new(recv: QuinnRecvStream, reg: Register) -> Self {
         Self { recv, _reg: reg }
     }
@@ -137,15 +146,77 @@ impl AsyncRead for RecvStream {
     }
 }
 
+pub struct IncomingDatagrams {
+    incoming: Datagrams,
+    reg: Registry,
+}
+
+impl IncomingDatagrams {
+    #[inline]
+    pub fn new(incoming: Datagrams, reg: Registry) -> Self {
+        Self { incoming, reg }
+    }
+}
+
+impl Stream for IncomingDatagrams {
+    type Item = StdResult<Bytes, ConnectionError>;
+
+    #[inline]
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
+        Pin::new(&mut self.incoming).poll_next(cx)
+    }
+}
+
+pub struct IncomingUniStreams {
+    incoming: QuinnIncomingUniStreams,
+    reg: Registry,
+}
+
+impl IncomingUniStreams {
+    #[inline]
+    pub fn new(incoming: QuinnIncomingUniStreams, reg: Registry) -> Self {
+        Self { incoming, reg }
+    }
+}
+
+impl Stream for IncomingUniStreams {
+    type Item = StdResult<RecvStream, ConnectionError>;
+
+    #[inline]
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
+        let reg = self.reg.get_register().unwrap(); // safety: no uni stream can arrive after all registers are dropped (connection closed)
+
+        Pin::new(&mut self.incoming)
+            .poll_next(cx)
+            .map_ok(|recv| RecvStream::new(recv, reg))
+    }
+}
+
 #[derive(Clone)]
 pub struct Register(Arc<()>);
 
 impl Register {
+    #[inline]
     pub fn new() -> Self {
         Self(Arc::new(()))
     }
 
+    #[inline]
+    pub fn get_registry(&self) -> Registry {
+        Registry(Arc::downgrade(&self.0))
+    }
+
+    #[inline]
     pub fn count(&self) -> usize {
         Arc::strong_count(&self.0)
+    }
+}
+
+pub struct Registry(Weak<()>);
+
+impl Registry {
+    #[inline]
+    pub fn get_register(&self) -> Option<Register> {
+        self.0.upgrade().map(Register)
     }
 }

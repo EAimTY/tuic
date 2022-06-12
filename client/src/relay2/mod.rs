@@ -1,7 +1,11 @@
 #![allow(unused)]
 
-use self::{connection::ConnectionConfig, incoming::Receiver as IncomingReceiver};
-use quinn::{ClientConfig, Datagrams, Endpoint, EndpointConfig, IncomingUniStreams};
+use self::{
+    connection::ConnectionConfig,
+    incoming::Receiver as IncomingReceiver,
+    stream::{IncomingDatagrams, IncomingUniStreams},
+};
+use quinn::{ClientConfig, Endpoint, EndpointConfig};
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use std::{
     fmt::{Display, Formatter, Result as FmtResult},
@@ -51,7 +55,7 @@ pub async fn init(
 
     let (incoming_tx, incoming_rx) = match udp_relay_mode {
         UdpRelayMode::Native(()) => {
-            let (tx, rx) = incoming::channel::<Datagrams>();
+            let (tx, rx) = incoming::channel::<IncomingDatagrams>();
             (UdpRelayMode::Native(tx), UdpRelayMode::Native(rx))
         }
         UdpRelayMode::Quic(()) => {

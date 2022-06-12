@@ -1,15 +1,14 @@
 use super::{
     incoming::{self, Receiver as IncomingReceiver, Sender as IncomingSender},
     request::Wait as WaitRequest,
-    stream::{BiStream, Register as StreamRegister, SendStream},
+    stream::{
+        BiStream, IncomingDatagrams, IncomingUniStreams, Register as StreamRegister, SendStream,
+    },
     Address, ServerAddr, UdpRelayMode,
 };
 use bytes::Bytes;
 use parking_lot::Mutex;
-use quinn::{
-    ClientConfig, Connection as QuinnConnection, Datagrams, Endpoint, IncomingUniStreams,
-    NewConnection,
-};
+use quinn::{ClientConfig, Connection as QuinnConnection, Endpoint, NewConnection};
 use std::{
     collections::HashMap,
     future::Future,
@@ -39,7 +38,7 @@ pub async fn manage_connection(
     conn: Arc<AsyncMutex<Connection>>,
     lock: OwnedMutexGuard<Connection>,
     mut next_incoming_tx: UdpRelayMode<
-        IncomingSender<Datagrams>,
+        IncomingSender<IncomingDatagrams>,
         IncomingSender<IncomingUniStreams>,
     >,
     wait_req: WaitRequest,
@@ -71,7 +70,7 @@ pub async fn manage_connection(
             // send the incoming streams to `incoming::listen_incoming`
             match next_incoming_tx {
                 UdpRelayMode::Native(incoming_tx) => {
-                    let (tx, rx) = incoming::channel::<Datagrams>();
+                    let (tx, rx) = incoming::channel::<IncomingDatagrams>();
                     incoming_tx.send(new_conn.clone(), dg, rx);
                     next_incoming_tx = UdpRelayMode::Native(tx);
                 }
@@ -102,7 +101,9 @@ pub struct Connection {
 }
 
 impl Connection {
-    async fn connect(config: &ConnectionConfig) -> Result<(Self, Datagrams, IncomingUniStreams)> {
+    async fn connect(
+        config: &ConnectionConfig,
+    ) -> Result<(Self, IncomingDatagrams, IncomingUniStreams)> {
         let (addrs, name) = match &config.server_addr {
             ServerAddr::SocketAddr { addr, name } => Ok((vec![*addr], name)),
             ServerAddr::DomainAddr { domain, port } => net::lookup_host((domain.as_str(), *port))
@@ -129,7 +130,7 @@ impl Connection {
         config: &ConnectionConfig,
         addr: SocketAddr,
         name: &str,
-    ) -> Result<(Self, Datagrams, IncomingUniStreams)> {
+    ) -> Result<(Self, IncomingDatagrams, IncomingUniStreams)> {
         let bind_addr = match addr {
             SocketAddr::V4(_) => SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0)),
             SocketAddr::V6(_) => SocketAddr::from((Ipv6Addr::UNSPECIFIED, 0)),
@@ -153,7 +154,11 @@ impl Connection {
             conn.await?
         };
 
-        Ok((Self::new(connection, config).await, datagrams, uni_streams))
+        let conn = Self::new(connection, config).await;
+        let dg = IncomingDatagrams::new(datagrams, conn.stream_reg.get_registry());
+        let uni = IncomingUniStreams::new(uni_streams, conn.stream_reg.get_registry());
+
+        Ok((conn, dg, uni))
     }
 
     async fn new(conn: QuinnConnection, config: &ConnectionConfig) -> Self {
@@ -211,6 +216,14 @@ impl Connection {
 
     pub fn udp_relay_mode(&self) -> UdpRelayMode<(), ()> {
         self.udp_relay_mode
+    }
+
+    fn no_active_stream(&self) -> bool {
+        self.stream_reg.count() == 1
+    }
+
+    fn no_active_udp_session(&self) -> bool {
+        self.udp_sessions.is_empty()
     }
 
     pub fn is_closed(&self) -> bool {
@@ -276,6 +289,10 @@ impl UdpSessionMap {
 
     pub fn remove(&self, id: &u32) -> Option<MpscSender<(Bytes, Address)>> {
         self.0.lock().remove(id)
+    }
+
+    fn is_empty(&self) -> bool {
+        self.0.lock().is_empty()
     }
 }
 
