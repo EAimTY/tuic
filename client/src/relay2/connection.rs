@@ -23,6 +23,7 @@ use std::{
     task::{Context, Poll, Waker},
 };
 use tokio::{
+    io::AsyncWriteExt,
     net,
     sync::{
         mpsc::Sender as MpscSender,
@@ -30,6 +31,7 @@ use tokio::{
         Mutex as AsyncMutex, OwnedMutexGuard,
     },
 };
+use tuic_protocol::Command;
 
 pub async fn manage_connection(
     config: ConnectionConfig,
@@ -168,7 +170,18 @@ impl Connection {
     }
 
     async fn send_authentication(self, token_digest: [u8; 32]) {
-        todo!();
+        async fn send_token(controller: QuinnConnection, token_digest: [u8; 32]) -> Result<()> {
+            let mut stream = controller.open_uni().await?;
+            let cmd = Command::new_authenticate(token_digest);
+            cmd.write_to(&mut stream).await?;
+            let _ = stream.shutdown().await;
+            Ok(())
+        }
+
+        match send_token(self.controller, token_digest).await {
+            Ok(()) => log::debug!("[relay] [connection] [authentication]"),
+            Err(err) => log::error!("[relay] [connection] [authentication] {err}"),
+        }
     }
 
     async fn heartbeat(self, heartbeat_interval: u64) {
