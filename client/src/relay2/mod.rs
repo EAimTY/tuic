@@ -1,6 +1,6 @@
 #![allow(unused)]
 
-use self::{connection::ConnectionConfig, incoming::NextIncomingReceiver};
+use self::{connection::ConnectionConfig, incoming::Receiver as IncomingReceiver};
 use quinn::{ClientConfig, Datagrams, Endpoint, EndpointConfig, IncomingUniStreams};
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use std::{
@@ -48,24 +48,30 @@ pub async fn init(
         reduce_rtt,
     );
 
-    let conn_uninit = unsafe { Arc::new(AsyncMutex::new(MaybeUninit::uninit().assume_init())) }; // TODO: fix UB
-    let conn_lock = conn_uninit.clone().lock_owned().await;
-    let conn = conn_uninit.clone();
+    let conn = unsafe { Arc::new(AsyncMutex::new(MaybeUninit::uninit().assume_init())) }; // TODO: fix UB
+    let conn_lock = conn.clone().lock_owned().await;
 
-    let (next_rx, next_tx, is_closed) = match udp_relay_mode {
-        UdpRelayMode::Native(()) => NextIncomingReceiver::<Datagrams>::new(),
-        UdpRelayMode::Quic(()) => NextIncomingReceiver::<IncomingUniStreams>::new(),
+    let (incoming_tx, incoming_rx) = match udp_relay_mode {
+        UdpRelayMode::Native(()) => {
+            let (tx, rx) = incoming::channel::<Datagrams>();
+            (UdpRelayMode::Native(tx), UdpRelayMode::Native(rx))
+        }
+        UdpRelayMode::Quic(()) => {
+            let (tx, rx) = incoming::channel::<IncomingUniStreams>();
+            (UdpRelayMode::Quic(tx), UdpRelayMode::Quic(rx))
+        }
     };
 
-    let (listen_request, wait_req) = request::listen_request(conn, req_rx);
-    let guard_connection =
-        connection::guard_connection(config, conn_uninit, conn_lock, next_tx, is_closed, wait_req);
-    let listen_incoming = incoming::listen_incoming(next_rx);
+    let (listen_requests, wait_req) = request::listen_requests(conn.clone(), req_rx);
+    let listen_incoming = incoming::listen_incoming(incoming_rx);
+
+    let manage_connection =
+        connection::manage_connection(config, conn, conn_lock, incoming_tx, wait_req);
 
     let task = tokio::spawn(async move {
         tokio::select! {
-            () = guard_connection => (),
-            () = listen_request => (),
+            () = manage_connection => (),
+            () = listen_requests => (),
             () = listen_incoming => (),
         }
     });

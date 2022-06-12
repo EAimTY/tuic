@@ -20,7 +20,7 @@ use tokio::{
     time,
 };
 
-pub fn listen_request(
+pub fn listen_requests(
     conn: Arc<AsyncMutex<Connection>>,
     mut req_rx: MpscReceiver<Request>,
 ) -> (impl Future<Output = ()>, Wait) {
@@ -129,6 +129,7 @@ impl Future for Wait {
             // there is a request waiting
             Poll::Ready(())
         } else {
+            // there is no request waiting, pend the task
             // safety: the `Arc` must be owned by at least one scope (`listen_request`)
             *self.0.upgrade().unwrap().lock() = Some(cx.waker().clone());
             Poll::Pending

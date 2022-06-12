@@ -1,6 +1,7 @@
 use super::{
-    incoming::NextIncomingModeSender, request::Wait as WaitRequest, Address, ServerAddr,
-    UdpRelayMode,
+    incoming::{self, Receiver as IncomingReceiver, Sender as IncomingSender},
+    request::Wait as WaitRequest,
+    Address, ServerAddr, UdpRelayMode,
 };
 use bytes::Bytes;
 use parking_lot::Mutex;
@@ -30,24 +31,29 @@ use tokio::{
     },
 };
 
-pub async fn guard_connection(
+pub async fn manage_connection(
     config: ConnectionConfig,
     conn: Arc<AsyncMutex<Connection>>,
     lock: OwnedMutexGuard<Connection>,
-    next_tx: NextIncomingModeSender,
-    mut is_closed: IsClosed,
+    mut next_incoming_tx: UdpRelayMode<
+        IncomingSender<Datagrams>,
+        IncomingSender<IncomingUniStreams>,
+    >,
     wait_req: WaitRequest,
 ) {
     let mut lock = Some(lock);
 
     loop {
         // establish a new connection
+        let mut is_closed;
+
         loop {
             // start the procedure only if there is a request waiting
             wait_req.clone().await;
 
             // try to establish a new connection
-            let (new_conn, dg, uni) = match Connection::connect(&config).await {
+            let (new_conn, dg, uni);
+            (new_conn, is_closed, dg, uni) = match Connection::connect(&config).await {
                 Ok(conn) => conn,
                 Err(err) => {
                     log::error!("{err}");
@@ -55,19 +61,29 @@ pub async fn guard_connection(
                 }
             };
 
-            // renew the connection in the mutex
+            // renew the connection mutex
             let mut lock = lock.take().unwrap(); // safety: the mutex must be locked before
             *lock.deref_mut() = new_conn;
 
             // send the incoming streams to `incoming::listen_incoming`
-            todo!();
+            match next_incoming_tx {
+                UdpRelayMode::Native(incoming_tx) => {
+                    let (tx, rx) = incoming::channel::<Datagrams>();
+                    incoming_tx.send(dg, rx, is_closed.clone());
+                    next_incoming_tx = UdpRelayMode::Native(tx);
+                }
+                UdpRelayMode::Quic(incoming_tx) => {
+                    let (tx, rx) = incoming::channel::<IncomingUniStreams>();
+                    incoming_tx.send(uni, rx, is_closed.clone());
+                    next_incoming_tx = UdpRelayMode::Quic(tx);
+                }
+            };
 
-            // fully established, unlock
-            drop(lock);
+            // connection established, drop the lock implicitly
             break;
         }
 
-        // wait for the connection to be closed
+        // wait for the connection to be closed, lock the mutex
         is_closed.await;
         lock = Some(conn.clone().lock_owned().await);
     }
@@ -79,7 +95,9 @@ pub struct Connection {
 }
 
 impl Connection {
-    async fn connect(config: &ConnectionConfig) -> Result<(Self, Datagrams, IncomingUniStreams)> {
+    async fn connect(
+        config: &ConnectionConfig,
+    ) -> Result<(Self, IsClosed, Datagrams, IncomingUniStreams)> {
         let (addrs, name) = match &config.server_addr {
             ServerAddr::SocketAddr { addr, name } => Ok((vec![*addr], name)),
             ServerAddr::DomainAddr { domain, port } => net::lookup_host((domain.as_str(), *port))
@@ -101,12 +119,7 @@ impl Connection {
             }
         }
 
-        if let Some((conn, dg, uni)) = conn {
-            let conn = Self::new(conn).await?;
-            Ok((conn, dg, uni))
-        } else {
-            Err(Error::new(ErrorKind::Other, "err"))
-        }
+        conn.ok_or(Error::new(ErrorKind::Other, "err"))
     }
 
     async fn connect_addr(
@@ -114,7 +127,7 @@ impl Connection {
         addr: SocketAddr,
         name: &str,
         reduce_rtt: bool,
-    ) -> Result<(QuinnConnection, Datagrams, IncomingUniStreams)> {
+    ) -> Result<(Self, IsClosed, Datagrams, IncomingUniStreams)> {
         let bind_addr = match addr {
             SocketAddr::V4(_) => SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0)),
             SocketAddr::V6(_) => SocketAddr::from((Ipv6Addr::UNSPECIFIED, 0)),
@@ -138,14 +151,16 @@ impl Connection {
             conn.await?
         };
 
-        Ok((connection, datagrams, uni_streams))
+        let (conn, is_closed) = Self::new(connection).await?;
+        Ok((conn, is_closed, datagrams, uni_streams))
     }
 
-    async fn new(conn: QuinnConnection) -> Result<Self> {
+    async fn new(conn: QuinnConnection) -> Result<(Self, IsClosed)> {
         // send auth
         // heartbeat
         todo!();
-        Ok(Self { conn })
+        let is_closed = IsClosed::new();
+        Ok((Self { conn }, is_closed))
     }
 }
 
@@ -177,6 +192,7 @@ impl ConnectionConfig {
 
 pub type UdpSessionMap = Mutex<HashMap<u32, MpscSender<(Bytes, Address)>>>;
 
+#[derive(Clone)]
 pub struct IsClosed(Arc<IsClosedInner>);
 
 struct IsClosedInner {

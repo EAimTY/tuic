@@ -2,20 +2,29 @@ use super::{connection::IsClosed, UdpRelayMode};
 use futures_util::StreamExt;
 use quinn::{ConnectionError, Datagrams, IncomingUniStreams};
 use std::sync::Arc;
-use tokio::sync::oneshot::{self, Receiver, Sender};
+use tokio::sync::oneshot::{self, Receiver as OneshotReceiver, Sender as OneshotSender};
 
-pub async fn listen_incoming(mut next: NextIncomingModeReceiver) {
+pub async fn listen_incoming(
+    mut next_incoming_rx: UdpRelayMode<Receiver<Datagrams>, Receiver<IncomingUniStreams>>,
+) {
     loop {
-        let (incoming, is_closed) = match next {
-            UdpRelayMode::Native(incoming_next) => {
-                let (incoming, is_closed);
-                (incoming, next, is_closed) = incoming_next.next().await;
-                (incoming, is_closed)
+        let (incoming, is_closed);
+        (incoming, next_incoming_rx, is_closed) = match next_incoming_rx {
+            UdpRelayMode::Native(incoming_rx) => {
+                let (incoming, next_incoming_rx, is_closed) = incoming_rx.next().await;
+                (
+                    UdpRelayMode::Native(incoming),
+                    UdpRelayMode::Native(next_incoming_rx),
+                    is_closed,
+                )
             }
-            UdpRelayMode::Quic(incoming_next) => {
-                let (incoming, is_closed);
-                (incoming, next, is_closed) = incoming_next.next().await;
-                (incoming, is_closed)
+            UdpRelayMode::Quic(incoming_rx) => {
+                let (incoming, next_incoming_rx, is_closed) = incoming_rx.next().await;
+                (
+                    UdpRelayMode::Quic(incoming),
+                    UdpRelayMode::Quic(next_incoming_rx),
+                    is_closed,
+                )
             }
         };
 
@@ -51,56 +60,26 @@ pub async fn listen_incoming(mut next: NextIncomingModeReceiver) {
     }
 }
 
-type NextIncomingMode = UdpRelayMode<Datagrams, IncomingUniStreams>;
+pub fn channel<T>() -> (Sender<T>, Receiver<T>) {
+    let (tx, rx) = oneshot::channel();
+    (Sender(tx), Receiver(rx))
+}
 
-pub struct NextIncomingReceiver<T>(Receiver<(T, Self, IsClosed)>);
-type NextIncomingSender<T> = Sender<(T, NextIncomingReceiver<T>, IsClosed)>;
+pub struct Sender<T>(OneshotSender<(T, Receiver<T>, IsClosed)>);
 
-pub type NextIncomingModeSender =
-    UdpRelayMode<NextIncomingSender<Datagrams>, NextIncomingSender<IncomingUniStreams>>;
-pub type NextIncomingModeReceiver =
-    UdpRelayMode<NextIncomingReceiver<Datagrams>, NextIncomingReceiver<IncomingUniStreams>>;
-
-impl NextIncomingReceiver<Datagrams> {
-    pub fn new() -> (NextIncomingModeReceiver, NextIncomingModeSender, IsClosed) {
-        let (tx, rx) = oneshot::channel();
-        let is_closed = IsClosed::new();
-        (
-            NextIncomingModeReceiver::Native(Self(rx)),
-            NextIncomingModeSender::Native(tx),
-            is_closed,
-        )
-    }
-
-    async fn next(self) -> (NextIncomingMode, NextIncomingModeReceiver, IsClosed) {
-        // safety: the current task that waiting new incoming will be cancelled if the sender's scope is dropped
-        let (incoming, next_rx, is_closed) = self.0.await.unwrap();
-        (
-            UdpRelayMode::Native(incoming),
-            NextIncomingModeReceiver::Native(next_rx),
-            is_closed,
-        )
+impl<T> Sender<T> {
+    pub fn send(self, incoming: T, next_incoming_rx: Receiver<T>, is_closed: IsClosed) {
+        // safety: the receiver must not be dropped before
+        let _ = self.0.send((incoming, next_incoming_rx, is_closed));
     }
 }
 
-impl NextIncomingReceiver<IncomingUniStreams> {
-    pub fn new() -> (NextIncomingModeReceiver, NextIncomingModeSender, IsClosed) {
-        let (tx, rx) = oneshot::channel();
-        let is_closed = IsClosed::new();
-        (
-            NextIncomingModeReceiver::Quic(Self(rx)),
-            NextIncomingModeSender::Quic(tx),
-            is_closed,
-        )
-    }
+pub struct Receiver<T>(OneshotReceiver<(T, Self, IsClosed)>);
 
-    async fn next(self) -> (NextIncomingMode, NextIncomingModeReceiver, IsClosed) {
+impl<T> Receiver<T> {
+    async fn next(self) -> (T, Self, IsClosed) {
         // safety: the current task that waiting new incoming will be cancelled if the sender's scope is dropped
-        let (incoming, next_rx, is_closed) = self.0.await.unwrap();
-        (
-            UdpRelayMode::Quic(incoming),
-            NextIncomingModeReceiver::Quic(next_rx),
-            is_closed,
-        )
+        let (incoming, next_incoming_rx, is_closed) = self.0.await.unwrap();
+        (incoming, next_incoming_rx, is_closed)
     }
 }
