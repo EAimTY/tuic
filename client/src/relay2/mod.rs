@@ -44,6 +44,7 @@ pub async fn init(
         quinn_config,
         server_addr,
         token_digest,
+        udp_relay_mode,
         heartbeat_interval,
         reduce_rtt,
     );
@@ -93,6 +94,7 @@ impl Display for ServerAddr {
     }
 }
 
+#[derive(Clone, Copy)]
 pub enum UdpRelayMode<N, Q> {
     Native(N),
     Quic(Q),
