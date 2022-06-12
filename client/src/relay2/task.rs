@@ -1,4 +1,4 @@
-use super::{Address, BiStream, Connection, UdpRelayMode};
+use super::{stream::BiStream, Address, Connection, UdpRelayMode};
 use bytes::Bytes;
 use tokio::sync::oneshot::Sender as OneshotSender;
 

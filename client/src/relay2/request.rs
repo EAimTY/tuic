@@ -1,4 +1,4 @@
-use super::{Address, BiStream, Connection, UdpRelayMode};
+use super::{stream::BiStream, Address, Connection, UdpRelayMode};
 use bytes::Bytes;
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
@@ -126,7 +126,7 @@ impl Register {
 
 impl Clone for Register {
     fn clone(&self) -> Self {
-        let reg = Self(Arc::clone(&self.0));
+        let reg = Self(self.0.clone());
 
         // wake the `Wait` hold by `guard_connection`
         if let Some(waker) = self.0.lock().take() {

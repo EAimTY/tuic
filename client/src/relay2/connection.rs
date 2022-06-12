@@ -1,6 +1,7 @@
 use super::{
     incoming::{self, Receiver as IncomingReceiver, Sender as IncomingSender},
     request::Wait as WaitRequest,
+    stream::{BiStream, Register as StreamRegister, SendStream},
     Address, ServerAddr, UdpRelayMode,
 };
 use bytes::Bytes;
@@ -14,7 +15,7 @@ use std::{
     future::Future,
     io::{Error, ErrorKind, Result},
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket},
-    ops::DerefMut,
+    ops::{Deref, DerefMut},
     pin::Pin,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -94,7 +95,8 @@ pub async fn manage_connection(
 #[derive(Clone)]
 pub struct Connection {
     controller: QuinnConnection,
-    udp_sessions: UdpSessionMap,
+    udp_sessions: Arc<UdpSessionMap>,
+    stream_reg: Arc<StreamRegister>,
     udp_relay_mode: UdpRelayMode<(), ()>,
     is_closed: IsClosed,
 }
@@ -157,7 +159,8 @@ impl Connection {
     async fn new(conn: QuinnConnection, config: &ConnectionConfig) -> Self {
         let conn = Self {
             controller: conn,
-            udp_sessions: UdpSessionMap::new(),
+            udp_sessions: Arc::new(UdpSessionMap::new()),
+            stream_reg: Arc::new(StreamRegister::new()),
             udp_relay_mode: config.udp_relay_mode,
             is_closed: IsClosed::new(),
         };
@@ -172,15 +175,15 @@ impl Connection {
     }
 
     async fn send_authentication(self, token_digest: [u8; 32]) {
-        async fn send_token(controller: QuinnConnection, token_digest: [u8; 32]) -> Result<()> {
-            let mut stream = controller.open_uni().await?;
+        async fn send_token(conn: &Connection, token_digest: [u8; 32]) -> Result<()> {
+            let mut send = conn.get_send_stream().await?;
             let cmd = Command::new_authenticate(token_digest);
-            cmd.write_to(&mut stream).await?;
-            let _ = stream.shutdown().await;
+            cmd.write_to(&mut send).await?;
+            let _ = send.shutdown().await;
             Ok(())
         }
 
-        match send_token(self.controller, token_digest).await {
+        match send_token(&self, token_digest).await {
             Ok(()) => log::debug!("[relay] [connection] [authentication]"),
             Err(err) => log::error!("[relay] [connection] [authentication] {err}"),
         }
@@ -190,8 +193,20 @@ impl Connection {
         todo!();
     }
 
+    pub async fn get_send_stream(&self) -> Result<SendStream> {
+        let send = self.controller.open_uni().await?;
+        let reg = (*self.stream_reg).clone(); // clone inner, not itself
+        Ok(SendStream::new(send, reg))
+    }
+
+    pub async fn get_bi_stream(&self) -> Result<BiStream> {
+        let (send, recv) = self.controller.open_bi().await?;
+        let reg = (*self.stream_reg).clone(); // clone inner, not itself
+        Ok(BiStream::new(send, recv, reg))
+    }
+
     pub fn udp_sessions(&self) -> &UdpSessionMap {
-        &self.udp_sessions
+        self.udp_sessions.deref()
     }
 
     pub fn udp_relay_mode(&self) -> UdpRelayMode<(), ()> {
@@ -240,12 +255,11 @@ impl ConnectionConfig {
     }
 }
 
-#[derive(Clone)]
-pub struct UdpSessionMap(Arc<Mutex<HashMap<u32, MpscSender<(Bytes, Address)>>>>);
+pub struct UdpSessionMap(Mutex<HashMap<u32, MpscSender<(Bytes, Address)>>>);
 
 impl UdpSessionMap {
     fn new() -> Self {
-        Self(Arc::new(Mutex::new(HashMap::new())))
+        Self(Mutex::new(HashMap::new()))
     }
 
     pub fn insert(

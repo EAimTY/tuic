@@ -18,15 +18,11 @@ use tokio::{
     task::JoinHandle,
 };
 
-pub use self::{
-    address::Address, connection::Connection, register::Register, request::Request,
-    stream::BiStream,
-};
+pub use self::{address::Address, connection::Connection, request::Request};
 
 mod address;
 mod connection;
 mod incoming;
-mod register;
 mod request;
 mod stream;
 mod task;
