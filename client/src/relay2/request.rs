@@ -1,4 +1,4 @@
-use super::{Address, BiStream, Connection};
+use super::{Address, BiStream, Connection, UdpRelayMode};
 use bytes::Bytes;
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
@@ -35,18 +35,35 @@ pub fn listen_requests(
     (listen, count)
 }
 
-async fn process_request(conn: Arc<AsyncMutex<Connection>>, req: Request, reg: Register) {
+async fn process_request(conn: Arc<AsyncMutex<Connection>>, req: Request, _reg: Register) {
+    // try to get the current connection
     if let Ok(lock) = time::timeout(Duration::from_secs(5), conn.lock()).await {
         let conn = lock.deref().clone();
         drop(lock);
 
-        todo!()
+        match req {
+            Request::Connect { addr, tx } => conn.clone().handle_connect(addr, tx).await,
+            Request::Associate {
+                assoc_id,
+                mut pkt_send_rx,
+                pkt_recv_tx,
+            } => {
+                conn.udp_sessions().insert(assoc_id, pkt_recv_tx);
+                while let Some((pkt, addr)) = pkt_send_rx.recv().await {
+                    tokio::spawn(conn.clone().handle_packet_to(
+                        assoc_id,
+                        pkt,
+                        addr,
+                        conn.udp_relay_mode(),
+                    ));
+                }
+                conn.clone().udp_sessions().remove(&assoc_id);
+                conn.handle_dissociate(assoc_id).await;
+            }
+        }
     } else {
         log::warn!("timeout");
     }
-
-    // drop the register explicitly
-    drop(reg)
 }
 
 pub enum Request {
@@ -57,7 +74,7 @@ pub enum Request {
     Associate {
         assoc_id: u32,
         pkt_send_rx: AssociateSendPacketReceiver,
-        pkt_receive_tx: AssociateRecvPacketSender,
+        pkt_recv_tx: AssociateRecvPacketSender,
     },
 }
 
@@ -77,16 +94,16 @@ impl Request {
     pub fn new_associate() -> (Self, AssociateSendPacketSender, AssociateRecvPacketReceiver) {
         let assoc_id = get_random_u32();
         let (pkt_send_tx, pkt_send_rx) = mpsc::channel(1);
-        let (pkt_receive_tx, pkt_receive_rx) = mpsc::channel(1);
+        let (pkt_recv_tx, pkt_recv_rx) = mpsc::channel(1);
 
         (
             Self::Associate {
                 assoc_id,
                 pkt_send_rx,
-                pkt_receive_tx,
+                pkt_recv_tx,
             },
             pkt_send_tx,
-            pkt_receive_rx,
+            pkt_recv_rx,
         )
     }
 }

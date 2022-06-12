@@ -29,6 +29,7 @@ mod incoming;
 mod register;
 mod request;
 mod stream;
+mod task;
 
 pub async fn init(
     quinn_config: ClientConfig,

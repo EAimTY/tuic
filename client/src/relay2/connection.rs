@@ -94,6 +94,7 @@ pub async fn manage_connection(
 #[derive(Clone)]
 pub struct Connection {
     controller: QuinnConnection,
+    udp_sessions: UdpSessionMap,
     udp_relay_mode: UdpRelayMode<(), ()>,
     is_closed: IsClosed,
 }
@@ -156,6 +157,7 @@ impl Connection {
     async fn new(conn: QuinnConnection, config: &ConnectionConfig) -> Self {
         let conn = Self {
             controller: conn,
+            udp_sessions: UdpSessionMap::new(),
             udp_relay_mode: config.udp_relay_mode,
             is_closed: IsClosed::new(),
         };
@@ -186,6 +188,14 @@ impl Connection {
 
     async fn heartbeat(self, heartbeat_interval: u64) {
         todo!();
+    }
+
+    pub fn udp_sessions(&self) -> &UdpSessionMap {
+        &self.udp_sessions
+    }
+
+    pub fn udp_relay_mode(&self) -> UdpRelayMode<(), ()> {
+        self.udp_relay_mode
     }
 
     pub fn is_closed(&self) -> bool {
@@ -230,7 +240,30 @@ impl ConnectionConfig {
     }
 }
 
-pub type UdpSessionMap = Mutex<HashMap<u32, MpscSender<(Bytes, Address)>>>;
+#[derive(Clone)]
+pub struct UdpSessionMap(Arc<Mutex<HashMap<u32, MpscSender<(Bytes, Address)>>>>);
+
+impl UdpSessionMap {
+    fn new() -> Self {
+        Self(Arc::new(Mutex::new(HashMap::new())))
+    }
+
+    pub fn insert(
+        &self,
+        id: u32,
+        tx: MpscSender<(Bytes, Address)>,
+    ) -> Option<MpscSender<(Bytes, Address)>> {
+        self.0.lock().insert(id, tx)
+    }
+
+    pub fn get(&self, id: &u32) -> Option<MpscSender<(Bytes, Address)>> {
+        self.0.lock().get(id).cloned()
+    }
+
+    pub fn remove(&self, id: &u32) -> Option<MpscSender<(Bytes, Address)>> {
+        self.0.lock().remove(id)
+    }
+}
 
 #[derive(Clone)]
 struct IsClosed(Arc<IsClosedInner>);
