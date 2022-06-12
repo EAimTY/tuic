@@ -109,12 +109,14 @@ impl Register {
 
 impl Clone for Register {
     fn clone(&self) -> Self {
+        let reg = Self(Arc::clone(&self.0));
+
         // wake the `Wait` hold by `guard_connection`
         if let Some(waker) = self.0.lock().take() {
             waker.wake();
         }
 
-        Self(Arc::clone(&self.0))
+        reg
     }
 }
 
