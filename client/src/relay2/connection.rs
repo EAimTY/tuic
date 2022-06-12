@@ -21,6 +21,7 @@ use std::{
         Arc,
     },
     task::{Context, Poll, Waker},
+    time::Duration,
 };
 use tokio::{
     io::AsyncWriteExt,
@@ -30,6 +31,7 @@ use tokio::{
         oneshot::{self, Receiver as OneshotReceiver, Sender as OneshotSender},
         Mutex as AsyncMutex, OwnedMutexGuard,
     },
+    time,
 };
 use tuic_protocol::Command;
 
@@ -195,7 +197,27 @@ impl Connection {
     }
 
     async fn heartbeat(self, heartbeat_interval: u64) {
-        todo!();
+        async fn send_heartbeat(conn: &Connection) -> Result<()> {
+            let mut send = conn.get_send_stream().await?;
+            let cmd = Command::new_heartbeat();
+            cmd.write_to(&mut send).await?;
+            let _ = send.shutdown().await;
+            Ok(())
+        }
+
+        let mut interval = time::interval(Duration::from_millis(heartbeat_interval));
+
+        while tokio::select! {
+            () = self.wait_close() => false,
+            _ = interval.tick() => true,
+        } {
+            if !self.no_active_stream() && !self.no_active_udp_session() {
+                match send_heartbeat(&self).await {
+                    Ok(()) => log::debug!("[relay] [connection] [heartbeat]"),
+                    Err(err) => log::error!("[relay] [connection] [heartbeat] {err}"),
+                }
+            }
+        }
     }
 
     pub async fn get_send_stream(&self) -> Result<SendStream> {
