@@ -5,10 +5,7 @@ use super::{
 use bytes::Bytes;
 use futures_util::StreamExt;
 use quinn::ConnectionError;
-use std::{
-    io::{Error, ErrorKind, Result},
-    sync::Arc,
-};
+use std::io::{Error, ErrorKind, Result};
 use tokio::{
     io::AsyncReadExt,
     sync::oneshot::{self, Receiver as OneshotReceiver, Sender as OneshotSender},
@@ -82,7 +79,11 @@ impl Connection {
                     assoc_id,
                     len,
                     addr,
-                } => Ok((assoc_id, pkt.slice(cmd_len..), Address::from(addr))),
+                } => Ok((
+                    assoc_id,
+                    pkt.slice(cmd_len..cmd_len + len as usize),
+                    Address::from(addr),
+                )),
                 _ => Err(Error::new(ErrorKind::InvalidData, "invalid command")),
             }
         }

@@ -32,7 +32,7 @@ pub struct Config {
     pub client_config: ClientConfig,
     pub server_addr: ServerAddr,
     pub token_digest: [u8; 32],
-    pub udp_relay_mode: UdpRelayMode,
+    pub udp_relay_mode: UdpRelayMode<(), ()>,
     pub heartbeat_interval: u64,
     pub reduce_rtt: bool,
     pub local_addr: SocketAddr,
@@ -105,14 +105,11 @@ impl Config {
 
             if let Some(ip) = raw.relay.ip {
                 ServerAddr::SocketAddr {
-                    server_addr: SocketAddr::new(ip, port),
-                    server_name: name,
+                    addr: SocketAddr::new(ip, port),
+                    name,
                 }
             } else {
-                ServerAddr::HostnameAddr {
-                    hostname: name,
-                    server_port: port,
-                }
+                ServerAddr::DomainAddr { domain: name, port }
             }
         };
 
@@ -171,7 +168,7 @@ struct RawRelayConfig {
         default = "default::udp_relay_mode",
         deserialize_with = "deserialize_from_str"
     )]
-    udp_relay_mode: UdpRelayMode,
+    udp_relay_mode: UdpRelayMode<(), ()>,
 
     #[serde(
         default = "default::congestion_controller",
@@ -497,14 +494,14 @@ impl FromStr for CongestionController {
     }
 }
 
-impl FromStr for UdpRelayMode {
+impl FromStr for UdpRelayMode<(), ()> {
     type Err = ConfigError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.eq_ignore_ascii_case("native") {
-            Ok(Self::Native)
+            Ok(Self::Native(()))
         } else if s.eq_ignore_ascii_case("quic") {
-            Ok(Self::Quic)
+            Ok(Self::Quic(()))
         } else {
             Err(ConfigError::InvalidUdpRelayMode)
         }
@@ -524,8 +521,8 @@ where
 mod default {
     use super::*;
 
-    pub(super) const fn udp_relay_mode() -> UdpRelayMode {
-        UdpRelayMode::Native
+    pub(super) const fn udp_relay_mode() -> UdpRelayMode<(), ()> {
+        UdpRelayMode::Native(())
     }
 
     pub(super) const fn congestion_controller() -> CongestionController {

@@ -1,223 +1,94 @@
-use self::connection::Connection;
-use quinn::{
-    ClientConfig, ConnectionError, Endpoint, EndpointConfig, ReadExactError, SendDatagramError,
-    WriteError,
+use self::{
+    connection::ConnectionConfig,
+    stream::{IncomingDatagrams, IncomingUniStreams},
 };
-use socket2::{Domain, Protocol, SockAddr, Socket, Type};
+use quinn::ClientConfig;
 use std::{
     fmt::{Display, Formatter, Result as FmtResult},
-    io::Error as IoError,
-    net::{Ipv6Addr, SocketAddr, UdpSocket},
+    future::Future,
+    net::SocketAddr,
     sync::Arc,
-    time::Duration,
 };
-use thiserror::Error;
-use tokio::{
-    net,
-    sync::mpsc::{self, Receiver, Sender},
-    time,
+use tokio::sync::{
+    mpsc::{self, Sender},
+    Mutex as AsyncMutex,
 };
-use tuic_protocol::Error as ProtocolError;
 
-pub use self::{address::Address, request::Request, stream::BiStream};
+pub use self::{address::Address, connection::Connection, request::Request};
 
 mod address;
 mod connection;
+mod incoming;
 mod request;
 mod stream;
+mod task;
 
-pub struct Relay {
-    req_rx: Receiver<Request>,
-    endpoint: Endpoint,
+pub async fn init(
+    quinn_config: ClientConfig,
     server_addr: ServerAddr,
     token_digest: [u8; 32],
-    udp_relay_mode: UdpRelayMode,
     heartbeat_interval: u64,
     reduce_rtt: bool,
-}
+    udp_relay_mode: UdpRelayMode<(), ()>,
+) -> (impl Future<Output = ()>, Sender<Request>) {
+    let (req_tx, req_rx) = mpsc::channel(1);
 
-impl Relay {
-    pub fn init(
-        config: ClientConfig,
-        server_addr: ServerAddr,
-        token_digest: [u8; 32],
-        udp_relay_mode: UdpRelayMode,
-        heartbeat_interval: u64,
-        reduce_rtt: bool,
-    ) -> Result<(Self, Sender<Request>), IoError> {
-        let mut endpoint = {
-            let socket = Socket::new(Domain::IPV6, Type::DGRAM, Some(Protocol::UDP))?;
+    let config = ConnectionConfig::new(
+        quinn_config,
+        server_addr,
+        token_digest,
+        udp_relay_mode,
+        heartbeat_interval,
+        reduce_rtt,
+    );
 
-            socket.set_only_v6(false)?;
-            socket.bind(&SockAddr::from(SocketAddr::from((
-                Ipv6Addr::UNSPECIFIED,
-                0,
-            ))))?;
+    let conn = Arc::new(AsyncMutex::new(None));
+    let conn_lock = conn.clone().lock_owned().await;
 
-            Endpoint::new(EndpointConfig::default(), None, UdpSocket::from(socket))?.0
-        };
-
-        endpoint.set_default_client_config(config);
-
-        let (req_tx, req_rx) = mpsc::channel(1);
-
-        let relay = Self {
-            req_rx,
-            endpoint,
-            server_addr,
-            token_digest,
-            udp_relay_mode,
-            heartbeat_interval,
-            reduce_rtt,
-        };
-
-        Ok((relay, req_tx))
-    }
-
-    pub async fn run(mut self) {
-        log::info!("[relay] started. Target server: {}", self.server_addr);
-
-        let mut task_count = TaskCount::new();
-
-        let mut conn = self.establish_connection(task_count.clone()).await;
-        log::debug!("[relay] [connection] [establish]");
-
-        while let Some(req) = self.req_rx.recv().await {
-            if conn.is_closed() {
-                log::debug!("[relay] [connection] [disconnect]");
-                task_count = TaskCount::new();
-                conn = self.establish_connection(task_count.clone()).await;
-                log::debug!("[relay] [connection] [establish]");
-            }
-
-            let conn_cloned = conn.clone();
-            let task_count_cloned = task_count.clone();
-
-            tokio::spawn(async move {
-                match conn_cloned
-                    .process_relay_request(req, task_count_cloned)
-                    .await
-                {
-                    Ok(()) => (),
-                    Err(err) => {
-                        log::warn!("[relay] [task] {err}");
-                    }
-                }
-            });
+    let (incoming_tx, incoming_rx) = match udp_relay_mode {
+        UdpRelayMode::Native(()) => {
+            let (tx, rx) = incoming::channel::<IncomingDatagrams>();
+            (UdpRelayMode::Native(tx), UdpRelayMode::Native(rx))
         }
-    }
-
-    async fn establish_connection(&self, task_count: TaskCount) -> Connection {
-        let (mut addrs, server_name) = match &self.server_addr {
-            ServerAddr::HostnameAddr { hostname, .. } => (Vec::new(), hostname),
-            ServerAddr::SocketAddr {
-                server_addr,
-                server_name,
-            } => (vec![*server_addr], server_name),
-        };
-
-        loop {
-            if let ServerAddr::HostnameAddr {
-                hostname,
-                server_port,
-            } = &self.server_addr
-            {
-                match net::lookup_host((hostname.as_str(), *server_port)).await {
-                    Ok(resolved) => addrs = resolved.collect(),
-                    Err(err) => {
-                        log::error!("[relay] [connection] {err}");
-                        time::sleep(Duration::from_secs(1)).await;
-                        continue;
-                    }
-                }
-            }
-
-            for addr in &addrs {
-                match self.endpoint.connect(*addr, server_name) {
-                    Ok(conn) => {
-                        match Connection::init(
-                            conn,
-                            self.token_digest,
-                            self.udp_relay_mode,
-                            self.reduce_rtt,
-                        )
-                        .await
-                        {
-                            Ok(conn) => {
-                                conn.start_heartbeat(task_count, self.heartbeat_interval);
-                                return conn;
-                            }
-                            Err(err) => log::error!("[relay] [connection] {err}"),
-                        }
-                    }
-                    Err(err) => log::error!("[relay] [connection] {err}"),
-                }
-            }
+        UdpRelayMode::Quic(()) => {
+            let (tx, rx) = incoming::channel::<IncomingUniStreams>();
+            (UdpRelayMode::Quic(tx), UdpRelayMode::Quic(rx))
         }
-    }
+    };
+
+    let (listen_requests, wait_req) = request::listen_requests(conn.clone(), req_rx);
+    let listen_incoming = incoming::listen_incoming(incoming_rx);
+
+    let manage_connection =
+        connection::manage_connection(config, conn, conn_lock, incoming_tx, wait_req);
+
+    let task = async move {
+        tokio::select! {
+            () = manage_connection => (),
+            () = listen_requests => (),
+            () = listen_incoming => (),
+        }
+    };
+
+    (task, req_tx)
 }
 
 pub enum ServerAddr {
-    SocketAddr {
-        server_addr: SocketAddr,
-        server_name: String,
-    },
-    HostnameAddr {
-        hostname: String,
-        server_port: u16,
-    },
+    SocketAddr { addr: SocketAddr, name: String },
+    DomainAddr { domain: String, port: u16 },
 }
 
 impl Display for ServerAddr {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
-            ServerAddr::SocketAddr {
-                server_addr,
-                server_name,
-            } => write!(f, "{server_addr} ({server_name})"),
-            ServerAddr::HostnameAddr {
-                hostname,
-                server_port,
-            } => write!(f, "{hostname}:{server_port}"),
+            ServerAddr::SocketAddr { addr, name } => write!(f, "{addr} ({name})"),
+            ServerAddr::DomainAddr { domain, port } => write!(f, "{domain}:{port}"),
         }
     }
 }
 
 #[derive(Clone, Copy)]
-pub enum UdpRelayMode {
-    Native,
-    Quic,
-}
-
-#[derive(Clone)]
-pub struct TaskCount(Arc<()>);
-
-impl TaskCount {
-    fn new() -> Self {
-        Self(Arc::new(()))
-    }
-
-    pub fn is_zero(&self) -> bool {
-        Arc::strong_count(&self.0) <= 2
-    }
-}
-
-#[derive(Debug, Error)]
-pub enum RelayError {
-    #[error(transparent)]
-    Protocol(#[from] ProtocolError),
-    #[error(transparent)]
-    Io(#[from] IoError),
-    #[error(transparent)]
-    Connection(#[from] ConnectionError),
-    #[error(transparent)]
-    ReadStream(#[from] ReadExactError),
-    #[error(transparent)]
-    WriteStream(#[from] WriteError),
-    #[error(transparent)]
-    SendDatagram(#[from] SendDatagramError),
-    #[error("UDP session not found: {0}")]
-    UdpSessionNotFound(u32),
-    #[error("bad command")]
-    BadCommand,
+pub enum UdpRelayMode<N, Q> {
+    Native(N),
+    Quic(Q),
 }

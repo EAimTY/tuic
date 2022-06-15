@@ -14,7 +14,7 @@ impl Connection {
 
             let resp = match TuicCommand::read_from(&mut stream).await {
                 Ok(resp) => resp,
-                Err(err) => {
+                Err(_err) => {
                     let _ = stream.shutdown().await;
                     todo!() // TODO: error handling
                 }

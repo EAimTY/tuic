@@ -1,5 +1,5 @@
 use super::{
-    incoming::{self, Receiver as IncomingReceiver, Sender as IncomingSender},
+    incoming::{self, Sender as IncomingSender},
     request::Wait as WaitRequest,
     stream::{
         BiStream, IncomingDatagrams, IncomingUniStreams, Register as StreamRegister, SendStream,
@@ -13,7 +13,7 @@ use std::{
     collections::HashMap,
     future::Future,
     io::{Error, ErrorKind, Result},
-    net::{Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket},
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr},
     ops::{Deref, DerefMut},
     pin::Pin,
     sync::{
@@ -26,11 +26,7 @@ use std::{
 use tokio::{
     io::AsyncWriteExt,
     net,
-    sync::{
-        mpsc::Sender as MpscSender,
-        oneshot::{self, Receiver as OneshotReceiver, Sender as OneshotSender},
-        Mutex as AsyncMutex, OwnedMutexGuard,
-    },
+    sync::{mpsc::Sender as MpscSender, Mutex as AsyncMutex, OwnedMutexGuard},
     time,
 };
 use tuic_protocol::Command;
@@ -49,7 +45,7 @@ pub async fn manage_connection(
 
     loop {
         // establish a new connection
-        let mut new_conn;
+        let new_conn;
 
         loop {
             // start the procedure only if there is a request waiting
@@ -255,10 +251,6 @@ impl Connection {
         self.udp_sessions.is_empty()
     }
 
-    pub fn is_closed(&self) -> bool {
-        self.is_closed.get()
-    }
-
     pub fn set_closed(&self) {
         self.is_closed.set()
     }
@@ -339,10 +331,6 @@ impl IsClosed {
             is_closed: AtomicBool::new(false),
             waker: Mutex::new(None),
         }))
-    }
-
-    fn get(&self) -> bool {
-        self.0.is_closed.load(Ordering::Acquire)
     }
 
     fn set(&self) {

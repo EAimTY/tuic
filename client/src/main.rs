@@ -1,6 +1,6 @@
 use crate::{
     config::{Config, ConfigError},
-    relay::Relay,
+    // relay::Relay,
     socks5::Socks5,
 };
 use std::{env, process};
@@ -8,7 +8,7 @@ use std::{env, process};
 mod certificate;
 mod config;
 mod relay;
-mod relay2;
+// mod relay_old;
 mod socks5;
 
 #[tokio::main]
@@ -34,20 +34,15 @@ async fn main() {
         .format_module_path(false)
         .init();
 
-    let (relay, req_tx) = match Relay::init(
+    let (relay, req_tx) = relay::init(
         config.client_config,
         config.server_addr,
         config.token_digest,
-        config.udp_relay_mode,
         config.heartbeat_interval,
         config.reduce_rtt,
-    ) {
-        Ok((relay, tx)) => (tokio::spawn(relay.run()), tx),
-        Err(err) => {
-            eprintln!("{err}");
-            return;
-        }
-    };
+        config.udp_relay_mode,
+    )
+    .await;
 
     let socks5 = match Socks5::init(config.local_addr, config.socks5_auth, req_tx).await {
         Ok(socks5) => tokio::spawn(socks5.run()),
@@ -58,7 +53,7 @@ async fn main() {
     };
 
     let res = tokio::select! {
-        res = relay => res,
+        res = tokio::spawn(relay) => res,
         res = socks5 => res,
     };
 
