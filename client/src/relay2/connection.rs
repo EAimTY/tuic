@@ -37,8 +37,8 @@ use tuic_protocol::Command;
 
 pub async fn manage_connection(
     config: ConnectionConfig,
-    conn: Arc<AsyncMutex<Connection>>,
-    lock: OwnedMutexGuard<Connection>,
+    conn: Arc<AsyncMutex<Option<Connection>>>,
+    lock: OwnedMutexGuard<Option<Connection>>,
     mut next_incoming_tx: UdpRelayMode<
         IncomingSender<IncomingDatagrams>,
         IncomingSender<IncomingUniStreams>,
@@ -66,8 +66,9 @@ pub async fn manage_connection(
             };
 
             // renew the connection mutex
-            let mut lock = lock.take().unwrap(); // safety: the mutex must be locked before
-            *lock.deref_mut() = new_conn.clone();
+            // safety: the mutex must be locked before, so this container must have a lock guard inside
+            let mut lock = lock.take().unwrap();
+            *lock.deref_mut() = Some(new_conn.clone());
 
             // send the incoming streams to `incoming::listen_incoming`
             match next_incoming_tx {

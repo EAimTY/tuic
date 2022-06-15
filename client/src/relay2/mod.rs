@@ -50,7 +50,7 @@ pub async fn init(
         reduce_rtt,
     );
 
-    let conn = unsafe { Arc::new(AsyncMutex::new(MaybeUninit::uninit().assume_init())) }; // TODO: fix UB
+    let conn = Arc::new(AsyncMutex::new(None));
     let conn_lock = conn.clone().lock_owned().await;
 
     let (incoming_tx, incoming_rx) = match udp_relay_mode {
