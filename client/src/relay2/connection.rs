@@ -232,6 +232,12 @@ impl Connection {
         Ok(BiStream::new(send, recv, reg))
     }
 
+    pub fn send_datagram(&self, data: Bytes) -> Result<()> {
+        self.controller
+            .send_datagram(data)
+            .map_err(|err| Error::new(ErrorKind::Other, err))
+    }
+
     pub fn udp_sessions(&self) -> &UdpSessionMap {
         self.udp_sessions.deref()
     }
