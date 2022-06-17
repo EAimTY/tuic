@@ -323,6 +323,10 @@ impl Address {
             },
         }
     }
+
+    pub const fn max_serialized_len() -> usize {
+        1 + 1 + u8::MAX as usize + 2
+    }
 }
 
 impl Display for Address {
