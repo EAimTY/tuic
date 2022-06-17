@@ -208,7 +208,7 @@ impl Connection {
             () = self.wait_close() => false,
             _ = interval.tick() => true,
         } {
-            if !self.no_active_stream() && !self.no_active_udp_session() {
+            if !self.no_active_stream() || !self.no_active_udp_session() {
                 match send_heartbeat(&self).await {
                     Ok(()) => log::debug!("[relay] [connection] [heartbeat]"),
                     Err(err) => log::error!("[relay] [connection] [heartbeat] {err}"),
