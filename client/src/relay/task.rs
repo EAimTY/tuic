@@ -14,9 +14,9 @@ impl Connection {
 
             let resp = match TuicCommand::read_from(&mut stream).await {
                 Ok(resp) => resp,
-                Err(_err) => {
+                Err(err) => {
                     let _ = stream.shutdown().await;
-                    todo!() // TODO: error handling
+                    return Err(err);
                 }
             };
 
@@ -81,7 +81,7 @@ impl Connection {
         if let Some(recv_pkt_tx) = self.udp_sessions().get(&assoc_id) {
             let _ = recv_pkt_tx.send((pkt, addr)).await;
         } else {
-            log::error!("no recv_pkt_tx for assoc_id: {}", assoc_id);
+            log::warn!("no recv_pkt_tx for assoc_id: {}", assoc_id);
         }
     }
 

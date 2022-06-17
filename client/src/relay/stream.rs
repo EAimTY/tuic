@@ -1,8 +1,7 @@
-use bytes::Bytes;
 use futures_util::Stream;
 use quinn::{
-    ConnectionError, Datagrams, IncomingUniStreams as QuinnIncomingUniStreams,
-    RecvStream as QuinnRecvStream, SendStream as QuinnSendStream,
+    ConnectionError, IncomingUniStreams as QuinnIncomingUniStreams, RecvStream as QuinnRecvStream,
+    SendStream as QuinnSendStream,
 };
 use std::{
     io::{IoSlice, Result},
@@ -146,30 +145,6 @@ impl AsyncRead for RecvStream {
     }
 }
 
-pub struct IncomingDatagrams {
-    incoming: Datagrams,
-    _reg: Registry,
-}
-
-impl IncomingDatagrams {
-    #[inline]
-    pub fn new(incoming: Datagrams, reg: Registry) -> Self {
-        Self {
-            incoming,
-            _reg: reg,
-        }
-    }
-}
-
-impl Stream for IncomingDatagrams {
-    type Item = StdResult<Bytes, ConnectionError>;
-
-    #[inline]
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
-        Pin::new(&mut self.incoming).poll_next(cx)
-    }
-}
-
 pub struct IncomingUniStreams {
     incoming: QuinnIncomingUniStreams,
     reg: Registry,
@@ -187,11 +162,14 @@ impl Stream for IncomingUniStreams {
 
     #[inline]
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
-        let reg = self.reg.get_register().unwrap(); // safety: no uni stream can arrive after all registers are dropped (connection closed)
-
-        Pin::new(&mut self.incoming)
-            .poll_next(cx)
-            .map_ok(|recv| RecvStream::new(recv, reg))
+        if let Some(reg) = self.reg.get_register() {
+            Pin::new(&mut self.incoming)
+                .poll_next(cx)
+                .map_ok(|recv| RecvStream::new(recv, reg))
+        } else {
+            // the connection is already dropped
+            Poll::Ready(None)
+        }
     }
 }
 

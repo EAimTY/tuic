@@ -148,8 +148,9 @@ impl Future for Wait {
             Poll::Ready(())
         } else {
             // there is no request waiting, pend the task
-            // safety: the `Arc` must be owned by at least one scope (`listen_request`)
-            *self.0.upgrade().unwrap().lock() = Some(cx.waker().clone());
+            if let Some(reg) = self.0.upgrade() {
+                *reg.lock() = Some(cx.waker().clone());
+            }
             Poll::Pending
         }
     }
