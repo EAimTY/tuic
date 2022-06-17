@@ -238,6 +238,13 @@ impl Connection {
         self.udp_relay_mode
     }
 
+    pub fn update_max_udp_relay_packet_size(&self) {
+        super::MAX_UDP_RELAY_PACKET_SIZE.store(
+            self.controller.max_datagram_size().unwrap_or(65535),
+            Ordering::Release,
+        );
+    }
+
     fn no_active_stream(&self) -> bool {
         self.stream_reg.count() == 1
     }

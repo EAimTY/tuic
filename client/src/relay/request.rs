@@ -49,6 +49,8 @@ async fn process_request(conn: Arc<AsyncMutex<Option<Connection>>>, req: Request
             } => {
                 conn.udp_sessions().insert(assoc_id, pkt_recv_tx);
                 while let Some((pkt, addr)) = pkt_send_rx.recv().await {
+                    conn.update_max_udp_relay_packet_size();
+
                     tokio::spawn(conn.clone().handle_packet_to(
                         assoc_id,
                         pkt,

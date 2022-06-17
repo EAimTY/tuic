@@ -4,7 +4,7 @@ use std::{
     fmt::{Display, Formatter, Result as FmtResult},
     future::Future,
     net::SocketAddr,
-    sync::Arc,
+    sync::{atomic::AtomicUsize, Arc},
 };
 use tokio::sync::{
     mpsc::{self, Sender},
@@ -19,6 +19,8 @@ mod incoming;
 mod request;
 mod stream;
 mod task;
+
+pub static MAX_UDP_RELAY_PACKET_SIZE: AtomicUsize = AtomicUsize::new(65535);
 
 pub async fn init(
     quinn_config: ClientConfig,
