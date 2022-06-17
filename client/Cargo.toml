@@ -30,8 +30,8 @@ rustls-pemfile = "1.0"
 serde = { version = "1.0", features = ["derive", "std"], default-features = false }
 serde_json = { version = "1.0", features = ["std"], default-features = false }
 socket2 = "0.4"
-socks5-proto = "0.2"
-socks5-server = "0.6"
+socks5-proto = "0.3"
+socks5-server = "0.7"
 thiserror = "1.0"
 tokio = { version = "1.18", features = ["io-util", "macros", "net", "parking_lot", "rt-multi-thread", "sync", "time"] }
 webpki = { version = "0.22", default-features = false }

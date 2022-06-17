@@ -2,10 +2,7 @@ use crate::relay::{Address as RelayAddress, Request as RelayRequest};
 use socks5_proto::{Address, Reply};
 use socks5_server::{connection::connect::NeedReply, Connect};
 use std::io::Error as IoError;
-use tokio::{
-    io::{self, AsyncWriteExt},
-    sync::mpsc::Sender,
-};
+use tokio::{io, sync::mpsc::Sender};
 
 pub async fn handle(
     conn: Connect<NeedReply>,

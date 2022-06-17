@@ -33,7 +33,7 @@ pub async fn handle(
                 .reply(Reply::Succeeded, Address::SocketAddress(socket_addr))
                 .await?;
 
-            let socket = Arc::new(AssociateUdpSocket::from(socket));
+            let socket = Arc::new(AssociateUdpSocket::from((socket, 65535)));
             let ctrl_addr = conn.peer_addr()?;
 
             let res = tokio::select! {
