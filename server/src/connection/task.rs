@@ -14,7 +14,7 @@ use std::{
 use thiserror::Error;
 use tokio::{
     io::{self, AsyncRead, AsyncWrite, AsyncWriteExt, ReadBuf},
-    net::TcpStream,
+    net::{self, TcpStream},
 };
 use tuic_protocol::{Address, Command};
 
@@ -24,7 +24,13 @@ pub async fn connect(
     addr: Address,
 ) -> Result<(), TaskError> {
     let mut target = None;
-    let addrs = addr.to_socket_addrs().await?;
+
+    let addrs = match addr {
+        Address::SocketAddress(addr) => Ok(vec![addr]),
+        Address::DomainAddress(domain, port) => net::lookup_host((domain.as_str(), port))
+            .await
+            .map(|res| res.collect()),
+    }?;
 
     for addr in addrs {
         if let Ok(target_stream) = TcpStream::connect(addr).await {

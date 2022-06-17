@@ -4,13 +4,9 @@ use bytes::{BufMut, BytesMut};
 use std::{
     fmt::{Display, Formatter, Result as FmtResult},
     io::{Error, ErrorKind, Result},
-    net::{Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs},
-    vec::IntoIter,
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr},
 };
-use tokio::{
-    io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
-    task,
-};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 pub const TUIC_PROTOCOL_VERSION: u8 = 0x04;
 
@@ -326,18 +322,6 @@ impl Address {
                 SocketAddr::V6(_) => 18,
             },
         }
-    }
-
-    pub async fn to_socket_addrs(&self) -> Result<IntoIter<SocketAddr>> {
-        Ok(match self {
-            Self::DomainAddress(addr, port) => {
-                let addr = addr.clone();
-                let port = *port;
-
-                task::spawn_blocking(move || (addr, port).to_socket_addrs()).await??
-            }
-            Self::SocketAddress(addr) => vec![addr.to_owned()].into_iter(),
-        })
     }
 }
 
