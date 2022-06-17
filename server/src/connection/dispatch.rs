@@ -1,8 +1,9 @@
 use super::{task, Connection, RestoreIpv4, UdpPacketSource};
 use bytes::Bytes;
 use quinn::{RecvStream, SendStream, VarInt};
+use std::io::Error as IoError;
 use thiserror::Error;
-use tuic_protocol::{Address, Command, Error as ProtocolError};
+use tuic_protocol::{Address, Command};
 
 impl Connection {
     pub async fn process_uni_stream(&self, mut stream: RecvStream) -> Result<(), DispatchError> {
@@ -199,7 +200,7 @@ impl Connection {
 #[derive(Error, Debug)]
 pub enum DispatchError {
     #[error(transparent)]
-    Protocol(#[from] ProtocolError),
+    Io(#[from] IoError),
     #[error("authentication failed")]
     AuthenticationFailed,
     #[error("authentication timeout")]
@@ -216,7 +217,7 @@ impl DispatchError {
 
     pub fn as_error_code(&self) -> VarInt {
         match self {
-            Self::Protocol(_) => Self::CODE_PROTOCOL,
+            Self::Io(_) => Self::CODE_PROTOCOL,
             Self::AuthenticationFailed => Self::CODE_AUTHENTICATION_FAILED,
             Self::AuthenticationTimeout => Self::CODE_AUTHENTICATION_TIMEOUT,
             Self::BadCommand => Self::CODE_BAD_COMMAND,
