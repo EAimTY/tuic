@@ -2,6 +2,7 @@ use crate::relay::Request as RelayRequest;
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use socks5_server::{Auth, Connection, IncomingConnection, Server};
 use std::{
+    future::Future,
     io::Result,
     net::{SocketAddr, TcpListener as StdTcpListener},
     sync::Arc,
@@ -12,13 +13,22 @@ mod associate;
 mod bind;
 mod connect;
 
-pub struct Socks5 {
+pub async fn init(
+    local_addr: SocketAddr,
+    auth: Arc<dyn Auth + Send + Sync>,
+    req_tx: Sender<RelayRequest>,
+) -> Result<impl Future<Output = ()>> {
+    let socks5 = Socks5::init(local_addr, auth, req_tx).await?;
+    Ok(socks5.run())
+}
+
+struct Socks5 {
     server: Server,
     req_tx: Sender<RelayRequest>,
 }
 
 impl Socks5 {
-    pub async fn init(
+    async fn init(
         local_addr: SocketAddr,
         auth: Arc<dyn Auth + Send + Sync>,
         req_tx: Sender<RelayRequest>,
@@ -38,7 +48,7 @@ impl Socks5 {
         Ok(Self { server, req_tx })
     }
 
-    pub async fn run(self) {
+    async fn run(self) {
         async fn handle_connection(
             conn: IncomingConnection,
             req_tx: Sender<RelayRequest>,

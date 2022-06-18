@@ -118,7 +118,7 @@ impl Connection {
             }
         }
 
-        conn.ok_or(Error::new(ErrorKind::Other, "err"))
+        conn.ok_or_else(|| Error::new(ErrorKind::Other, "err"))
     }
 
     async fn connect_addr(

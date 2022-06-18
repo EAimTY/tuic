@@ -1,14 +1,9 @@
-use crate::{
-    config::{Config, ConfigError},
-    // relay::Relay,
-    socks5::Socks5,
-};
+use crate::config::{Config, ConfigError};
 use std::{env, process};
 
 mod certificate;
 mod config;
 mod relay;
-// mod relay_old;
 mod socks5;
 
 #[tokio::main]
@@ -44,23 +39,18 @@ async fn main() {
     )
     .await;
 
-    let socks5 = match Socks5::init(config.local_addr, config.socks5_auth, req_tx).await {
-        Ok(socks5) => tokio::spawn(socks5.run()),
+    let socks5 = match socks5::init(config.local_addr, config.socks5_auth, req_tx).await {
+        Ok(socks5) => socks5,
         Err(err) => {
             eprintln!("{err}");
             return;
         }
     };
 
-    let res = tokio::select! {
-        res = tokio::spawn(relay) => res,
+    tokio::select! {
+        res = relay => res,
         res = socks5 => res,
     };
-
-    match res {
-        Ok(()) => {}
-        Err(err) => eprintln!("{err}"),
-    }
 
     process::exit(1);
 }

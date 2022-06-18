@@ -1,14 +1,14 @@
 use crate::relay::{Address as RelayAddress, Request as RelayRequest};
 use socks5_proto::{Address, Reply};
 use socks5_server::{connection::connect::NeedReply, Connect};
-use std::io::Error as IoError;
+use std::io::Result;
 use tokio::{io, sync::mpsc::Sender};
 
 pub async fn handle(
     conn: Connect<NeedReply>,
     req_tx: Sender<RelayRequest>,
     target_addr: Address,
-) -> Result<(), IoError> {
+) -> Result<()> {
     log::info!("[socks5] [{}] [connect] [{target_addr}]", conn.peer_addr()?);
 
     let target_addr = match target_addr {
