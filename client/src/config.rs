@@ -8,7 +8,7 @@ use quinn::{
     congestion::{BbrConfig, CubicConfig, NewRenoConfig},
     ClientConfig,
 };
-use rustls::{version::TLS13, Certificate, ClientConfig as RustlsClientConfig, RootCertStore};
+use rustls::{version::TLS13, ClientConfig as RustlsClientConfig};
 use serde::{de::Error as DeError, Deserialize, Deserializer};
 use serde_json::Error as JsonError;
 use socks5_server::{
@@ -46,28 +46,14 @@ impl Config {
         let raw = RawConfig::parse(args)?;
 
         let client_config = {
-            let mut roots = RootCertStore::empty();
-
-            if let Some(path) = raw.relay.certificate {
-                for cert in certificate::load_certificates(&path)
-                    .map_err(|err| ConfigError::Io(path, err))?
-                {
-                    roots.add(&cert)?;
-                }
-            } else {
-                for cert in rustls_native_certs::load_native_certs()
-                    .map_err(ConfigError::NativeCertificate)?
-                {
-                    roots.add(&Certificate(cert.0))?;
-                }
-            }
+            let certs = certificate::load_certificates(raw.relay.certificates)?;
 
             let mut crypto = RustlsClientConfig::builder()
                 .with_safe_default_cipher_suites()
                 .with_safe_default_kx_groups()
                 .with_protocol_versions(&[&TLS13])
                 .unwrap()
-                .with_root_certificates(roots)
+                .with_root_certificates(certs)
                 .with_no_client_auth();
 
             crypto.alpn_protocols = raw
@@ -165,7 +151,9 @@ struct RawRelayConfig {
     port: Option<u16>,
     token: Option<String>,
     ip: Option<IpAddr>,
-    certificate: Option<String>,
+
+    #[serde(default = "default::certificates")]
+    certificates: Vec<String>,
 
     #[serde(
         default = "default::udp_relay_mode",
@@ -224,7 +212,7 @@ impl Default for RawRelayConfig {
             port: None,
             ip: None,
             token: None,
-            certificate: None,
+            certificates: default::certificates(),
             udp_relay_mode: default::udp_relay_mode(),
             congestion_controller: default::congestion_controller(),
             heartbeat_interval: default::heartbeat_interval(),
@@ -284,7 +272,7 @@ impl RawConfig {
         opts.optopt(
             "",
             "certificate",
-            "Set the X.509 certificate for QUIC handshake. If not set, native CA roots will be trusted",
+            "Set custom X.509 certificate alongside native CA roots for the QUIC handshake. This option can be used multiple times to set multiple certificates",
             "CERTIFICATE",
         );
 
@@ -442,7 +430,11 @@ impl RawConfig {
             raw.relay.ip = Some(ip.parse()?);
         };
 
-        raw.relay.certificate = matches.opt_str("certificate").or(raw.relay.certificate);
+        let certificates = matches.opt_strs("certificate");
+
+        if !certificates.is_empty() {
+            raw.relay.certificates = certificates;
+        }
 
         if let Some(mode) = matches.opt_str("udp-relay-mode") {
             raw.relay.udp_relay_mode = mode.parse()?;
@@ -538,6 +530,10 @@ where
 
 mod default {
     use super::*;
+
+    pub(super) const fn certificates() -> Vec<String> {
+        Vec::new()
+    }
 
     pub(super) const fn udp_relay_mode() -> UdpRelayMode<(), ()> {
         UdpRelayMode::Native(())
