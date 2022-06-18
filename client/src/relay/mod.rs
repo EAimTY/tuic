@@ -29,6 +29,7 @@ pub async fn init(
     heartbeat_interval: u64,
     reduce_rtt: bool,
     udp_relay_mode: UdpRelayMode<(), ()>,
+    req_timeout: u64,
 ) -> (impl Future<Output = ()>, Sender<Request>) {
     let (req_tx, req_rx) = mpsc::channel(1);
 
@@ -55,7 +56,7 @@ pub async fn init(
         }
     };
 
-    let (listen_requests, wait_req) = request::listen_requests(conn.clone(), req_rx);
+    let (listen_requests, wait_req) = request::listen_requests(conn.clone(), req_rx, req_timeout);
     let listen_incoming = incoming::listen_incoming(incoming_rx);
 
     let manage_connection =

@@ -36,6 +36,7 @@ async fn main() {
         config.heartbeat_interval,
         config.reduce_rtt,
         config.udp_relay_mode,
+        config.request_timeout,
     )
     .await;
 

@@ -23,23 +23,29 @@ use tokio::{
 pub fn listen_requests(
     conn: Arc<AsyncMutex<Option<Connection>>>,
     mut req_rx: MpscReceiver<Request>,
+    timeout: u64,
 ) -> (impl Future<Output = ()>, Wait) {
     let (reg, count) = Register::new();
 
     let listen = async move {
         while let Some(req) = req_rx.recv().await {
-            tokio::spawn(process_request(conn.clone(), req, reg.clone()));
+            tokio::spawn(process_request(conn.clone(), req, timeout, reg.clone()));
         }
     };
 
     (listen, count)
 }
 
-async fn process_request(conn: Arc<AsyncMutex<Option<Connection>>>, req: Request, _reg: Register) {
+async fn process_request(
+    conn: Arc<AsyncMutex<Option<Connection>>>,
+    req: Request,
+    timeout: u64,
+    _reg: Register,
+) {
     log::info!("[relay] [task] {req}");
 
     // try to get the current connection
-    if let Ok(lock) = time::timeout(Duration::from_secs(5), conn.lock()).await {
+    if let Ok(lock) = time::timeout(Duration::from_millis(timeout), conn.lock()).await {
         let conn = lock.as_ref().unwrap().clone(); // safety: there must be a connection if the lock is aquirable
         drop(lock);
 

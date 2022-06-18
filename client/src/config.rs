@@ -35,6 +35,7 @@ pub struct Config {
     pub udp_relay_mode: UdpRelayMode<(), ()>,
     pub heartbeat_interval: u64,
     pub reduce_rtt: bool,
+    pub request_timeout: u64,
     pub local_addr: SocketAddr,
     pub socks5_auth: Arc<dyn Auth + Send + Sync>,
     pub log_level: LevelFilter,
@@ -117,6 +118,7 @@ impl Config {
         let udp_relay_mode = raw.relay.udp_relay_mode;
         let heartbeat_interval = raw.relay.heartbeat_interval;
         let reduce_rtt = raw.relay.reduce_rtt;
+        let request_timeout = raw.relay.request_timeout;
 
         let local_addr = SocketAddr::from((raw.local.ip, raw.local.port.unwrap()));
 
@@ -138,6 +140,7 @@ impl Config {
             udp_relay_mode,
             heartbeat_interval,
             reduce_rtt,
+            request_timeout,
             local_addr,
             socks5_auth,
             log_level,
@@ -187,6 +190,9 @@ struct RawRelayConfig {
 
     #[serde(default = "default::reduce_rtt")]
     reduce_rtt: bool,
+
+    #[serde(default = "default::request_timeout")]
+    request_timeout: u64,
 }
 
 #[derive(Deserialize)]
@@ -225,6 +231,7 @@ impl Default for RawRelayConfig {
             alpn: default::alpn(),
             disable_sni: default::disable_sni(),
             reduce_rtt: default::reduce_rtt(),
+            request_timeout: default::request_timeout(),
         }
     }
 }
@@ -298,7 +305,7 @@ impl RawConfig {
         opts.optopt(
             "",
             "heartbeat-interval",
-            "Set the heartbeat interval to ensures that the QUIC connection is not closed when there are relay tasks but no data transfer, in milliseconds. This value needs to be smaller than the maximum idle time of the server and client. Default: 10000",
+            "Set the heartbeat interval to ensures that the QUIC connection is not closed when there are relay tasks but no data transfer, in milliseconds. This value needs to be smaller than the maximum idle time set at the server side. Default: 10000",
             "HEARTBEAT_INTERVAL",
         );
 
@@ -316,6 +323,13 @@ impl RawConfig {
         );
 
         opts.optflag("", "reduce-rtt", "Enable 0-RTT QUIC handshake");
+
+        opts.optopt(
+            "",
+            "request-timeout",
+            "Set the timeout for negotiating tasks between client and the server, in milliseconds. Default: 8000",
+            "REQUEST_TIMEOUT",
+        );
 
         opts.optopt(
             "",
@@ -451,6 +465,10 @@ impl RawConfig {
         raw.relay.disable_sni |= matches.opt_present("disable-sni");
         raw.relay.reduce_rtt |= matches.opt_present("reduce-rtt");
 
+        if let Some(timeout) = matches.opt_str("request-timeout") {
+            raw.relay.request_timeout = timeout.parse()?;
+        };
+
         if let Some(local_ip) = matches.opt_str("local-ip") {
             raw.local.ip = local_ip.parse()?;
         };
@@ -543,6 +561,10 @@ mod default {
 
     pub(super) const fn reduce_rtt() -> bool {
         false
+    }
+
+    pub(super) const fn request_timeout() -> u64 {
+        8000
     }
 
     pub(super) const fn local_ip() -> IpAddr {
