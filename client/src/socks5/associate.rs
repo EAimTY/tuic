@@ -2,7 +2,7 @@ use crate::relay::{Address as RelayAddress, Request as RelayRequest};
 use bytes::Bytes;
 use socks5_proto::{Address, Reply};
 use socks5_server::{
-    connection::associate::{AssociateUdpSocket, NeedReply},
+    connection::associate::{AssociatedUdpSocket, NeedReply},
     Associate,
 };
 use std::{io::Error as IoError, net::SocketAddr, sync::Arc};
@@ -33,7 +33,7 @@ pub async fn handle(
                 .reply(Reply::Succeeded, Address::SocketAddress(socket_addr))
                 .await?;
 
-            let socket = Arc::new(AssociateUdpSocket::from((socket, 65535)));
+            let socket = Arc::new(AssociatedUdpSocket::from((socket, 65535)));
             let ctrl_addr = conn.peer_addr()?;
 
             let res = tokio::select! {
@@ -67,7 +67,7 @@ async fn bind_udp_socket(conn: &Associate<NeedReply>) -> Result<UdpSocket, IoErr
 }
 
 async fn socks5_to_relay(
-    socket: Arc<AssociateUdpSocket>,
+    socket: Arc<AssociatedUdpSocket>,
     ctrl_addr: SocketAddr,
     pkt_send_tx: Sender<(Bytes, RelayAddress)>,
 ) -> Result<(), IoError> {
@@ -105,7 +105,7 @@ async fn socks5_to_relay(
 }
 
 async fn relay_to_socks5(
-    socket: Arc<AssociateUdpSocket>,
+    socket: Arc<AssociatedUdpSocket>,
     ctrl_addr: SocketAddr,
     mut pkt_recv_rx: Receiver<(Bytes, RelayAddress)>,
 ) -> Result<(), IoError> {
