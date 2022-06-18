@@ -2,7 +2,7 @@ use crate::relay::Request as RelayRequest;
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use socks5_server::{Auth, Connection, IncomingConnection, Server};
 use std::{
-    io::Error as IoError,
+    io::Result,
     net::{SocketAddr, TcpListener as StdTcpListener},
     sync::Arc,
 };
@@ -22,7 +22,7 @@ impl Socks5 {
         local_addr: SocketAddr,
         auth: Arc<dyn Auth + Send + Sync>,
         req_tx: Sender<RelayRequest>,
-    ) -> Result<Self, IoError> {
+    ) -> Result<Self> {
         let listener = if local_addr.is_ipv4() {
             TcpListener::bind(local_addr).await?
         } else {
@@ -42,7 +42,7 @@ impl Socks5 {
         async fn handle_connection(
             conn: IncomingConnection,
             req_tx: Sender<RelayRequest>,
-        ) -> Result<(), IoError> {
+        ) -> Result<()> {
             match conn.handshake().await? {
                 Connection::Connect(conn, addr) => connect::handle(conn, req_tx, addr).await,
                 Connection::Bind(conn, addr) => bind::handle(conn, req_tx, addr).await,

@@ -191,6 +191,10 @@ impl Command {
             Self::Heartbeat => 0,
         }
     }
+
+    pub const fn max_serialized_len() -> usize {
+        2 + 6 + Address::max_serialized_len()
+    }
 }
 
 /// Address

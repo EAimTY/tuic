@@ -1,21 +1,30 @@
-use crate::relay::{Address as RelayAddress, Request as RelayRequest};
+use crate::relay::{self, Address as RelayAddress, Request as RelayRequest};
 use bytes::Bytes;
-use socks5_proto::{Address, Reply};
+use socks5_proto::{Address, Reply, UdpHeader};
 use socks5_server::{
     connection::associate::{AssociatedUdpSocket, NeedReply},
     Associate,
 };
-use std::{io::Error as IoError, net::SocketAddr, sync::Arc};
+use std::{
+    io::Result,
+    net::SocketAddr,
+    sync::{atomic::Ordering, Arc},
+};
 use tokio::{
     net::UdpSocket,
     sync::mpsc::{Receiver, Sender},
 };
+use tuic_protocol::Command as TuicCommand;
 
 pub async fn handle(
     conn: Associate<NeedReply>,
     req_tx: Sender<RelayRequest>,
     target_addr: Address,
-) -> Result<(), IoError> {
+) -> Result<()> {
+    async fn bind_udp_socket(conn: &Associate<NeedReply>) -> Result<UdpSocket> {
+        UdpSocket::bind(SocketAddr::from((conn.local_addr()?.ip(), 0))).await
+    }
+
     log::info!(
         "[socks5] [{}] [associate] [{target_addr}]",
         conn.peer_addr()?
@@ -33,7 +42,9 @@ pub async fn handle(
                 .reply(Reply::Succeeded, Address::SocketAddress(socket_addr))
                 .await?;
 
-            let socket = Arc::new(AssociatedUdpSocket::from((socket, 65535)));
+            let buf_size = relay::MAX_UDP_RELAY_PACKET_SIZE.load(Ordering::Acquire)
+                - (TuicCommand::max_serialized_len() - UdpHeader::max_serialized_len());
+            let socket = Arc::new(AssociatedUdpSocket::from((socket, buf_size)));
             let ctrl_addr = conn.peer_addr()?;
 
             let res = tokio::select! {
@@ -62,16 +73,16 @@ pub async fn handle(
     }
 }
 
-async fn bind_udp_socket(conn: &Associate<NeedReply>) -> Result<UdpSocket, IoError> {
-    UdpSocket::bind(SocketAddr::from((conn.local_addr()?.ip(), 0))).await
-}
-
 async fn socks5_to_relay(
     socket: Arc<AssociatedUdpSocket>,
     ctrl_addr: SocketAddr,
     pkt_send_tx: Sender<(Bytes, RelayAddress)>,
-) -> Result<(), IoError> {
+) -> Result<()> {
     loop {
+        let buf_size = relay::MAX_UDP_RELAY_PACKET_SIZE.load(Ordering::Acquire)
+            - (TuicCommand::max_serialized_len() - UdpHeader::max_serialized_len());
+        socket.set_max_packet_size(buf_size);
+
         let (pkt, frag, dst_addr, src_addr) = socket.recv_from().await?;
 
         if frag == 0 {
@@ -85,10 +96,16 @@ async fn socks5_to_relay(
             let _ = pkt_send_tx.send((pkt, dst_addr)).await;
             socket.connect(src_addr).await?;
             break;
+        } else {
+            log::warn!("socks5 udp packet fragment not supported");
         }
     }
 
     loop {
+        let buf_size = relay::MAX_UDP_RELAY_PACKET_SIZE.load(Ordering::Acquire)
+            - (TuicCommand::max_serialized_len() - UdpHeader::max_serialized_len());
+        socket.set_max_packet_size(buf_size);
+
         let (pkt, frag, dst_addr) = socket.recv().await?;
 
         if frag == 0 {
@@ -100,6 +117,8 @@ async fn socks5_to_relay(
             };
 
             let _ = pkt_send_tx.send((pkt, dst_addr)).await;
+        } else {
+            log::warn!("socks5 udp packet fragment not supported");
         }
     }
 }
@@ -108,7 +127,7 @@ async fn relay_to_socks5(
     socket: Arc<AssociatedUdpSocket>,
     ctrl_addr: SocketAddr,
     mut pkt_recv_rx: Receiver<(Bytes, RelayAddress)>,
-) -> Result<(), IoError> {
+) -> Result<()> {
     while let Some((pkt, src_addr)) = pkt_recv_rx.recv().await {
         log::debug!("[socks5] [{ctrl_addr}] [associate] [packet-from] {src_addr}");
 
