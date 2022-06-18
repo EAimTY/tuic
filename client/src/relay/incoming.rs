@@ -63,7 +63,8 @@ pub async fn listen_incoming(
         };
 
         match err {
-            ConnectionError::LocallyClosed | ConnectionError::TimedOut => {}
+            ConnectionError::LocallyClosed => log::debug!("[relay] [connection] Locally closed"),
+            ConnectionError::TimedOut => log::debug!("[relay] [connection] Timeout"),
             err => log::error!("[relay] [connection] {err}"),
         }
 
@@ -87,13 +88,16 @@ impl Connection {
                     pkt.slice(cmd_len..cmd_len + len as usize),
                     Address::from(addr),
                 )),
-                _ => Err(Error::new(ErrorKind::InvalidData, "invalid command")),
+                _ => Err(Error::new(
+                    ErrorKind::InvalidData,
+                    "[relay] [connection] Unexpected incoming datagram",
+                )),
             }
         }
 
         match parse_header(pkt).await {
             Ok((assoc_id, pkt, addr)) => self.handle_packet_from(assoc_id, pkt, addr).await,
-            Err(err) => log::error!("[relay] [connection] {err}"),
+            Err(err) => log::warn!("[relay] [connection] {err}"),
         }
     }
 
@@ -112,13 +116,16 @@ impl Connection {
                     let pkt = Bytes::from(buf);
                     Ok((assoc_id, pkt, Address::from(addr)))
                 }
-                _ => Err(Error::new(ErrorKind::InvalidData, "invalid command")),
+                _ => Err(Error::new(
+                    ErrorKind::InvalidData,
+                    "[relay] [connection] Unexpected incoming uni stream",
+                )),
             }
         }
 
         match parse_header(recv).await {
             Ok((assoc_id, pkt, addr)) => self.handle_packet_from(assoc_id, pkt, addr).await,
-            Err(err) => log::error!("[relay] [connection] {err}"),
+            Err(err) => log::warn!("[relay] [connection] {err}"),
         }
     }
 }

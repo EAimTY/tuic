@@ -54,7 +54,7 @@ pub async fn manage_connection(
             (new_conn, dg, uni) = match Connection::connect(&config).await {
                 Ok(conn) => conn,
                 Err(err) => {
-                    log::error!("{err}");
+                    log::error!("[relay] [connection] {err}");
                     continue;
                 }
             };
@@ -82,8 +82,12 @@ pub async fn manage_connection(
             break;
         }
 
+        log::debug!("[relay] [connection] [establish]");
+
         // wait for the connection to be closed, lock the mutex
         new_conn.wait_close().await;
+
+        log::debug!("[relay] [connection] [disconnect]");
         lock = Some(conn.clone().lock_owned().await);
     }
 }
@@ -107,6 +111,7 @@ impl Connection {
         }?;
 
         let mut conn = None;
+        let mut last_err = None;
 
         for addr in addrs {
             match Self::connect_addr(config, addr, name).await {
@@ -114,11 +119,14 @@ impl Connection {
                     conn = Some(new_conn);
                     break;
                 }
-                Err(err) => eprintln!("{err}"),
+                Err(err) => last_err = Some(err),
             }
         }
 
-        conn.ok_or_else(|| Error::new(ErrorKind::Other, "err"))
+        conn.ok_or_else(|| {
+            last_err
+                .unwrap_or_else(|| Error::new(ErrorKind::Other, "Unable to connect to the server"))
+        })
     }
 
     async fn connect_addr(
@@ -143,7 +151,10 @@ impl Connection {
         } = if config.reduce_rtt {
             match conn.into_0rtt() {
                 Ok((conn, _)) => conn,
-                Err(conn) => conn.await?,
+                Err(conn) => {
+                    log::warn!("[relay] [connection] Unable to convert the connection into 0-RTT");
+                    conn.await?
+                }
             }
         } else {
             conn.await?
@@ -184,7 +195,7 @@ impl Connection {
 
         match send_token(&self, token_digest).await {
             Ok(()) => log::debug!("[relay] [connection] [authentication]"),
-            Err(err) => log::error!("[relay] [connection] [authentication] {err}"),
+            Err(err) => log::warn!("[relay] [connection] [authentication] {err}"),
         }
     }
 
@@ -206,7 +217,7 @@ impl Connection {
             if !self.no_active_stream() || !self.no_active_udp_session() {
                 match send_heartbeat(&self).await {
                     Ok(()) => log::debug!("[relay] [connection] [heartbeat]"),
-                    Err(err) => log::error!("[relay] [connection] [heartbeat] {err}"),
+                    Err(err) => log::warn!("[relay] [connection] [heartbeat] {err}"),
                 }
             }
         }
@@ -239,10 +250,15 @@ impl Connection {
     }
 
     pub fn update_max_udp_relay_packet_size(&self) {
-        super::MAX_UDP_RELAY_PACKET_SIZE.store(
-            self.controller.max_datagram_size().unwrap_or(65535),
-            Ordering::Release,
-        );
+        let size = match self.controller.max_datagram_size() {
+            Some(size) => size,
+            None => {
+                log::warn!("[relay] [connection] Failed to detect the max datagram size");
+                65535
+            }
+        };
+
+        super::MAX_UDP_RELAY_PACKET_SIZE.store(size, Ordering::Release);
     }
 
     fn no_active_stream(&self) -> bool {

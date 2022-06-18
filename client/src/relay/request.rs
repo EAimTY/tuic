@@ -4,6 +4,7 @@ use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use rand::{rngs::StdRng, RngCore, SeedableRng};
 use std::{
+    fmt::{Display, Formatter, Result as FmtResult},
     future::Future,
     pin::Pin,
     sync::{Arc, Weak},
@@ -35,6 +36,8 @@ pub fn listen_requests(
 }
 
 async fn process_request(conn: Arc<AsyncMutex<Option<Connection>>>, req: Request, _reg: Register) {
+    log::info!("[relay] [task] {req}");
+
     // try to get the current connection
     if let Ok(lock) = time::timeout(Duration::from_secs(5), conn.lock()).await {
         let conn = lock.as_ref().unwrap().clone(); // safety: there must be a connection if the lock is aquirable
@@ -58,12 +61,14 @@ async fn process_request(conn: Arc<AsyncMutex<Option<Connection>>>, req: Request
                         conn.udp_relay_mode(),
                     ));
                 }
+
+                log::info!("[relay] [task] [dissociate] [{assoc_id}]");
                 conn.clone().udp_sessions().remove(&assoc_id);
                 conn.handle_dissociate(assoc_id).await;
             }
         }
     } else {
-        log::warn!("timeout");
+        log::warn!("[relay] [task] {req} [timeout]");
     }
 }
 
@@ -106,6 +111,15 @@ impl Request {
             pkt_send_tx,
             pkt_recv_rx,
         )
+    }
+}
+
+impl Display for Request {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        match self {
+            Request::Connect { addr, .. } => write!(f, "[connect] [{addr}]"),
+            Request::Associate { assoc_id, .. } => write!(f, "[associate] [{assoc_id}]"),
+        }
     }
 }
 

@@ -34,7 +34,7 @@ pub async fn init(
 
     let config = ConnectionConfig::new(
         quinn_config,
-        server_addr,
+        server_addr.clone(),
         token_digest,
         udp_relay_mode,
         heartbeat_interval,
@@ -62,6 +62,8 @@ pub async fn init(
         connection::manage_connection(config, conn, conn_lock, incoming_tx, wait_req);
 
     let task = async move {
+        log::info!("[relay] Started. Target server: {}", server_addr);
+
         tokio::select! {
             () = manage_connection => (),
             () = listen_requests => (),
@@ -72,6 +74,7 @@ pub async fn init(
     (task, req_tx)
 }
 
+#[derive(Clone)]
 pub enum ServerAddr {
     SocketAddr { addr: SocketAddr, name: String },
     DomainAddr { domain: String, port: u16 },

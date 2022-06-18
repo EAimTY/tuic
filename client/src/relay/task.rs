@@ -28,12 +28,15 @@ impl Connection {
             }
         }
 
+        let display_addr = format!("{addr}");
+
         match negotiate_connect(self, addr).await {
             Ok(Some(stream)) => {
+                log::debug!("[relay] [task] [connect] [{display_addr}] [success]");
                 let _ = tx.send(stream);
             }
-            Ok(None) => {}
-            Err(err) => log::error!("{err}"),
+            Ok(None) => log::debug!("[relay] [task] [connect] [{display_addr}] [fail]"),
+            Err(err) => log::warn!("[relay] [task] [connect] [{display_addr}] {err}"),
         }
     }
 
@@ -71,17 +74,28 @@ impl Connection {
             Ok(())
         }
 
+        let display_addr = format!("{addr}");
+
         match send_packet(self, assoc_id, pkt, addr, mode).await {
-            Ok(()) => {}
-            Err(err) => log::error!("{err}"),
+            Ok(()) => log::debug!(
+                "[relay] [task] [associate] [{assoc_id}] [send] [{display_addr}] [success]"
+            ),
+            Err(err) => {
+                log::warn!("[relay] [task] [associate] [{assoc_id}] [send] [{display_addr}] {err}")
+            }
         }
     }
 
     pub async fn handle_packet_from(self, assoc_id: u32, pkt: Bytes, addr: Address) {
+        let display_addr = format!("{addr}");
+
         if let Some(recv_pkt_tx) = self.udp_sessions().get(&assoc_id) {
+            log::debug!(
+                "[relay] [task] [associate] [{assoc_id}] [recv] [{display_addr}] [success]"
+            );
             let _ = recv_pkt_tx.send((pkt, addr)).await;
         } else {
-            log::warn!("no recv_pkt_tx for assoc_id: {}", assoc_id);
+            log::warn!("[relay] [task] [associate] [{assoc_id}] [recv] [{display_addr}] No corresponding UDP relay session found");
         }
     }
 
@@ -97,8 +111,8 @@ impl Connection {
         }
 
         match send_dissociate(self, assoc_id).await {
-            Ok(()) => {}
-            Err(err) => log::error!("{err}"),
+            Ok(()) => log::debug!("[relay] [task] [dissociate] [{assoc_id}] [success]"),
+            Err(err) => log::warn!("relay] [task] [dissociate] [{assoc_id}] {err}"),
         }
     }
 }
