@@ -4,8 +4,6 @@ Delicately-TUICed high-performance proxy built on top of the [QUIC](https://en.w
 
 **TUIC's goal is to minimize the handshake latency as much as possible**
 
-Warn: This is the `dev` branch of the TUIC project. It is not stable and may change at any time. For production use, please switch to the latest released branch.
-
 ## Features
 
 - 1-RTT TCP relaying
