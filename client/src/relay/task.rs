@@ -74,6 +74,7 @@ impl Connection {
             Ok(())
         }
 
+        self.update_max_udp_relay_packet_size();
         let display_addr = format!("{addr}");
 
         match send_packet(self, assoc_id, pkt, addr, mode).await {
@@ -87,6 +88,7 @@ impl Connection {
     }
 
     pub async fn handle_packet_from(self, assoc_id: u32, pkt: Bytes, addr: Address) {
+        self.update_max_udp_relay_packet_size();
         let display_addr = format!("{addr}");
 
         if let Some(recv_pkt_tx) = self.udp_sessions().get(&assoc_id) {

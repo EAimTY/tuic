@@ -75,6 +75,8 @@ pub async fn manage_connection(
                 }
             }
 
+            new_conn.update_max_udp_relay_packet_size();
+
             // connection established, drop the lock implicitly
             break new_conn;
         };
@@ -247,12 +249,15 @@ impl Connection {
     }
 
     pub fn update_max_udp_relay_packet_size(&self) {
-        let size = match self.controller.max_datagram_size() {
-            Some(size) => size,
-            None => {
-                log::warn!("[relay] [connection] Failed to detect the max datagram size");
-                65535
-            }
+        let size = match self.udp_relay_mode {
+            UdpRelayMode::Native(()) => match self.controller.max_datagram_size() {
+                Some(size) => size,
+                None => {
+                    log::warn!("[relay] [connection] Failed to detect the max datagram size");
+                    65535
+                }
+            },
+            UdpRelayMode::Quic(()) => 65535,
         };
 
         super::MAX_UDP_RELAY_PACKET_SIZE.store(size, Ordering::Release);
