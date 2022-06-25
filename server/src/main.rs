@@ -34,7 +34,7 @@ async fn main() {
 
     let server = match Server::init(
         config.server_config,
-        config.port,
+        config.listen_addr,
         config.token,
         config.authentication_timeout,
         config.max_udp_relay_packet_size,

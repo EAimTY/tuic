@@ -9,14 +9,22 @@ use rustls::{version::TLS13, Error as RustlsError, ServerConfig as RustlsServerC
 use serde::{de::Error as DeError, Deserialize, Deserializer};
 use serde_json::Error as JsonError;
 use std::{
-    collections::HashSet, env::ArgsOs, fmt::Display, fs::File, io::Error as IoError,
-    num::ParseIntError, str::FromStr, sync::Arc, time::Duration,
+    collections::HashSet,
+    env::ArgsOs,
+    fmt::Display,
+    fs::File,
+    io::Error as IoError,
+    net::{AddrParseError, IpAddr, Ipv4Addr, SocketAddr},
+    num::ParseIntError,
+    str::FromStr,
+    sync::Arc,
+    time::Duration,
 };
 use thiserror::Error;
 
 pub struct Config {
     pub server_config: ServerConfig,
-    pub port: u16,
+    pub listen_addr: SocketAddr,
     pub token: HashSet<[u8; 32]>,
     pub authentication_timeout: Duration,
     pub max_udp_relay_packet_size: usize,
@@ -68,7 +76,7 @@ impl Config {
             config
         };
 
-        let port = raw.port.unwrap();
+        let listen_addr = SocketAddr::from((raw.ip, raw.port.unwrap()));
 
         let token = raw
             .token
@@ -82,7 +90,7 @@ impl Config {
 
         Ok(Self {
             server_config,
-            port,
+            listen_addr,
             token,
             authentication_timeout,
             max_udp_relay_packet_size,
@@ -98,6 +106,9 @@ struct RawConfig {
     token: Vec<String>,
     certificate: Option<String>,
     private_key: Option<String>,
+
+    #[serde(default = "default::ip")]
+    ip: IpAddr,
 
     #[serde(
         default = "default::congestion_controller",
@@ -128,6 +139,7 @@ impl Default for RawConfig {
             token: Vec::new(),
             certificate: None,
             private_key: None,
+            ip: default::ip(),
             congestion_controller: default::congestion_controller(),
             max_idle_time: default::max_idle_time(),
             authentication_timeout: default::authentication_timeout(),
@@ -170,6 +182,13 @@ impl RawConfig {
             "private-key",
             "Set the certificate private key",
             "PRIVATE_KEY",
+        );
+
+        opts.optopt(
+            "",
+            "ip",
+            "Set the server listening IP. Default: 0.0.0.0",
+            "IP",
         );
 
         opts.optopt(
@@ -276,6 +295,10 @@ impl RawConfig {
             }
         };
 
+        if let Some(ip) = matches.opt_str("ip") {
+            raw.ip = ip.parse()?;
+        };
+
         if let Some(cgstn_ctrl) = matches.opt_str("congestion-controller") {
             raw.congestion_controller = cgstn_ctrl.parse()?;
         };
@@ -347,6 +370,10 @@ where
 mod default {
     use super::*;
 
+    pub(super) fn ip() -> IpAddr {
+        IpAddr::V4(Ipv4Addr::UNSPECIFIED)
+    }
+
     pub(super) const fn congestion_controller() -> CongestionController {
         CongestionController::Cubic
     }
@@ -390,6 +417,8 @@ pub enum ConfigError {
     MissingOption(&'static str),
     #[error(transparent)]
     ParseInt(#[from] ParseIntError),
+    #[error(transparent)]
+    ParseAddr(#[from] AddrParseError),
     #[error("Invalid congestion controller")]
     InvalidCongestionController,
     #[error(transparent)]
