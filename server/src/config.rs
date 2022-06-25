@@ -19,6 +19,7 @@ pub struct Config {
     pub port: u16,
     pub token: HashSet<[u8; 32]>,
     pub authentication_timeout: Duration,
+    pub max_udp_relay_packet_size: usize,
     pub log_level: LevelFilter,
 }
 
@@ -76,6 +77,7 @@ impl Config {
             .collect();
 
         let authentication_timeout = Duration::from_secs(raw.authentication_timeout);
+        let max_udp_relay_packet_size = raw.max_udp_relay_packet_size;
         let log_level = raw.log_level;
 
         Ok(Self {
@@ -83,6 +85,7 @@ impl Config {
             port,
             token,
             authentication_timeout,
+            max_udp_relay_packet_size,
             log_level,
         })
     }
@@ -111,6 +114,9 @@ struct RawConfig {
     #[serde(default = "default::alpn")]
     alpn: Vec<String>,
 
+    #[serde(default = "default::max_udp_relay_packet_size")]
+    max_udp_relay_packet_size: usize,
+
     #[serde(default = "default::log_level")]
     log_level: LevelFilter,
 }
@@ -126,6 +132,7 @@ impl Default for RawConfig {
             max_idle_time: default::max_idle_time(),
             authentication_timeout: default::authentication_timeout(),
             alpn: default::alpn(),
+            max_udp_relay_packet_size: default::max_udp_relay_packet_size(),
             log_level: default::log_level(),
         }
     }
@@ -191,6 +198,13 @@ impl RawConfig {
             "alpn",
             "Set ALPN protocols that the server accepts. This option can be used multiple times to set multiple ALPN protocols. If not set, the server will not check ALPN at all",
             "ALPN_PROTOCOL",
+        );
+
+        opts.optopt(
+            "",
+            "max-udp-relay-packet-size",
+            "UDP relay mode QUIC can transmit UDP packets larger than the MTU. Set this to a higher value allows outbound to receive larger UDP packet. Default: 1500",
+            "MAX_UDP_RELAY_PACKET_SIZE",
         );
 
         opts.optopt(
@@ -274,6 +288,10 @@ impl RawConfig {
             raw.authentication_timeout = timeout.parse()?;
         };
 
+        if let Some(size) = matches.opt_str("max-udp-relay-packet-size") {
+            raw.max_udp_relay_packet_size = size.parse()?;
+        };
+
         let alpn = matches.opt_strs("alpn");
 
         if !alpn.is_empty() {
@@ -343,6 +361,10 @@ mod default {
 
     pub(super) const fn alpn() -> Vec<String> {
         Vec::new()
+    }
+
+    pub(super) const fn max_udp_relay_packet_size() -> usize {
+        1500
     }
 
     pub(super) const fn log_level() -> LevelFilter {

@@ -52,16 +52,18 @@ pub type RecvPacketReceiver = Receiver<(u32, Bytes, Address)>;
 pub struct UdpSessionMap {
     map: Mutex<HashMap<u32, UdpSession>>,
     recv_pkt_tx_for_clone: RecvPacketSender,
+    max_pkt_size: usize,
 }
 
 impl UdpSessionMap {
-    pub fn new() -> (Self, RecvPacketReceiver) {
+    pub fn new(max_pkt_size: usize) -> (Self, RecvPacketReceiver) {
         let (recv_pkt_tx, recv_pkt_rx) = mpsc::channel(1);
 
         (
             Self {
                 map: Mutex::new(HashMap::new()),
                 recv_pkt_tx_for_clone: recv_pkt_tx,
+                max_pkt_size,
             },
             recv_pkt_rx,
         )
@@ -85,8 +87,13 @@ impl UdpSessionMap {
             log::info!("[{src_addr}] [associate] [{assoc_id}]");
             drop(map);
 
-            let assoc =
-                UdpSession::new(assoc_id, self.recv_pkt_tx_for_clone.clone(), src_addr).await?;
+            let assoc = UdpSession::new(
+                assoc_id,
+                self.recv_pkt_tx_for_clone.clone(),
+                src_addr,
+                self.max_pkt_size,
+            )
+            .await?;
 
             let send_pkt_tx = assoc.0.clone();
 
@@ -114,6 +121,7 @@ impl UdpSession {
         assoc_id: u32,
         recv_pkt_tx: RecvPacketSender,
         src_addr: SocketAddr,
+        max_pkt_size: usize,
     ) -> Result<Self, IoError> {
         let socket = Arc::new(UdpSocket::bind(SocketAddr::from((Ipv6Addr::UNSPECIFIED, 0))).await?);
         let (send_pkt_tx, send_pkt_rx) = mpsc::channel(1);
@@ -121,7 +129,7 @@ impl UdpSession {
         tokio::spawn(async move {
             match tokio::select!(
                 res = Self::listen_send_packet(socket.clone(), send_pkt_rx) => res,
-                res = Self::listen_receive_packet(socket, assoc_id, recv_pkt_tx) => res,
+                res = Self::listen_receive_packet(socket, assoc_id, recv_pkt_tx,max_pkt_size) => res,
             ) {
                 Ok(()) => (),
                 Err(err) => log::warn!("[{src_addr}] [udp-session] [{assoc_id}] {err}"),
@@ -153,9 +161,10 @@ impl UdpSession {
         socket: Arc<UdpSocket>,
         assoc_id: u32,
         recv_pkt_tx: RecvPacketSender,
+        max_pkt_size: usize,
     ) -> Result<(), IoError> {
         loop {
-            let mut buf = vec![0; 65535];
+            let mut buf = vec![0; max_pkt_size];
             let (len, addr) = socket.recv_from(&mut buf).await?;
             buf.truncate(len);
 

@@ -15,6 +15,7 @@ pub struct Server {
     port: u16,
     token: Arc<HashSet<[u8; 32]>>,
     authentication_timeout: Duration,
+    max_pkt_size: usize,
 }
 
 impl Server {
@@ -23,6 +24,7 @@ impl Server {
         port: u16,
         token: HashSet<[u8; 32]>,
         auth_timeout: Duration,
+        max_pkt_size: usize,
     ) -> Result<Self, IoError> {
         let socket = Socket::new(Domain::IPV6, Type::DGRAM, Some(Protocol::UDP))?;
         socket.set_only_v6(false)?;
@@ -39,6 +41,7 @@ impl Server {
             port,
             token: Arc::new(token),
             authentication_timeout: auth_timeout,
+            max_pkt_size,
         })
     }
 
@@ -48,7 +51,12 @@ impl Server {
         while let Some(conn) = self.incoming.next().await {
             let token = self.token.clone();
 
-            tokio::spawn(Connection::handle(conn, token, self.authentication_timeout));
+            tokio::spawn(Connection::handle(
+                conn,
+                token,
+                self.authentication_timeout,
+                self.max_pkt_size,
+            ));
         }
     }
 }

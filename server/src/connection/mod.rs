@@ -38,7 +38,12 @@ pub struct Connection {
 }
 
 impl Connection {
-    pub async fn handle(conn: Connecting, token: Arc<HashSet<[u8; 32]>>, auth_timeout: Duration) {
+    pub async fn handle(
+        conn: Connecting,
+        token: Arc<HashSet<[u8; 32]>>,
+        auth_timeout: Duration,
+        max_pkt_size: usize,
+    ) {
         let rmt_addr = conn.remote_address().restore_ipv4();
 
         match conn.await {
@@ -51,7 +56,7 @@ impl Connection {
             }) => {
                 log::debug!("[{rmt_addr}] [establish]");
 
-                let (udp_sessions, recv_pkt_rx) = UdpSessionMap::new();
+                let (udp_sessions, recv_pkt_rx) = UdpSessionMap::new(max_pkt_size);
                 let is_closed = IsClosed::new();
                 let is_authed = IsAuthenticated::new(is_closed.clone());
 

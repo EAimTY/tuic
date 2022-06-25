@@ -37,6 +37,7 @@ async fn main() {
         config.port,
         config.token,
         config.authentication_timeout,
+        config.max_udp_relay_packet_size,
     ) {
         Ok(server) => server,
         Err(err) => {
