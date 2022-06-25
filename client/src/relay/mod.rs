@@ -22,6 +22,7 @@ mod task;
 
 pub static MAX_UDP_RELAY_PACKET_SIZE: AtomicUsize = AtomicUsize::new(1500);
 
+#[allow(clippy::too_many_arguments)]
 pub async fn init(
     quinn_config: ClientConfig,
     server_addr: ServerAddr,
