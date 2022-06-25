@@ -30,6 +30,7 @@ pub async fn init(
     reduce_rtt: bool,
     udp_relay_mode: UdpRelayMode<(), ()>,
     req_timeout: u64,
+    max_udp_relay_packet_size: usize,
 ) -> (impl Future<Output = ()>, Sender<Request>) {
     let (req_tx, req_rx) = mpsc::channel(1);
 
@@ -40,6 +41,7 @@ pub async fn init(
         udp_relay_mode,
         heartbeat_interval,
         reduce_rtt,
+        max_udp_relay_packet_size,
     );
 
     let conn = Arc::new(AsyncMutex::new(None));

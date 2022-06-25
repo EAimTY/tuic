@@ -36,6 +36,7 @@ pub struct Config {
     pub heartbeat_interval: u64,
     pub reduce_rtt: bool,
     pub request_timeout: u64,
+    pub max_udp_relay_packet_size: usize,
     pub local_addr: SocketAddr,
     pub socks5_auth: Arc<dyn Auth + Send + Sync>,
     pub log_level: LevelFilter,
@@ -105,6 +106,7 @@ impl Config {
         let heartbeat_interval = raw.relay.heartbeat_interval;
         let reduce_rtt = raw.relay.reduce_rtt;
         let request_timeout = raw.relay.request_timeout;
+        let max_udp_relay_packet_size = raw.relay.max_udp_relay_packet_size;
 
         let local_addr = SocketAddr::from((raw.local.ip, raw.local.port.unwrap()));
 
@@ -127,6 +129,7 @@ impl Config {
             heartbeat_interval,
             reduce_rtt,
             request_timeout,
+            max_udp_relay_packet_size,
             local_addr,
             socks5_auth,
             log_level,
@@ -181,6 +184,9 @@ struct RawRelayConfig {
 
     #[serde(default = "default::request_timeout")]
     request_timeout: u64,
+
+    #[serde(default = "default::max_udp_relay_packet_size")]
+    max_udp_relay_packet_size: usize,
 }
 
 #[derive(Deserialize)]
@@ -220,6 +226,7 @@ impl Default for RawRelayConfig {
             disable_sni: default::disable_sni(),
             reduce_rtt: default::reduce_rtt(),
             request_timeout: default::request_timeout(),
+            max_udp_relay_packet_size: default::max_udp_relay_packet_size(),
         }
     }
 }
@@ -317,6 +324,13 @@ impl RawConfig {
             "request-timeout",
             "Set the timeout for negotiating tasks between client and the server, in milliseconds. Default: 8000",
             "REQUEST_TIMEOUT",
+        );
+
+        opts.optopt(
+            "",
+            "max-udp-relay-packet-size",
+            "UDP relay mode QUIC can transmit UDP packets larger than the MTU. Set this to a higher value allows inbound to receive larger UDP packet. Default: 1500",
+            "MAX_UDP_RELAY_PACKET_SIZE",
         );
 
         opts.optopt(
@@ -461,6 +475,10 @@ impl RawConfig {
             raw.relay.request_timeout = timeout.parse()?;
         };
 
+        if let Some(size) = matches.opt_str("max-udp-relay-packet-size") {
+            raw.relay.max_udp_relay_packet_size = size.parse()?;
+        };
+
         if let Some(local_ip) = matches.opt_str("local-ip") {
             raw.local.ip = local_ip.parse()?;
         };
@@ -561,6 +579,10 @@ mod default {
 
     pub(super) const fn request_timeout() -> u64 {
         8000
+    }
+
+    pub(super) const fn max_udp_relay_packet_size() -> usize {
+        1500
     }
 
     pub(super) const fn local_ip() -> IpAddr {

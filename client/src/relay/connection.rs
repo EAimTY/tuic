@@ -98,6 +98,7 @@ pub struct Connection {
     stream_reg: Arc<StreamRegister>,
     udp_relay_mode: UdpRelayMode<(), ()>,
     is_closed: IsClosed,
+    default_max_udp_relay_packet_size: usize,
 }
 
 impl Connection {
@@ -172,6 +173,7 @@ impl Connection {
             stream_reg: Arc::new(StreamRegister::new()),
             udp_relay_mode: config.udp_relay_mode,
             is_closed: IsClosed::new(),
+            default_max_udp_relay_packet_size: config.max_udp_relay_packet_size,
         };
 
         // send auth
@@ -254,10 +256,10 @@ impl Connection {
                 Some(size) => size,
                 None => {
                     log::warn!("[relay] [connection] Failed to detect the max datagram size");
-                    65535
+                    self.default_max_udp_relay_packet_size
                 }
             },
-            UdpRelayMode::Quic(()) => 65535,
+            UdpRelayMode::Quic(()) => self.default_max_udp_relay_packet_size,
         };
 
         super::MAX_UDP_RELAY_PACKET_SIZE.store(size, Ordering::Release);
@@ -287,6 +289,7 @@ pub struct ConnectionConfig {
     udp_relay_mode: UdpRelayMode<(), ()>,
     heartbeat_interval: u64,
     reduce_rtt: bool,
+    max_udp_relay_packet_size: usize,
 }
 
 impl ConnectionConfig {
@@ -297,6 +300,7 @@ impl ConnectionConfig {
         udp_relay_mode: UdpRelayMode<(), ()>,
         heartbeat_interval: u64,
         reduce_rtt: bool,
+        max_udp_relay_packet_size: usize,
     ) -> Self {
         Self {
             quinn_config,
@@ -305,6 +309,7 @@ impl ConnectionConfig {
             udp_relay_mode,
             heartbeat_interval,
             reduce_rtt,
+            max_udp_relay_packet_size,
         }
     }
 }

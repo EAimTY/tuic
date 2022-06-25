@@ -37,6 +37,7 @@ async fn main() {
         config.reduce_rtt,
         config.udp_relay_mode,
         config.request_timeout,
+        config.max_udp_relay_packet_size,
     )
     .await;
 
