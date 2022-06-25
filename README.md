@@ -2,7 +2,9 @@
 
 Delicately-TUICed high-performance proxy built on top of the [QUIC](https://en.wikipedia.org/wiki/QUIC) protocol
 
-**TUIC's goal is to provide a highly usable and efficient proxy even on poor quality network, and minimize the handshake latency as much as possible.**
+**TUIC's goal is to minimize the handshake latency as much as possible**
+
+Warn: This is the `dev` branch of the TUIC project. It is not stable and may change at any time. For production use, please switch to the latest released branch.
 
 ## Features
 
@@ -29,7 +31,7 @@ TUIC has 2 UDP relay modes:
 
 - `native` - using QUIC's datagram to transmit UDP packets. As with native UDP, packets may be lost, but the overhead of the acknowledgment mechanism is omitted. Relayed packets are still encrypted by QUIC.
 
-- `quic` - transporting UDP packets as QUIC streams. Because of the acknowledgment and retransmission mechanism, UDP packets can guarantee a 100% delivery rate, but have additional transmission overhead as a result. Note that each UDP data packet is transmitted as a separate stream, and the flow controlled separately, so the loss and retransmission of one packet will not cause other packets to be blocked.
+- `quic` - transporting UDP packets as QUIC streams. Because of the acknowledgment and retransmission mechanism, UDP packets can guarantee a 100% delivery rate, but have additional transmission overhead as a result. Note that each UDP data packet is transmitted as a separate stream, and the flow controlled separately, so the loss and retransmission of one packet will not cause other packets to be blocked. This mode can be used to transmit UDP packets larger than the MTU of the underlying network.
 
 ### User-space Congestion Control
 
@@ -78,6 +80,10 @@ Options:
                         option can be used multiple times to set multiple ALPN
                         protocols. If not set, the server will not check ALPN
                         at all
+        --max-udp-relay-packet-size MAX_UDP_RELAY_PACKET_SIZE
+                        UDP relay mode QUIC can transmit UDP packets larger
+                        than the MTU. Set this to a higher value allows
+                        outbound to receive larger UDP packet. Default: 1500
         --log-level LOG_LEVEL
                         Set the log level. Available: "off", "error", "warn",
                         "info", "debug", "trace". Default: "info"
@@ -98,6 +104,7 @@ The configuration file is in JSON format:
     "max_idle_time": 15000,
     "authentication_timeout": 1000,
     "alpn": ["h3"],
+    "max_udp_relay_packet_size": 1500,
     "log_level": "info"
 }
 ```
@@ -124,8 +131,9 @@ Options:
                         Set the server IP, for overwriting the DNS lookup
                         result of the server address set in option 'server'
         --certificate CERTIFICATE
-                        Set the X.509 certificate for QUIC handshake. If not
-                        set, native CA roots will be trusted
+                        Set custom X.509 certificate alongside native CA roots
+                        for the QUIC handshake. This option can be used
+                        multiple times to set multiple certificates
         --udp-relay-mode UDP_MODE
                         Set the UDP relay mode. Available: "native", "quic".
                         Default: "native"
@@ -136,8 +144,8 @@ Options:
                         Set the heartbeat interval to ensures that the QUIC
                         connection is not closed when there are relay tasks
                         but no data transfer, in milliseconds. This value
-                        needs to be smaller than the maximum idle time of the
-                        server and client. Default: 10000
+                        needs to be smaller than the maximum idle time set at
+                        the server side. Default: 10000
         --alpn ALPN_PROTOCOL
                         Set ALPN protocols included in the TLS client hello.
                         This option can be used multiple times to set multiple
@@ -146,6 +154,13 @@ Options:
         --disable-sni   Not sending the Server Name Indication (SNI) extension
                         during the client TLS handshake
         --reduce-rtt    Enable 0-RTT QUIC handshake
+        --request-timeout REQUEST_TIMEOUT
+                        Set the timeout for negotiating tasks between client
+                        and the server, in milliseconds. Default: 8000
+        --max-udp-relay-packet-size MAX_UDP_RELAY_PACKET_SIZE
+                        UDP relay mode QUIC can transmit UDP packets larger
+                        than the MTU. Set this to a higher value allows
+                        inbound to receive larger UDP packet. Default: 1500
         --local-port LOCAL_PORT
                         Set the listening port for the local socks5 server
         --local-ip LOCAL_IP
@@ -181,7 +196,8 @@ The configuration file is in JSON format:
         "heartbeat_interval": 10000,
         "alpn": ["h3"],
         "disable_sni": false,
-        "reduce_rtt": false
+        "reduce_rtt": false,
+        "max_udp_relay_packet_size": 1500
     },
     "local": {
         "port": 1080,
@@ -198,15 +214,19 @@ Fields `server`, `token` and `port` in both sections are required.
 
 Note that command line arguments can override the configuration file.
 
+## GUI Client
+
+### iOS
+
+- [Stash](https://stash.ws/) *
+
+* [Stash](https://stash.ws/) re-implemented the TUIC protocol from scratch, so it didn't preserve the GPL License.
+
 ## FAQ
 
 ### Why TUIC client doesn't support other inbound / advanced route settings?
 
-Since there are already many great proxy convert / distribute solutions, there really is no need for me to reimplement those again. If you need those functions, the best choice to chain a v2ray layer in front of the TUIC client. For a typical network program, there is basically no performance cost for local relaying.
-
-### How to use TUIC client on my smartphone?
-
-TUIC doesn't have GUI client yet. The current best way to use TUIC on smartphones is to run it on the router.
+Since there are already many great proxy convert / distribute solutions, there really is no need for me to reimplement those again. If you need those functions, the best choice to chain a V2Ray layer in front of the TUIC client. For a typical network program, there is basically no performance cost for local relaying.
 
 ## License
 GNU General Public License v3.0
