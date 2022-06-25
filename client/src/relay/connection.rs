@@ -43,15 +43,12 @@ pub async fn manage_connection(
 
     loop {
         // establish a new connection
-        let new_conn;
-
-        loop {
+        let new_conn = loop {
             // start the procedure only if there is a request waiting
             wait_req.clone().await;
 
             // try to establish a new connection
-            let (dg, uni);
-            (new_conn, dg, uni) = match Connection::connect(&config).await {
+            let (new_conn, dg, uni) = match Connection::connect(&config).await {
                 Ok(conn) => conn,
                 Err(err) => {
                     log::error!("[relay] [connection] {err}");
@@ -79,8 +76,8 @@ pub async fn manage_connection(
             }
 
             // connection established, drop the lock implicitly
-            break;
-        }
+            break new_conn;
+        };
 
         log::debug!("[relay] [connection] [establish]");
 
@@ -340,21 +337,22 @@ struct IsClosed(Arc<IsClosedInner>);
 
 struct IsClosedInner {
     is_closed: AtomicBool,
-    waker: Mutex<Option<Waker>>,
+    waker: Mutex<Vec<Waker>>,
 }
 
 impl IsClosed {
     fn new() -> Self {
         Self(Arc::new(IsClosedInner {
             is_closed: AtomicBool::new(false),
-            waker: Mutex::new(None),
+            // Needs at least 2 slots for `manage_connection()` and `heartbeat()`
+            waker: Mutex::new(Vec::with_capacity(2)),
         }))
     }
 
     fn set(&self) {
         self.0.is_closed.store(true, Ordering::Release);
 
-        if let Some(waker) = self.0.waker.lock().take() {
+        for waker in self.0.waker.lock().drain(..) {
             waker.wake();
         }
     }
@@ -367,7 +365,7 @@ impl Future for IsClosed {
         if self.0.is_closed.load(Ordering::Acquire) {
             Poll::Ready(())
         } else {
-            *self.0.waker.lock() = Some(cx.waker().clone());
+            self.0.waker.lock().push(cx.waker().clone());
             Poll::Pending
         }
     }
