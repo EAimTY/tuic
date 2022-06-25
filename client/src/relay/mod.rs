@@ -20,7 +20,7 @@ mod request;
 mod stream;
 mod task;
 
-pub static MAX_UDP_RELAY_PACKET_SIZE: AtomicUsize = AtomicUsize::new(65535);
+pub static MAX_UDP_RELAY_PACKET_SIZE: AtomicUsize = AtomicUsize::new(1500);
 
 pub async fn init(
     quinn_config: ClientConfig,
