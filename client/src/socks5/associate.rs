@@ -97,7 +97,7 @@ async fn socks5_to_relay(
             socket.connect(src_addr).await?;
             break;
         } else {
-            log::warn!("socks5 udp packet fragment not supported");
+            log::warn!("[socks5] [{ctrl_addr}] [associate] [packet-to] socks5 UDP packet fragment is not supported");
         }
     }
 
@@ -118,7 +118,7 @@ async fn socks5_to_relay(
 
             let _ = pkt_send_tx.send((pkt, dst_addr)).await;
         } else {
-            log::warn!("socks5 udp packet fragment not supported");
+            log::warn!("[socks5] [{ctrl_addr}] [associate] [packet-to] socks5 UDP packet fragment is not supported");
         }
     }
 }
