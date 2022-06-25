@@ -65,6 +65,7 @@ Options:
                         certificate
         --private-key PRIVATE_KEY
                         Set the certificate private key
+        --ip IP         Set the server listening IP. Default: 0.0.0.0
         --congestion-controller CONGESTION_CONTROLLER
                         Set the congestion control algorithm. Available:
                         "cubic", "new_reno", "bbr". Default: "cubic"
@@ -100,6 +101,7 @@ The configuration file is in JSON format:
     "certificate": "/PATH/TO/CERT",
     "private_key": "/PATH/TO/PRIV_KEY",
 
+    "ip": "0.0.0.0",
     "congestion_controller": "cubic",
     "max_idle_time": 15000,
     "authentication_timeout": 1000,
