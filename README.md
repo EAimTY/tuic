@@ -218,6 +218,10 @@ Note that command line arguments can override the configuration file.
 
 ## GUI Client
 
+### Android
+
+- [SagerNet](https://sagernet.org/)
+
 ### iOS
 
 - [Stash](https://stash.ws/) *
