@@ -192,7 +192,7 @@ The configuration file is in JSON format:
         "token": "TOKEN",
 
         "ip": "SERVER_IP",
-        "certificate": "/PATH/TO/CERT",
+        "certificates": ["/PATH/TO/CERT"],
         "udp_relay_mode": "native",
         "congestion_controller": "cubic",
         "heartbeat_interval": 10000,
