@@ -1,9 +1,10 @@
 //! The TUIC protocol
 
-use bytes::{BufMut, BytesMut};
+use byteorder::{BigEndian, ReadBytesExt};
+use bytes::BufMut;
 use std::{
     fmt::{Display, Formatter, Result as FmtResult},
-    io::{Error, ErrorKind, Result},
+    io::{Cursor, Error, ErrorKind, Result},
     net::{Ipv4Addr, Ipv6Addr, SocketAddr},
 };
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -92,15 +93,19 @@ impl Command {
             ));
         }
 
-        match r.read_u8().await? {
-            Self::TYPE_RESPONSE => match r.read_u8().await? {
-                Self::RESPONSE_SUCCEEDED => Ok(Self::new_response(true)),
-                Self::RESPONSE_FAILED => Ok(Self::new_response(false)),
-                resp => Err(Error::new(
-                    ErrorKind::InvalidInput,
-                    format!("Invalid response code: {resp}"),
-                )),
-            },
+        let cmd = r.read_u8().await?;
+        match cmd {
+            Self::TYPE_RESPONSE => {
+                let resp = r.read_u8().await?;
+                match resp {
+                    Self::RESPONSE_SUCCEEDED => Ok(Self::new_response(true)),
+                    Self::RESPONSE_FAILED => Ok(Self::new_response(false)),
+                    _ => Err(Error::new(
+                        ErrorKind::InvalidInput,
+                        format!("Invalid response code: {resp}"),
+                    )),
+                }
+            }
             Self::TYPE_AUTHENTICATE => {
                 let mut digest = [0; 32];
                 r.read_exact(&mut digest).await?;
@@ -113,9 +118,10 @@ impl Command {
             Self::TYPE_PACKET => {
                 let mut buf = [0; 6];
                 r.read_exact(&mut buf).await?;
+                let mut rdr = Cursor::new(buf);
 
-                let assoc_id = unsafe { u32::from_be(*(buf.as_ptr() as *const u32)) };
-                let len = unsafe { u16::from_be(*(buf.as_ptr().add(4) as *const u16)) };
+                let assoc_id = ReadBytesExt::read_u32::<BigEndian>(&mut rdr).unwrap();
+                let len = ReadBytesExt::read_u16::<BigEndian>(&mut rdr).unwrap();
                 let addr = Address::read_from(r).await?;
 
                 Ok(Self::new_packet(assoc_id, len, addr))
@@ -125,7 +131,7 @@ impl Command {
                 Ok(Self::new_dissociate(assoc_id))
             }
             Self::TYPE_HEARTBEAT => Ok(Self::new_heartbeat()),
-            cmd => Err(Error::new(
+            _ => Err(Error::new(
                 ErrorKind::InvalidInput,
                 format!("Invalid command: {cmd}"),
             )),
@@ -136,7 +142,7 @@ impl Command {
     where
         W: AsyncWrite + Unpin,
     {
-        let mut buf = BytesMut::with_capacity(self.serialized_len());
+        let mut buf = Vec::with_capacity(self.serialized_len());
         self.write_to_buf(&mut buf);
         w.write_all(&buf).await
     }
@@ -235,8 +241,7 @@ impl Address {
                 let mut buf = vec![0; len + 2];
                 stream.read_exact(&mut buf).await?;
 
-                let port = unsafe { u16::from_be(*(buf.as_ptr().add(len) as *const u16)) };
-
+                let port = ReadBytesExt::read_u16::<BigEndian>(&mut &buf[len..]).unwrap();
                 buf.truncate(len);
 
                 let addr = String::from_utf8(buf).map_err(|err| {
@@ -251,29 +256,36 @@ impl Address {
             Self::TYPE_IPV4 => {
                 let mut buf = [0; 6];
                 stream.read_exact(&mut buf).await?;
+                let mut rdr = Cursor::new(buf);
 
-                let port = unsafe { u16::from_be(*(buf.as_ptr().add(4) as *const u16)) };
-                let addr = Ipv4Addr::new(buf[0], buf[1], buf[2], buf[3]);
+                let addr = Ipv4Addr::new(
+                    ReadBytesExt::read_u8(&mut rdr).unwrap(),
+                    ReadBytesExt::read_u8(&mut rdr).unwrap(),
+                    ReadBytesExt::read_u8(&mut rdr).unwrap(),
+                    ReadBytesExt::read_u8(&mut rdr).unwrap(),
+                );
+
+                let port = ReadBytesExt::read_u16::<BigEndian>(&mut rdr).unwrap();
 
                 Ok(Self::SocketAddress(SocketAddr::from((addr, port))))
             }
             Self::TYPE_IPV6 => {
                 let mut buf = [0; 18];
                 stream.read_exact(&mut buf).await?;
-                let buf = unsafe { *(buf.as_ptr() as *const [u16; 9]) };
-
-                let port = buf[8];
+                let mut rdr = Cursor::new(buf);
 
                 let addr = Ipv6Addr::new(
-                    u16::from_be(buf[0]),
-                    u16::from_be(buf[1]),
-                    u16::from_be(buf[2]),
-                    u16::from_be(buf[3]),
-                    u16::from_be(buf[4]),
-                    u16::from_be(buf[5]),
-                    u16::from_be(buf[6]),
-                    u16::from_be(buf[7]),
+                    ReadBytesExt::read_u16::<BigEndian>(&mut rdr).unwrap(),
+                    ReadBytesExt::read_u16::<BigEndian>(&mut rdr).unwrap(),
+                    ReadBytesExt::read_u16::<BigEndian>(&mut rdr).unwrap(),
+                    ReadBytesExt::read_u16::<BigEndian>(&mut rdr).unwrap(),
+                    ReadBytesExt::read_u16::<BigEndian>(&mut rdr).unwrap(),
+                    ReadBytesExt::read_u16::<BigEndian>(&mut rdr).unwrap(),
+                    ReadBytesExt::read_u16::<BigEndian>(&mut rdr).unwrap(),
+                    ReadBytesExt::read_u16::<BigEndian>(&mut rdr).unwrap(),
                 );
+
+                let port = ReadBytesExt::read_u16::<BigEndian>(&mut rdr).unwrap();
 
                 Ok(Self::SocketAddress(SocketAddr::from((addr, port))))
             }
@@ -288,7 +300,7 @@ impl Address {
     where
         W: AsyncWrite + Unpin,
     {
-        let mut buf = BytesMut::with_capacity(self.serialized_len());
+        let mut buf = Vec::with_capacity(self.serialized_len());
         self.write_to_buf(&mut buf);
         writer.write_all(&buf).await
     }
