@@ -1,4 +1,4 @@
-use super::{task, Connection, RestoreIpv4, UdpPacketSource};
+use super::{task, Connection, UdpPacketSource};
 use bytes::Bytes;
 use quinn::{RecvStream, SendStream, VarInt};
 use std::io::Error as IoError;
@@ -7,7 +7,7 @@ use tuic_protocol::{Address, Command};
 
 impl Connection {
     pub async fn process_uni_stream(&self, mut stream: RecvStream) -> Result<(), DispatchError> {
-        let rmt_addr = self.controller.remote_address().restore_ipv4();
+        let rmt_addr = self.controller.remote_address();
         let cmd = Command::read_from(&mut stream).await?;
 
         if let Command::Authenticate { digest } = cmd {
@@ -87,7 +87,7 @@ impl Connection {
         mut recv: RecvStream,
     ) -> Result<(), DispatchError> {
         let cmd = Command::read_from(&mut recv).await?;
-        let rmt_addr = self.controller.remote_address().restore_ipv4();
+        let rmt_addr = self.controller.remote_address();
 
         if self.is_authenticated.clone().await {
             match cmd {
@@ -113,7 +113,7 @@ impl Connection {
 
     pub async fn process_datagram(&self, datagram: Bytes) -> Result<(), DispatchError> {
         let cmd = Command::read_from(&mut datagram.as_ref()).await?;
-        let rmt_addr = self.controller.remote_address().restore_ipv4();
+        let rmt_addr = self.controller.remote_address();
         let cmd_len = cmd.serialized_len();
 
         if self.is_authenticated.clone().await {
@@ -159,7 +159,7 @@ impl Connection {
         pkt: Bytes,
         addr: Address,
     ) -> Result<(), DispatchError> {
-        let rmt_addr = self.controller.remote_address().restore_ipv4();
+        let rmt_addr = self.controller.remote_address();
         let dst_addr = addr.to_string();
 
         match self.udp_packet_from.check().unwrap() {

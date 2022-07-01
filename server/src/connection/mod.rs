@@ -12,7 +12,6 @@ use quinn::{
 use std::{
     collections::HashSet,
     future::Future,
-    net::{IpAddr, SocketAddr},
     pin::Pin,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -44,7 +43,7 @@ impl Connection {
         auth_timeout: Duration,
         max_pkt_size: usize,
     ) {
-        let rmt_addr = conn.remote_address().restore_ipv4();
+        let rmt_addr = conn.remote_address();
 
         match conn.await {
             Ok(NewConnection {
@@ -112,7 +111,7 @@ impl Connection {
                         conn.controller
                             .close(err.as_error_code(), err.to_string().as_bytes());
 
-                        let rmt_addr = conn.controller.remote_address().restore_ipv4();
+                        let rmt_addr = conn.controller.remote_address();
                         log::error!("[{rmt_addr}] {err}");
                     }
                 }
@@ -137,7 +136,7 @@ impl Connection {
                         conn.controller
                             .close(err.as_error_code(), err.to_string().as_bytes());
 
-                        let rmt_addr = conn.controller.remote_address().restore_ipv4();
+                        let rmt_addr = conn.controller.remote_address();
                         log::error!("[{rmt_addr}] {err}");
                     }
                 }
@@ -159,7 +158,7 @@ impl Connection {
                         conn.controller
                             .close(err.as_error_code(), err.to_string().as_bytes());
 
-                        let rmt_addr = conn.controller.remote_address().restore_ipv4();
+                        let rmt_addr = conn.controller.remote_address();
                         log::error!("[{rmt_addr}] {err}");
                     }
                 }
@@ -183,7 +182,7 @@ impl Connection {
                         conn.controller
                             .close(err.as_error_code(), err.to_string().as_bytes());
 
-                        let rmt_addr = conn.controller.remote_address().restore_ipv4();
+                        let rmt_addr = conn.controller.remote_address();
                         log::error!("[{rmt_addr}] {err}");
                     }
                 }
@@ -208,7 +207,7 @@ impl Connection {
                 .close(err.as_error_code(), err.to_string().as_bytes());
             self.is_authenticated.wake();
 
-            let rmt_addr = self.controller.remote_address().restore_ipv4();
+            let rmt_addr = self.controller.remote_address();
             log::error!("[{rmt_addr}] {err}");
 
             Err(ConnectionError::LocallyClosed)
@@ -255,21 +254,5 @@ impl Future for IsClosed {
             *self.0.waker.lock() = Some(cx.waker().clone());
             Poll::Pending
         }
-    }
-}
-
-pub trait RestoreIpv4 {
-    fn restore_ipv4(self) -> SocketAddr;
-}
-
-impl RestoreIpv4 for SocketAddr {
-    fn restore_ipv4(self) -> Self {
-        if let IpAddr::V6(ip) = self.ip() {
-            if let Some(ip) = ip.to_ipv4() {
-                return Self::from((ip, self.port()));
-            }
-        }
-
-        self
     }
 }
