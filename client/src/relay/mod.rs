@@ -66,12 +66,12 @@ pub async fn init(
         connection::manage_connection(config, conn, conn_lock, incoming_tx, wait_req);
 
     let task = async move {
-        log::info!("[relay] Started. Target server: {}", server_addr);
+        log::info!("[relay] Started. Target server: {server_addr}");
 
         tokio::select! {
-            () = manage_connection => (),
-            () = listen_requests => (),
-            () = listen_incoming => (),
+            _ = tokio::spawn(manage_connection) => {}
+            _ = tokio::spawn(listen_requests) => {}
+            _ = tokio::spawn(listen_incoming) => {}
         }
     };
 
