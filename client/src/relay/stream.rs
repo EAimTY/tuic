@@ -4,76 +4,13 @@ use quinn::{
     SendStream as QuinnSendStream,
 };
 use std::{
-    io::{IoSlice, Result},
+    io::{Error, IoSlice, Result},
     pin::Pin,
     result::Result as StdResult,
     sync::{Arc, Weak},
     task::{Context, Poll},
 };
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
-
-pub struct BiStream {
-    send: QuinnSendStream,
-    recv: QuinnRecvStream,
-    _reg: Register,
-}
-
-impl BiStream {
-    #[inline]
-    pub fn new(send: QuinnSendStream, recv: QuinnRecvStream, reg: Register) -> Self {
-        Self {
-            send,
-            recv,
-            _reg: reg,
-        }
-    }
-}
-
-impl AsyncRead for BiStream {
-    #[inline]
-    fn poll_read(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &mut ReadBuf<'_>,
-    ) -> Poll<Result<()>> {
-        Pin::new(&mut self.recv).poll_read(cx, buf)
-    }
-}
-
-impl AsyncWrite for BiStream {
-    #[inline]
-    fn poll_write(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &[u8],
-    ) -> Poll<Result<usize>> {
-        Pin::new(&mut self.send).poll_write(cx, buf)
-    }
-
-    #[inline]
-    fn poll_write_vectored(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        bufs: &[IoSlice<'_>],
-    ) -> Poll<Result<usize>> {
-        Pin::new(&mut self.send).poll_write_vectored(cx, bufs)
-    }
-
-    #[inline]
-    fn is_write_vectored(&self) -> bool {
-        self.send.is_write_vectored()
-    }
-
-    #[inline]
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
-        Pin::new(&mut self.send).poll_flush(cx)
-    }
-
-    #[inline]
-    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
-        Pin::new(&mut self.send).poll_shutdown(cx)
-    }
-}
 
 pub struct SendStream {
     send: QuinnSendStream,
@@ -84,6 +21,11 @@ impl SendStream {
     #[inline]
     pub fn new(send: QuinnSendStream, reg: Register) -> Self {
         Self { send, _reg: reg }
+    }
+
+    #[inline]
+    pub async fn finish(&mut self) -> Result<()> {
+        self.send.finish().await.map_err(Error::from)
     }
 }
 
@@ -142,6 +84,69 @@ impl AsyncRead for RecvStream {
         buf: &mut ReadBuf<'_>,
     ) -> Poll<Result<()>> {
         Pin::new(&mut self.recv).poll_read(cx, buf)
+    }
+}
+
+pub struct BiStream {
+    send: SendStream,
+    recv: RecvStream,
+}
+
+impl BiStream {
+    #[inline]
+    pub fn new(send: SendStream, recv: RecvStream) -> Self {
+        Self { send, recv }
+    }
+
+    #[inline]
+    pub async fn finish(&mut self) -> Result<()> {
+        self.send.finish().await
+    }
+}
+
+impl AsyncRead for BiStream {
+    #[inline]
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<Result<()>> {
+        Pin::new(&mut self.recv).poll_read(cx, buf)
+    }
+}
+
+impl AsyncWrite for BiStream {
+    #[inline]
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<Result<usize>> {
+        Pin::new(&mut self.send).poll_write(cx, buf)
+    }
+
+    #[inline]
+    fn poll_write_vectored(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        bufs: &[IoSlice<'_>],
+    ) -> Poll<Result<usize>> {
+        Pin::new(&mut self.send).poll_write_vectored(cx, bufs)
+    }
+
+    #[inline]
+    fn is_write_vectored(&self) -> bool {
+        self.send.is_write_vectored()
+    }
+
+    #[inline]
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
+        Pin::new(&mut self.send).poll_flush(cx)
+    }
+
+    #[inline]
+    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
+        Pin::new(&mut self.send).poll_shutdown(cx)
     }
 }
 

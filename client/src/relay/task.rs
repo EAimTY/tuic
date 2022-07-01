@@ -15,7 +15,7 @@ impl Connection {
             let resp = match TuicCommand::read_from(&mut stream).await {
                 Ok(resp) => resp,
                 Err(err) => {
-                    let _ = stream.shutdown().await;
+                    stream.finish().await?;
                     return Err(err);
                 }
             };
@@ -23,7 +23,7 @@ impl Connection {
             if let TuicCommand::Response(true) = resp {
                 Ok(Some(stream))
             } else {
-                let _ = stream.shutdown().await;
+                stream.finish().await?;
                 Ok(None)
             }
         }
@@ -67,7 +67,8 @@ impl Connection {
                 UdpRelayMode::Quic(()) => {
                     let mut send = conn.get_send_stream().await?;
                     cmd.write_to(&mut send).await?;
-                    let _ = send.shutdown().await;
+                    send.write_all(&pkt).await?;
+                    send.finish().await?;
                 }
             }
 
@@ -107,7 +108,7 @@ impl Connection {
 
             let mut send = conn.get_send_stream().await?;
             cmd.write_to(&mut send).await?;
-            let _ = send.shutdown().await;
+            send.finish().await?;
 
             Ok(())
         }

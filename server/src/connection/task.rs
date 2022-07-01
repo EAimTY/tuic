@@ -13,7 +13,7 @@ use std::{
 };
 use thiserror::Error;
 use tokio::{
-    io::{self, AsyncRead, AsyncWrite, AsyncWriteExt, ReadBuf},
+    io::{self, AsyncRead, AsyncWrite, ReadBuf},
     net::{self, TcpStream},
 };
 use tuic_protocol::{Address, Command};
@@ -47,7 +47,7 @@ pub async fn connect(
     } else {
         let resp = Command::new_response(false);
         resp.write_to(&mut send).await?;
-        let _ = send.shutdown().await;
+        send.finish().await?;
     };
 
     Ok(())
@@ -92,7 +92,7 @@ pub async fn packet_to_uni_stream(
     let cmd = Command::new_packet(assoc_id, pkt.len() as u16, addr);
     cmd.write_to(&mut stream).await?;
     stream.write_all(&pkt).await?;
-    let _ = stream.shutdown().await;
+    stream.finish().await?;
 
     Ok(())
 }

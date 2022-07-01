@@ -1,7 +1,7 @@
 use super::{
     incoming::{self, Sender as IncomingSender},
     request::Wait as WaitRequest,
-    stream::{BiStream, IncomingUniStreams, Register as StreamRegister, SendStream},
+    stream::{BiStream, IncomingUniStreams, RecvStream, Register as StreamRegister, SendStream},
     Address, ServerAddr, UdpRelayMode,
 };
 use bytes::Bytes;
@@ -22,7 +22,6 @@ use std::{
     time::Duration,
 };
 use tokio::{
-    io::AsyncWriteExt,
     net,
     sync::{mpsc::Sender as MpscSender, Mutex as AsyncMutex, OwnedMutexGuard},
     time,
@@ -190,7 +189,7 @@ impl Connection {
             let mut send = conn.get_send_stream().await?;
             let cmd = Command::new_authenticate(token_digest);
             cmd.write_to(&mut send).await?;
-            let _ = send.shutdown().await;
+            send.finish().await?;
             Ok(())
         }
 
@@ -205,7 +204,7 @@ impl Connection {
             let mut send = conn.get_send_stream().await?;
             let cmd = Command::new_heartbeat();
             cmd.write_to(&mut send).await?;
-            let _ = send.shutdown().await;
+            send.finish().await?;
             Ok(())
         }
 
@@ -233,7 +232,11 @@ impl Connection {
     pub async fn get_bi_stream(&self) -> Result<BiStream> {
         let (send, recv) = self.controller.open_bi().await?;
         let reg = (*self.stream_reg).clone(); // clone inner, not itself
-        Ok(BiStream::new(send, recv, reg))
+
+        Ok(BiStream::new(
+            SendStream::new(send, reg.clone()),
+            RecvStream::new(recv, reg),
+        ))
     }
 
     pub fn send_datagram(&self, data: Bytes) -> Result<()> {
