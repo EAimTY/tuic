@@ -4,18 +4,18 @@ Delicately-TUICed high-performance proxy built on top of the [QUIC](https://en.w
 
 **TUIC's goal is to minimize the handshake latency as much as possible**
 
-Warn: This is the `dev` branch of the TUIC project. It is not stable and may change at any time. For production use, please switch to the latest released branch.
+Warn: This is the `dev` branch of the TUIC project. It may be unstable, buggy, or even broken. For production use, please switch to the latest released branch.
 
 ## Features
 
 - 1-RTT TCP relaying
-- 0-RTT UDP relaying with NAT type [FullCone](https://www.rfc-editor.org/rfc/rfc3489#section-5)
+- 0-RTT UDP relaying with [Full Cone NAT](https://www.rfc-editor.org/rfc/rfc3489#section-5)
 - Two UDP relay modes: `native` (native UDP mechanisms) and `quic` (100% delivery rate)
-- User-space congestion control (BBR, New Reno and CUBIC)
+- Bidirectional user-space congestion control (BBR, New Reno and CUBIC)
 - Multiplexing all tasks into a single QUIC connection (tasks are separately flow controlled)
 - Smooth session transfer on network switching
 - Paralleled 0-RTT authentication
-- Support QUIC 0-RTT handshake
+- Optional QUIC 0-RTT handshake
 
 ## Design
 
@@ -23,7 +23,7 @@ TUIC was designed on the basis of the QUIC protocol from the very beginning. It 
 
 ### Multiplexing
 
-TUIC multiplexes all tasks into a single QUIC connection by using QUIC's stream mechanism. This means that unless the QUIC connection is forcibly interrupted or no task within the maximum idle time, negotiating new relay task does not need to go through the process of QUIC handshake and TUIC authentication.
+TUIC multiplexes all tasks into a single QUIC connection using QUIC's multi-streams mechanism. This means that unless the QUIC connection is forcibly interrupted or no task within the maximum idle time, negotiating new relay task does not need to go through the process of QUIC handshake and TUIC authentication.
 
 ### UDP Relaying
 
@@ -33,7 +33,7 @@ TUIC has 2 UDP relay modes:
 
 - `quic` - transporting UDP packets as QUIC streams. Because of the acknowledgment and retransmission mechanism, UDP packets can guarantee a 100% delivery rate, but have additional transmission overhead as a result. Note that each UDP data packet is transmitted as a separate stream, and the flow controlled separately, so the loss and retransmission of one packet will not cause other packets to be blocked. This mode can be used to transmit UDP packets larger than the MTU of the underlying network.
 
-### User-space Congestion Control
+### Bidirectional User-space Congestion Control
 
 Since QUIC is implemented over UDP, its congestion control implementation is not limited by platform and operating system. For poor quality network, [BBR algorithm](https://en.wikipedia.org/wiki/TCP_congestion_control#TCP_BBR) can be used on both the server and the client to achieve better transmission performance.
 
@@ -111,7 +111,7 @@ The configuration file is in JSON format:
 }
 ```
 
-Fields `port`, `token`, `certificate`, `private_key` are required.
+Fields `port`, `token`, `certificate`, `private_key` are required. Other fields are optional and can be deleted to fall-back the default value.
 
 Note that command line arguments can override the configuration file.
 
@@ -199,6 +199,7 @@ The configuration file is in JSON format:
         "alpn": ["h3"],
         "disable_sni": false,
         "reduce_rtt": false,
+        "request_timeout": 8000,
         "max_udp_relay_packet_size": 1500
     },
     "local": {
@@ -212,11 +213,11 @@ The configuration file is in JSON format:
 }
 ```
 
-Fields `server`, `token` and `port` in both sections are required.
+Fields `server`, `token` and `port` in both sections are required. Other fields are optional and can be deleted to fall-back the default value.
 
 Note that command line arguments can override the configuration file.
 
-## GUI Client
+## GUI Clients
 
 ### Android
 
@@ -230,9 +231,25 @@ Note that command line arguments can override the configuration file.
 
 ## FAQ
 
+### What are the advantages of TUIC over other proxy protocols / implementioons?
+
+As mentioned before, TUIC's goal is to minimize the handshake latency as much as possible. Thus, the core of the TUIC protocol is to reduce the additional round trip time added by the relay. For TCP relaying, TUIC only adds a single round trip between the TUIC server and the TUIC client - half of a typical TCP-based proxy would require. TUIC also has a unique UDP relaying mechanism. It achieves 0-RTT UDP relaying by syncing UDP relay sessions implicitly between the server and the client.
+
+Low handshake latency means faster connection establishment and UDP packet delay time. TUIC also supports both UDP over streams and UDP over datagrams for UDP relaying. All of these make TUIC the most efficient proxy protocol for UDP relaying.
+
+### Why my TUIC is slower than other proxy protocols / implementioons?
+
+For a Internet connection, fast / slow is defined by both:
+
+- Handshake latency
+- Bandwidth
+
+They are equally important. For the first case, TUIC can be one of the best solution right now. You can directly feel it from things like the speed of opening a web page in your browser. For the second case, TUIC may be a bit slower than other TCP-based proxy protocols due to ISPs' QoS, but TUIC's bandwidth can still be competitive in most cases.
+
 ### Why TUIC client doesn't support other inbound / advanced route settings?
 
 Since there are already many great proxy convert / distribute solutions, there really is no need for me to reimplement those again. If you need those functions, the best choice to chain a V2Ray layer in front of the TUIC client. For a typical network program, there is basically no performance cost for local relaying.
 
 ## License
+
 GNU General Public License v3.0
