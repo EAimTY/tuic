@@ -4,8 +4,6 @@ Delicately-TUICed high-performance proxy built on top of the [QUIC](https://en.w
 
 **TUIC's goal is to minimize the handshake latency as much as possible**
 
-Warn: This is the `dev` branch of the TUIC project. It may be unstable, buggy, or even broken. For production use, please switch to the latest released branch.
-
 ## Features
 
 - 1-RTT TCP relaying
@@ -231,20 +229,24 @@ Note that command line arguments can override the configuration file.
 
 ## FAQ
 
-### What are the advantages of TUIC over other proxy protocols / implementioons?
+### What are the advantages of TUIC over other proxy protocols / implementions?
 
 As mentioned before, TUIC's goal is to minimize the handshake latency as much as possible. Thus, the core of the TUIC protocol is to reduce the additional round trip time added by the relay. For TCP relaying, TUIC only adds a single round trip between the TUIC server and the TUIC client - half of a typical TCP-based proxy would require. TUIC also has a unique UDP relaying mechanism. It achieves 0-RTT UDP relaying by syncing UDP relay sessions implicitly between the server and the client.
 
-Low handshake latency means faster connection establishment and UDP packet delay time. TUIC also supports both UDP over streams and UDP over datagrams for UDP relaying. All of these make TUIC the most efficient proxy protocol for UDP relaying.
+Low handshake latency means faster connection establishment and UDP packet delay time. TUIC also supports both UDP over streams and UDP over datagrams for UDP relaying. All of these makes TUIC one of the most efficient proxy protocol for UDP relaying.
 
-### Why my TUIC is slower than other proxy protocols / implementioons?
+### Why my TUIC is slower than other proxy protocols / implementions?
 
-For a Internet connection, fast / slow is defined by both:
+For an Internet connection, fast / slow is defined by both:
 
 - Handshake latency
 - Bandwidth
 
-They are equally important. For the first case, TUIC can be one of the best solution right now. You can directly feel it from things like the speed of opening a web page in your browser. For the second case, TUIC may be a bit slower than other TCP-based proxy protocols due to ISPs' QoS, but TUIC's bandwidth can still be competitive in most cases.
+They are equally important. For the first case, TUIC can be one of the best solution right now. You can directly feel it from things like the speed of opening a web page in your browser. For the second case, TUIC may be a bit slower than other TCP-based proxy protocols due to ISPs' QoS, but TUIC's bandwidth can still be competitive in most scenario.
+
+### How can I listen both IPv4 and IPv6 on TUIC server / TUIC client's socks5 server?
+
+TUIC always constructs an IPv6 listener as a dual-stack socket. If you need to listen on both IPv4 and IPv6, you can set the bind IP to the unspecified IPv6 address `::`.
 
 ### Why TUIC client doesn't support other inbound / advanced route settings?
 
