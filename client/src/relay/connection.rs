@@ -51,6 +51,10 @@ pub async fn manage_connection(
                 Ok(conn) => conn,
                 Err(err) => {
                     log::error!("[relay] [connection] {err}");
+
+                    // sleep 1 second to avoid drawing too much CPU
+                    time::sleep(Duration::from_secs(1)).await;
+
                     continue;
                 }
             };
