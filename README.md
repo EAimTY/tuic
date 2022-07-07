@@ -205,7 +205,7 @@ The configuration file is in JSON format:
 
         "ip": "127.0.0.1",
         "username": "SOCKS5_USERNAME",
-        "password": "SOCKS5_PASSWORD",
+        "password": "SOCKS5_PASSWORD"
     },
     "log_level": "info"
 }
