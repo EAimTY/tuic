@@ -1,7 +1,7 @@
 //! The TUIC protocol
 
 use byteorder::{BigEndian, ReadBytesExt};
-use bytes::BufMut;
+use bytes::{BufMut, Bytes};
 use std::{
     fmt::{Display, Formatter, Result as FmtResult},
     io::{Cursor, Error, ErrorKind, Result},
@@ -9,7 +9,9 @@ use std::{
 };
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
-pub const TUIC_PROTOCOL_VERSION: u8 = 0x04;
+pub const TUIC_PROTOCOL_VERSION: u8 = 0x05;
+
+pub mod long_packet;
 
 /// Command
 ///
@@ -35,6 +37,14 @@ pub enum Command {
         len: u16,
         addr: Address,
     },
+    LongPacket {
+        assoc_id: u32,
+        len: u16,
+        lp_id: u32,
+        frag_id: u8,
+        frag_cnt: u8,
+        addr: Option<Address>,
+    },
     Dissociate {
         assoc_id: u32,
     },
@@ -48,6 +58,7 @@ impl Command {
     const TYPE_PACKET: u8 = 0x02;
     const TYPE_DISSOCIATE: u8 = 0x03;
     const TYPE_HEARTBEAT: u8 = 0x04;
+    const TYPE_LONG_PACKET: u8 = 0x05;
 
     const RESPONSE_SUCCEEDED: u8 = 0x00;
     const RESPONSE_FAILED: u8 = 0xff;
@@ -68,6 +79,24 @@ impl Command {
         Self::Packet {
             assoc_id,
             len,
+            addr,
+        }
+    }
+
+    pub fn new_long_packet(
+        assoc_id: u32,
+        len: u16,
+        lp_id: u32,
+        frag_id: u8,
+        frag_cnt: u8,
+        addr: Option<Address>,
+    ) -> Self {
+        Self::LongPacket {
+            assoc_id,
+            len,
+            lp_id,
+            frag_id,
+            frag_cnt,
             addr,
         }
     }
@@ -126,6 +155,26 @@ impl Command {
 
                 Ok(Self::new_packet(assoc_id, len, addr))
             }
+            Self::TYPE_LONG_PACKET => {
+                let mut buf = [0; 12];
+                r.read_exact(&mut buf).await?;
+                let mut rdr = Cursor::new(buf);
+
+                let assoc_id = ReadBytesExt::read_u32::<BigEndian>(&mut rdr).unwrap();
+                let len = ReadBytesExt::read_u16::<BigEndian>(&mut rdr).unwrap();
+                let lp_id = ReadBytesExt::read_u32::<BigEndian>(&mut rdr).unwrap();
+                let frag_id = ReadBytesExt::read_u8(&mut rdr).unwrap();
+                let frag_cnt = ReadBytesExt::read_u8(&mut rdr).unwrap();
+                let addr = if frag_id == 0 {
+                    Some(Address::read_from(r).await?)
+                } else {
+                    None
+                };
+
+                Ok(Self::new_long_packet(
+                    assoc_id, len, lp_id, frag_id, frag_cnt, addr,
+                ))
+            }
             Self::TYPE_DISSOCIATE => {
                 let assoc_id = r.read_u32().await?;
                 Ok(Self::new_dissociate(assoc_id))
@@ -177,6 +226,24 @@ impl Command {
                 buf.put_u16(*len);
                 addr.write_to_buf(buf);
             }
+            Self::LongPacket {
+                assoc_id,
+                len,
+                lp_id,
+                frag_id,
+                frag_cnt,
+                addr,
+            } => {
+                buf.put_u8(Self::TYPE_LONG_PACKET);
+                buf.put_u32(*assoc_id);
+                buf.put_u16(*len);
+                buf.put_u32(*lp_id);
+                buf.put_u8(*frag_id);
+                buf.put_u8(*frag_cnt);
+                if let Some(addr) = addr {
+                    addr.write_to_buf(buf);
+                }
+            }
             Self::Dissociate { assoc_id } => {
                 buf.put_u8(Self::TYPE_DISSOCIATE);
                 buf.put_u32(*assoc_id);
@@ -193,13 +260,30 @@ impl Command {
             Self::Authenticate { .. } => 32,
             Self::Connect { addr } => addr.serialized_len(),
             Self::Packet { addr, .. } => 6 + addr.serialized_len(),
+            Self::LongPacket { addr, .. } => {
+                12 + addr.as_ref().map(|addr| addr.serialized_len()).unwrap_or(0)
+            }
             Self::Dissociate { .. } => 4,
             Self::Heartbeat => 0,
         }
     }
 
     pub const fn max_serialized_len() -> usize {
-        2 + 6 + Address::max_serialized_len()
+        2 + 12 + Address::max_serialized_len()
+    }
+}
+
+pub enum UdpAssocPacket {
+    Regular {
+        pkt: Bytes,
+        addr: Address,
+    },
+    Long {
+        lp_id: u32,
+        frag_id: u8,
+        frag_cnt: u8,
+        frag: Bytes,
+        addr: Option<Address>,
     }
 }
 

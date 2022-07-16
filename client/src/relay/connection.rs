@@ -15,7 +15,7 @@ use std::{
     ops::{Deref, DerefMut},
     pin::Pin,
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU32, Ordering},
         Arc,
     },
     task::{Context, Poll, Waker},
@@ -26,7 +26,7 @@ use tokio::{
     sync::{mpsc::Sender as MpscSender, Mutex as AsyncMutex, OwnedMutexGuard},
     time,
 };
-use tuic_protocol::Command;
+use tuic_protocol::{long_packet::LongPacketBuffers, Command};
 
 pub async fn manage_connection(
     config: ConnectionConfig,
@@ -58,6 +58,7 @@ pub async fn manage_connection(
                     continue;
                 }
             };
+            new_conn.update_max_udp_relay_packet_size();
 
             // renew the connection mutex
             // safety: the mutex must be locked before, so this container must have a lock guard inside
@@ -78,7 +79,6 @@ pub async fn manage_connection(
                 }
             }
 
-            new_conn.update_max_udp_relay_packet_size();
 
             // connection established, drop the lock implicitly
             break new_conn;
@@ -258,6 +258,9 @@ impl Connection {
     }
 
     pub fn update_max_udp_relay_packet_size(&self) {
+        let size = self.default_max_udp_relay_packet_size;
+
+        /*
         let size = match self.udp_relay_mode {
             UdpRelayMode::Native(()) => match self.controller.max_datagram_size() {
                 Some(size) => size,
@@ -268,8 +271,24 @@ impl Connection {
             },
             UdpRelayMode::Quic(()) => self.default_max_udp_relay_packet_size,
         };
+        */
 
         super::MAX_UDP_RELAY_PACKET_SIZE.store(size, Ordering::Release);
+    }
+
+    pub fn fragment_size(&self) -> usize {
+        let mtu = match self.udp_relay_mode {
+            UdpRelayMode::Native(()) => match self.controller.max_datagram_size() {
+                Some(size) => size,
+                None => {
+                    log::warn!("[relay] [connection] Failed to detect the max datagram size");
+                    self.default_max_udp_relay_packet_size
+                }
+            },
+            // This should not make any sense.
+            UdpRelayMode::Quic(()) => unreachable!(),
+        };
+        mtu - Command::max_serialized_len()
     }
 
     fn no_active_stream(&self) -> bool {
@@ -321,31 +340,55 @@ impl ConnectionConfig {
     }
 }
 
-pub struct UdpSessionMap(Mutex<HashMap<u32, MpscSender<(Bytes, Address)>>>);
+pub struct UdpSessionMap(Mutex<HashMap<u32, UdpSession>>);
 
 impl UdpSessionMap {
     fn new() -> Self {
         Self(Mutex::new(HashMap::new()))
     }
 
-    pub fn insert(
-        &self,
-        id: u32,
-        tx: MpscSender<(Bytes, Address)>,
-    ) -> Option<MpscSender<(Bytes, Address)>> {
-        self.0.lock().insert(id, tx)
+    pub fn insert(&self, id: u32, tx: MpscSender<(Bytes, Address)>) -> Option<UdpSession> {
+        self.0.lock().insert(
+            id,
+            UdpSession {
+                sender: tx,
+                lpbs: Arc::new(Mutex::new(LongPacketBuffers::new())),
+                next_lp_id: Arc::new(AtomicU32::new(0)),
+            },
+        )
     }
 
-    pub fn get(&self, id: &u32) -> Option<MpscSender<(Bytes, Address)>> {
+    pub fn get(&self, id: &u32) -> Option<UdpSession> {
         self.0.lock().get(id).cloned()
     }
 
-    pub fn remove(&self, id: &u32) -> Option<MpscSender<(Bytes, Address)>> {
+    pub fn remove(&self, id: &u32) -> Option<UdpSession> {
         self.0.lock().remove(id)
     }
 
     fn is_empty(&self) -> bool {
         self.0.lock().is_empty()
+    }
+}
+
+#[derive(Clone)]
+pub struct UdpSession {
+    sender: MpscSender<(Bytes, Address)>,
+    lpbs: Arc<Mutex<LongPacketBuffers>>,
+    next_lp_id: Arc<AtomicU32>,
+}
+
+impl UdpSession {
+    pub fn sender(&self) -> &MpscSender<(Bytes, Address)> {
+        &self.sender
+    }
+
+    pub fn lpbs(&self) -> &Mutex<LongPacketBuffers> {
+        &*self.lpbs
+    }
+
+    pub fn next_lp_id(&self) -> u32 {
+        self.next_lp_id.fetch_add(1, Ordering::SeqCst)
     }
 }
 

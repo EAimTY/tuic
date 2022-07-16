@@ -4,7 +4,7 @@ TUIC protocol is used to communicate between the TUIC client and the TUIC server
 
 ## Overview
 
-TUIC protocol is a stateful protocol. It is designed to be simple yet efficient. The current version is `0x04`.
+TUIC protocol is a stateful protocol. It is designed to be simple yet efficient. The current version is `0x05`.
 
 ## Command
 
@@ -34,6 +34,7 @@ There are six types of commands:
 - `0x02` - `Packet` - used to forward a UDP packet
 - `0x03` - `Dissociate` - used to stop a UDP relay session
 - `0x04` - `Heartbeat` - used to keep a QUIC connection alive
+- `0x05` - `LongPacket` - used to forward a fragmented UDP packet
 - `0xff` - `Response` - used to respond to a `Command` (currently only used for replying `Connect`)
 
 ### Command Type Specific Data
@@ -81,6 +82,36 @@ where:
 - `ASSOC_ID` - UDP relay session ID. See [UDP relaying](#udp-relaying)
 - `LEN` - length of the UDP packet
 - `ADDR` - target (command from TUIC client) or source (command from TUIC server) address. See [Address](#address)
+
+#### `LongPacket`
+```plain
++----------+-----+-------+---------+----------+----------+
+| ASSOC_ID | LEN | LP_ID | FRAG_ID | FRAG_CNT |  ADDR?   |
++----------+-----+-------+---------+----------+----------+
+|    4     |  2  |   4   |    1    |    1     | Variable |
++----------+-----+-------+---------+----------+----------+
+```
+
+where:
+
+- `ASSOC_ID` - UDP relay session ID. See [UDP relaying](#udp-relaying)
+- `LEN` - length of the UDP packet
+- `LP_ID` - ID of the long packet. Must be unique within a UDP session
+- `FRAG_ID` - index of the packet fragment, 0-based
+- `FRAG_CNT` - total number of fragments
+- `ADDR?` - target (command from TUIC client) or source (command from TUIC server) address. See [Address](#address). 
+Only present when `FRAG_ID` is 0. In other cases the payload follows `FRAG_CNT` directly.
+
+Implementor should maintain a packet reassembly buffer for each `(ASSOC_ID, LP_ID)` pair. The reassembled packet 
+should be available only after all fragments have arrived. 
+
+If multiple fragments with the same `FRAG_ID` are received for one long packet,
+only the first one should be considered, while the rest must be dropped.
+
+If multiple fragments with different `FRAG_CNT` are received for one long packet,
+only that of the first one should be used, while the rest must be dropped.
+
+If a fragment with `FRAG_ID` >= `FRAG_CNT` is received, it must be dropped.
 
 #### `Dissociate`
 

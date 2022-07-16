@@ -16,7 +16,7 @@ use tokio::{
     io::{self, AsyncRead, AsyncWrite, ReadBuf},
     net::{self, TcpStream},
 };
-use tuic_protocol::{Address, Command};
+use tuic_protocol::{Address, Command, UdpAssocPacket};
 
 pub async fn connect(
     mut send: SendStream,
@@ -65,19 +65,20 @@ pub async fn packet_from_uni_stream(
     stream.read_exact(&mut buf).await?;
 
     let pkt = Bytes::from(buf);
-    udp_sessions.send(assoc_id, pkt, addr, src_addr).await?;
+    udp_sessions
+        .send(assoc_id, UdpAssocPacket::Regular { addr, pkt }, src_addr)
+        .await?;
 
     Ok(())
 }
 
 pub async fn packet_from_datagram(
-    pkt: Bytes,
+    pkt: UdpAssocPacket,
     udp_sessions: Arc<UdpSessionMap>,
     assoc_id: u32,
-    addr: Address,
     src_addr: SocketAddr,
 ) -> Result<(), TaskError> {
-    udp_sessions.send(assoc_id, pkt, addr, src_addr).await?;
+    udp_sessions.send(assoc_id, pkt, src_addr).await?;
     Ok(())
 }
 
@@ -112,6 +113,33 @@ pub async fn packet_to_datagram(
     let pkt = buf.freeze();
     conn.send_datagram(pkt)?;
 
+    Ok(())
+}
+
+pub async fn long_packet_to_datagram(
+    conn: QuinnConnection,
+    assoc_id: u32,
+    pkt: Bytes,
+    addr: Address,
+    frag_size: usize,
+    lp_id: u32,
+) -> Result<(), TaskError> {
+    let frags = pkt.chunks(frag_size);
+    let frag_cnt = frags.len() as u8;
+    for (i, chunk) in frags.enumerate() {
+        let cmd = Command::new_long_packet(
+            assoc_id,
+            chunk.len() as u16,
+            lp_id,
+            i as u8,
+            frag_cnt,
+            if i == 0 { Some(addr.clone()) } else { None },
+        );
+        let mut buf = BytesMut::with_capacity(cmd.serialized_len() + chunk.len());
+        cmd.write_to_buf(&mut buf);
+        buf.extend_from_slice(chunk);
+        conn.send_datagram(buf.freeze())?;
+    }
     Ok(())
 }
 
