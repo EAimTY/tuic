@@ -3,7 +3,7 @@ use bytes::Bytes;
 use quinn::{RecvStream, SendStream, VarInt};
 use std::io::Error as IoError;
 use thiserror::Error;
-use tuic_protocol::{Address, Command};
+use tuic_protocol::{Address, Command, UdpAssocPacket};
 
 impl Connection {
     pub async fn process_uni_stream(&self, mut stream: RecvStream) -> Result<(), DispatchError> {
@@ -124,10 +124,12 @@ impl Connection {
                         log::debug!("[{rmt_addr}] [packet-from-native] [{assoc_id}] [{dst_addr}]");
 
                         let res = task::packet_from_datagram(
-                            datagram.slice(cmd_len..),
+                            UdpAssocPacket::Regular {
+                                addr,
+                                pkt: datagram.slice(cmd_len..),
+                            },
                             self.udp_sessions.clone(),
                             assoc_id,
-                            addr,
                             rmt_addr,
                         )
                         .await;
@@ -139,6 +141,43 @@ impl Connection {
                                     "[{rmt_addr}] [packet-from-native] [{assoc_id}] [{dst_addr}] {err}"
                                 )
                             }
+                        }
+
+                        Ok(())
+                    } else {
+                        Err(DispatchError::BadCommand)
+                    }
+                }
+                Command::LongPacket {
+                    assoc_id,
+                    lp_id,
+                    frag_id,
+                    frag_cnt,
+                    addr,
+                    ..
+                } => {
+                    let dst_addr = addr
+                        .as_ref()
+                        .map(|addr| addr.to_string())
+                        .unwrap_or_else(|| String::from("unspecified"));
+                    log::debug!("[{rmt_addr}] [long-packet-from-native] [{assoc_id}] [{lp_id}] [{frag_id}/{frag_cnt}] [{dst_addr}]");
+                    if self.udp_packet_from.datagram() {
+                        let res = task::packet_from_datagram(
+                            UdpAssocPacket::Long {
+                                lp_id,
+                                frag_id,
+                                frag_cnt,
+                                frag: datagram.slice(cmd_len..),
+                                addr,
+                            },
+                            self.udp_sessions.clone(),
+                            assoc_id,
+                            rmt_addr,
+                        )
+                        .await;
+
+                        if let Err(err) = res {
+                            log::warn!("[{rmt_addr}] [long-packet-from-native] [{assoc_id}] [{lp_id}] [{frag_id}/{frag_cnt}] [{dst_addr}] {err}")
                         }
 
                         Ok(())
@@ -177,14 +216,37 @@ impl Connection {
                 }
             }
             UdpPacketSource::Datagram => {
-                log::debug!("[{rmt_addr}] [packet-to-native] [{assoc_id}] [{dst_addr}]");
+                let conn = self.controller.clone();
+                let frag_size = conn.max_datagram_size().and_then(|mds| {
+                    let frag_size = mds - Command::max_serialized_len();
+                    if pkt.len() >= frag_size {
+                        Some(frag_size)
+                    } else {
+                        None
+                    }
+                }); // Will max_datagram_size() ever return None when everything goes well?
 
-                let res =
-                    task::packet_to_datagram(self.controller.clone(), assoc_id, pkt, addr).await;
-
-                match res {
-                    Ok(()) => {}
-                    Err(err) => {
+                if let Some(frag_size) = frag_size {
+                    if let Some(lp_id) = self.udp_sessions.next_lp_id(assoc_id) {
+                        log::debug!(
+                            "[{rmt_addr}] [long-packet-to-native] [{assoc_id}] [{lp_id}] [{dst_addr}]"
+                        );
+                        let res = task::long_packet_to_datagram(
+                            conn, assoc_id, pkt, addr, frag_size, lp_id,
+                        )
+                        .await;
+                        if let Err(err) = res {
+                            log::warn!(
+                                "[{rmt_addr}] [long-packet-to-native] [{assoc_id}] [{lp_id}] [{dst_addr}] {err}"
+                            )
+                        }
+                    }
+                } else {
+                    log::debug!("[{rmt_addr}] [packet-to-native] [{assoc_id}] [{dst_addr}]");
+                    let res =
+                        task::packet_to_datagram(self.controller.clone(), assoc_id, pkt, addr)
+                            .await;
+                    if let Err(err) = res {
                         log::warn!(
                             "[{rmt_addr}] [packet-to-native] [{assoc_id}] [{dst_addr}] {err}"
                         )

@@ -1,6 +1,6 @@
 use super::{
     stream::{IncomingUniStreams, RecvStream},
-    Address, Connection, UdpRelayMode,
+    Connection, UdpRelayMode,
 };
 use bytes::Bytes;
 use futures_util::StreamExt;
@@ -13,7 +13,7 @@ use tokio::{
     io::AsyncReadExt,
     sync::oneshot::{self, error::RecvError, Receiver as OneshotReceiver, Sender as OneshotSender},
 };
-use tuic_protocol::Command as TuicCommand;
+use tuic_protocol::{Address, Command as TuicCommand, UdpAssocPacket};
 
 pub async fn listen_incoming(
     mut next_incoming_rx: UdpRelayMode<Receiver<Datagrams>, Receiver<IncomingUniStreams>>,
@@ -74,30 +74,59 @@ pub async fn listen_incoming(
 
 impl Connection {
     async fn process_incoming_datagram(self, pkt: Bytes) {
-        async fn parse_header(pkt: Bytes) -> Result<(u32, Bytes, Address)> {
-            let cmd = TuicCommand::read_from(&mut pkt.as_ref()).await?;
-            let cmd_len = cmd.serialized_len();
-
-            match cmd {
-                TuicCommand::Packet {
-                    assoc_id,
-                    len,
-                    addr,
-                } => Ok((
-                    assoc_id,
-                    pkt.slice(cmd_len..cmd_len + len as usize),
-                    Address::from(addr),
-                )),
-                _ => Err(Error::new(
-                    ErrorKind::InvalidData,
-                    "[relay] [connection] Unexpected incoming datagram",
-                )),
+        let cmd = match TuicCommand::read_from(&mut pkt.as_ref()).await {
+            Ok(cmd) => cmd,
+            Err(err) => {
+                log::warn!("[relay] [connection] {err}");
+                return;
             }
-        }
+        };
+        let cmd_len = cmd.serialized_len();
 
-        match parse_header(pkt).await {
-            Ok((assoc_id, pkt, addr)) => self.handle_packet_from(assoc_id, pkt, addr).await,
-            Err(err) => log::warn!("[relay] [connection] {err}"),
+        match cmd {
+            TuicCommand::Packet {
+                assoc_id,
+                len,
+                addr,
+            } => {
+                self.handle_packet_from(
+                    assoc_id,
+                    UdpAssocPacket::Regular {
+                        addr,
+                        pkt: pkt.slice(cmd_len..cmd_len + len as usize),
+                    },
+                )
+                .await;
+            }
+            TuicCommand::LongPacket {
+                assoc_id,
+                len,
+                lp_id,
+                frag_id,
+                frag_cnt,
+                addr,
+            } => {
+                self.handle_packet_from(
+                    assoc_id,
+                    UdpAssocPacket::Long {
+                        addr,
+                        frag: pkt.slice(cmd_len..cmd_len + len as usize),
+                        lp_id,
+                        frag_id,
+                        frag_cnt,
+                    },
+                )
+                .await;
+            }
+            _ => {
+                log::warn!(
+                    "[relay] [connection] {err}",
+                    err = Error::new(
+                        ErrorKind::InvalidData,
+                        "[relay] [connection] Unexpected incoming datagram",
+                    )
+                );
+            }
         }
     }
 
@@ -114,7 +143,7 @@ impl Connection {
                     let mut buf = vec![0; len as usize];
                     recv.read_exact(&mut buf).await?;
                     let pkt = Bytes::from(buf);
-                    Ok((assoc_id, pkt, Address::from(addr)))
+                    Ok((assoc_id, pkt, addr))
                 }
                 _ => Err(Error::new(
                     ErrorKind::InvalidData,
@@ -124,7 +153,10 @@ impl Connection {
         }
 
         match parse_header(recv).await {
-            Ok((assoc_id, pkt, addr)) => self.handle_packet_from(assoc_id, pkt, addr).await,
+            Ok((assoc_id, pkt, addr)) => {
+                self.handle_packet_from(assoc_id, UdpAssocPacket::Regular { addr, pkt })
+                    .await
+            }
             Err(err) => log::warn!("[relay] [connection] {err}"),
         }
     }

@@ -11,7 +11,7 @@ use tokio::{
     net::UdpSocket,
     sync::mpsc::{self, Receiver, Sender},
 };
-use tuic_protocol::Address;
+use tuic_protocol::{long_packet::LongPacketBuffers, Address, UdpAssocPacket};
 
 #[derive(Clone)]
 pub struct UdpPacketFrom(Arc<AtomicCell<Option<UdpPacketSource>>>);
@@ -44,8 +44,8 @@ pub enum UdpPacketSource {
     Datagram,
 }
 
-pub type SendPacketSender = Sender<(Bytes, Address)>;
-pub type SendPacketReceiver = Receiver<(Bytes, Address)>;
+pub type SendPacketSender = Sender<UdpAssocPacket>;
+pub type SendPacketReceiver = Receiver<UdpAssocPacket>;
 pub type RecvPacketSender = Sender<(u32, Bytes, Address)>;
 pub type RecvPacketReceiver = Receiver<(u32, Bytes, Address)>;
 
@@ -73,8 +73,7 @@ impl UdpSessionMap {
     pub async fn send(
         &self,
         assoc_id: u32,
-        pkt: Bytes,
-        addr: Address,
+        pkt: UdpAssocPacket,
         src_addr: SocketAddr,
     ) -> Result<(), IoError> {
         let map = self.map.lock();
@@ -103,9 +102,17 @@ impl UdpSessionMap {
             send_pkt_tx
         };
 
-        let _ = send_pkt_tx.send((pkt, addr)).await;
+        let _ = send_pkt_tx.send(pkt).await;
 
         Ok(())
+    }
+
+    pub fn next_lp_id(&self, assoc_id: u32) -> Option<u32> {
+        self.map.lock().get_mut(&assoc_id).map(|s| {
+            let ret = s.1;
+            s.1 = s.1.saturating_add(1);
+            ret
+        })
     }
 
     pub fn dissociate(&self, assoc_id: u32, src_addr: SocketAddr) {
@@ -114,7 +121,7 @@ impl UdpSessionMap {
     }
 }
 
-struct UdpSession(SendPacketSender);
+struct UdpSession(SendPacketSender, u32);
 
 impl UdpSession {
     async fn new(
@@ -129,27 +136,39 @@ impl UdpSession {
         tokio::spawn(async move {
             match tokio::select!(
                 res = Self::listen_send_packet(socket.clone(), send_pkt_rx) => res,
-                res = Self::listen_receive_packet(socket, assoc_id, recv_pkt_tx,max_pkt_size) => res,
+                res = Self::listen_receive_packet(socket, assoc_id, recv_pkt_tx, max_pkt_size) => res,
             ) {
                 Ok(()) => (),
                 Err(err) => log::warn!("[{src_addr}] [udp-session] [{assoc_id}] {err}"),
             }
         });
 
-        Ok(Self(send_pkt_tx))
+        Ok(Self(send_pkt_tx, 0))
     }
 
     async fn listen_send_packet(
         socket: Arc<UdpSocket>,
         mut send_pkt_rx: SendPacketReceiver,
     ) -> Result<(), IoError> {
-        while let Some((pkt, addr)) = send_pkt_rx.recv().await {
-            match addr {
-                Address::DomainAddress(hostname, port) => {
-                    socket.send_to(&pkt, (hostname, port)).await?;
-                }
-                Address::SocketAddress(addr) => {
-                    socket.send_to(&pkt, addr).await?;
+        let mut lpb = LongPacketBuffers::new();
+        while let Some(pkt) = send_pkt_rx.recv().await {
+            if let Some((pkt, addr)) = match pkt {
+                UdpAssocPacket::Regular { pkt, addr } => Some((pkt, addr)),
+                UdpAssocPacket::Long {
+                    lp_id,
+                    frag_id,
+                    frag_cnt,
+                    frag,
+                    addr,
+                } => lpb.on_frag(lp_id, frag_id, frag_cnt, addr, frag),
+            } {
+                match addr {
+                    Address::DomainAddress(hostname, port) => {
+                        socket.send_to(&pkt, (hostname, port)).await?;
+                    }
+                    Address::SocketAddress(addr) => {
+                        socket.send_to(&pkt, addr).await?;
+                    }
                 }
             }
         }

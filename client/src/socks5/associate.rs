@@ -81,6 +81,7 @@ async fn socks5_to_relay(
     loop {
         let buf_size = relay::MAX_UDP_RELAY_PACKET_SIZE.load(Ordering::Acquire)
             - (TuicCommand::max_serialized_len() - UdpHeader::max_serialized_len());
+        log::debug!("buf size {buf_size}");
         socket.set_max_packet_size(buf_size);
 
         let (pkt, frag, dst_addr, src_addr) = socket.recv_from().await?;
@@ -104,9 +105,10 @@ async fn socks5_to_relay(
     loop {
         let buf_size = relay::MAX_UDP_RELAY_PACKET_SIZE.load(Ordering::Acquire)
             - (TuicCommand::max_serialized_len() - UdpHeader::max_serialized_len());
+        log::debug!("buf size {buf_size}");
         socket.set_max_packet_size(buf_size);
 
-        let (pkt, frag, dst_addr) = socket.recv().await?;
+        let (pkt, frag, dst_addr, src_addr) = socket.recv_from().await?;
 
         if frag == 0 {
             log::debug!("[socks5] [{ctrl_addr}] [associate] [packet-to] {dst_addr}");
