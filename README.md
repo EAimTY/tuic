@@ -219,13 +219,17 @@ Note that command line arguments can override the configuration file.
 
 ### Android
 
-- [SagerNet](https://sagernet.org/)
-
+- [SagerNet 0.8.1-beta01+](https://sagernet.org/)
+- [SagerNet Github](https://github.com/SagerNet/SagerNet/releases)
 ### iOS
 
 - [Stash](https://stash.ws/) *
 
 *[Stash](https://stash.ws/) re-implemented the TUIC protocol from scratch, so it didn't preserve the GPL License.
+
+### Windows
+
+- [V2rayN 5.30+](https://github.com/2dust/v2rayN/releases)
 
 ## FAQ
 
