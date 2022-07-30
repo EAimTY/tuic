@@ -51,11 +51,9 @@ impl Server {
         log::info!("Server started. Listening: {}", self.listen_addr);
 
         while let Some(conn) = self.incoming.next().await {
-            let token = self.token.clone();
-
             tokio::spawn(Connection::handle(
                 conn,
-                token,
+                self.token.clone(),
                 self.authentication_timeout,
                 self.max_pkt_size,
             ));
