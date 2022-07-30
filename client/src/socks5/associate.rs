@@ -55,10 +55,7 @@ pub async fn handle(
 
             let _ = conn.shutdown().await;
 
-            log::info!(
-                "[socks5] [{}] [dissociate] [{target_addr}]",
-                conn.peer_addr()?
-            );
+            log::info!("[socks5] [{ctrl_addr}] [dissociate] [{target_addr}]");
 
             res
         }
