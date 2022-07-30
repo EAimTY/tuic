@@ -136,10 +136,12 @@ impl UdpSession {
         let (send_pkt_tx, send_pkt_rx) = mpsc::channel(1);
 
         tokio::spawn(async move {
-            match tokio::select!(
-                res = Self::listen_send_packet(socket.clone(), send_pkt_rx) => res,
-                res = Self::listen_receive_packet(socket, assoc_id, recv_pkt_tx,max_pkt_size) => res,
-            ) {
+            let res = tokio::select! {
+                res = tokio::spawn(Self::listen_send_packet(socket.clone(), send_pkt_rx)) => res,
+                res = tokio::spawn(Self::listen_receive_packet(socket, assoc_id, recv_pkt_tx, max_pkt_size)) => res,
+            };
+
+            match res.unwrap() {
                 Ok(()) => (),
                 Err(err) => log::warn!("[{src_addr}] [udp-session] [{assoc_id}] {err}"),
             }
