@@ -68,14 +68,14 @@ impl Connection {
                 };
 
                 let res = tokio::select! {
-                    res = tokio::spawn(Self::listen_uni_streams(conn.clone(), uni_streams)) => res,
-                    res = tokio::spawn(Self::listen_bi_streams(conn.clone(), bi_streams)) => res,
-                    res = tokio::spawn(Self::listen_datagrams(conn.clone(), datagrams)) => res,
-                    res = tokio::spawn(Self::listen_received_udp_packet(conn.clone(), recv_pkt_rx)) => res,
-                    Err(err) = Self::handle_authentication_timeout(conn, auth_timeout) => Ok(Err(err)),
+                    res = Self::listen_uni_streams(conn.clone(), uni_streams) => res,
+                    res = Self::listen_bi_streams(conn.clone(), bi_streams) => res,
+                    res = Self::listen_datagrams(conn.clone(), datagrams) => res,
+                    res = Self::listen_received_udp_packet(conn.clone(), recv_pkt_rx) => res,
+                    Err(err) = Self::handle_authentication_timeout(conn, auth_timeout) => Err(err),
                 };
 
-                match res.unwrap() {
+                match res {
                     Ok(()) => unreachable!(),
                     Err(err) => {
                         is_closed.set_closed();

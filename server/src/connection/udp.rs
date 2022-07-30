@@ -1,11 +1,11 @@
 use bytes::Bytes;
 use crossbeam_utils::atomic::AtomicCell;
 use parking_lot::Mutex;
-use socket2::{Domain, Protocol, SockAddr, Socket, Type};
+
 use std::{
     collections::HashMap,
     io::Result,
-    net::{Ipv6Addr, SocketAddr, UdpSocket as StdUdpSocket},
+    net::{Ipv4Addr, SocketAddr},
     sync::Arc,
 };
 use tokio::{
@@ -124,15 +124,7 @@ impl UdpSession {
         src_addr: SocketAddr,
         max_pkt_size: usize,
     ) -> Result<Self> {
-        let socket = Arc::new({
-            let socket = Socket::new(Domain::IPV6, Type::DGRAM, Some(Protocol::UDP))?;
-            socket.set_only_v6(false)?;
-            socket.bind(&SockAddr::from(SocketAddr::from((
-                Ipv6Addr::UNSPECIFIED,
-                0,
-            ))))?;
-            UdpSocket::from_std(StdUdpSocket::from(socket))?
-        });
+        let socket = Arc::new(UdpSocket::bind(SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0))).await?);
         let (send_pkt_tx, send_pkt_rx) = mpsc::channel(1);
 
         tokio::spawn(async move {
