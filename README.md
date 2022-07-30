@@ -219,8 +219,8 @@ Note that command line arguments can override the configuration file.
 
 ### Android
 
-- [SagerNet 0.8.1-beta01+](https://sagernet.org/)
-- [SagerNet Github](https://github.com/SagerNet/SagerNet/releases)
+- [SagerNet](https://sagernet.org/)
+
 ### iOS
 
 - [Stash](https://stash.ws/) *
@@ -229,7 +229,7 @@ Note that command line arguments can override the configuration file.
 
 ### Windows
 
-- [V2rayN 5.30+](https://github.com/2dust/v2rayN/releases)
+- [v2rayN](https://github.com/2dust/v2rayN)
 
 ## FAQ
 
@@ -255,6 +255,20 @@ TUIC always constructs an IPv6 listener as a dual-stack socket. If you need to l
 ### Why TUIC client doesn't support other inbound / advanced route settings?
 
 Since there are already many great proxy convert / distribute solutions, there really is no need for me to reimplement those again. If you need those functions, the best choice to chain a V2Ray layer in front of the TUIC client. For a typical network program, there is basically no performance cost for local relaying.
+
+### Why TUIC client is not able to convert the first connection into 0-RTT
+
+It is totally fine and designed to be like that.
+
+> The basic idea behind 0-RTT connection resumption is that if the client and server had previously established a TLS connection between each other, they can use information cached from that session to establish a new one without having to negotiate the connection’s parameters from scratch. Notably this allows the client to compute the private encryption keys required to protect application data before even talking to the server.
+>
+> *--[Even faster connection establishment with QUIC 0-RTT resumption](https://blog.cloudflare.com/even-faster-connection-establishment-with-quic-0-rtt-resumption) - Cloudflare*
+
+When the client program starts, trying to convert the very first connection to 0-RTT will always fail because the client has no server-related information yet. This connection handshake  will fall-back to the regular 1-RTT one.
+
+Once the client caches server information from the first connection, any subsequent connection will be convert into a 0-RTT one. That is why you only see this warning message once just after starting the client.
+
+Therefore, you can safely ignore this warn.
 
 ## License
 
