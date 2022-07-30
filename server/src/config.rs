@@ -163,7 +163,7 @@ impl RawConfig {
 
         opts.optopt("", "port", "Set the server listening port", "SERVER_PORT");
 
-        opts.optopt(
+        opts.optmulti(
             "",
             "token",
             "Set the token for TUIC authentication. This option can be used multiple times to set multiple tokens.",
@@ -212,7 +212,7 @@ impl RawConfig {
             "AUTHENTICATION_TIMEOUT",
         );
 
-        opts.optopt(
+        opts.optmulti(
             "",
             "alpn",
             "Set ALPN protocols that the server accepts. This option can be used multiple times to set multiple ALPN protocols. If not set, the server will not check ALPN at all",

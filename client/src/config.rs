@@ -276,7 +276,7 @@ impl RawConfig {
             "SERVER_IP",
         );
 
-        opts.optopt(
+        opts.optmulti(
             "",
             "certificate",
             "Set custom X.509 certificate alongside native CA roots for the QUIC handshake. This option can be used multiple times to set multiple certificates",
@@ -304,7 +304,7 @@ impl RawConfig {
             "HEARTBEAT_INTERVAL",
         );
 
-        opts.optopt(
+        opts.optmulti(
             "",
             "alpn",
             "Set ALPN protocols included in the TLS client hello. This option can be used multiple times to set multiple ALPN protocols. If not set, no ALPN extension will be sent",
