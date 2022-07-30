@@ -12,6 +12,6 @@ license = "GPL-3.0-or-later"
 repository = "https://github.com/EAimTY/tuic"
 
 [dependencies]
-byteorder = "1.4"
-bytes = "1.1"
-tokio = { version = "1.19", features = ["io-util"] }
+byteorder = "1.4.*"
+bytes = "1.2.*"
+tokio = { version = "1.20.*", features = ["io-util"] }
