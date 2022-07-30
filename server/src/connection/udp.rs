@@ -5,7 +5,7 @@ use parking_lot::Mutex;
 use std::{
     collections::HashMap,
     io::Result,
-    net::{Ipv4Addr, SocketAddr},
+    net::{Ipv6Addr, SocketAddr},
     sync::Arc,
 };
 use tokio::{
@@ -124,7 +124,7 @@ impl UdpSession {
         src_addr: SocketAddr,
         max_pkt_size: usize,
     ) -> Result<Self> {
-        let socket = Arc::new(UdpSocket::bind(SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0))).await?);
+        let socket = Arc::new(UdpSocket::bind(SocketAddr::from((Ipv6Addr::UNSPECIFIED, 0))).await?);
         let (send_pkt_tx, send_pkt_rx) = mpsc::channel(1);
 
         tokio::spawn(async move {
