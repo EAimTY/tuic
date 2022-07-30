@@ -1,10 +1,11 @@
 use bytes::Bytes;
 use crossbeam_utils::atomic::AtomicCell;
 use parking_lot::Mutex;
+use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use std::{
     collections::HashMap,
-    io::Error as IoError,
-    net::{Ipv6Addr, SocketAddr},
+    io::Result,
+    net::{Ipv6Addr, SocketAddr, UdpSocket as StdUdpSocket},
     sync::Arc,
 };
 use tokio::{
@@ -76,7 +77,7 @@ impl UdpSessionMap {
         pkt: Bytes,
         addr: Address,
         src_addr: SocketAddr,
-    ) -> Result<(), IoError> {
+    ) -> Result<()> {
         let map = self.map.lock();
 
         let send_pkt_tx = if let Some(session) = map.get(&assoc_id) {
@@ -122,8 +123,16 @@ impl UdpSession {
         recv_pkt_tx: RecvPacketSender,
         src_addr: SocketAddr,
         max_pkt_size: usize,
-    ) -> Result<Self, IoError> {
-        let socket = Arc::new(UdpSocket::bind(SocketAddr::from((Ipv6Addr::UNSPECIFIED, 0))).await?);
+    ) -> Result<Self> {
+        let socket = Arc::new({
+            let socket = Socket::new(Domain::IPV6, Type::DGRAM, Some(Protocol::UDP))?;
+            socket.set_only_v6(false)?;
+            socket.bind(&SockAddr::from(SocketAddr::from((
+                Ipv6Addr::UNSPECIFIED,
+                0,
+            ))))?;
+            UdpSocket::from_std(StdUdpSocket::from(socket))?
+        });
         let (send_pkt_tx, send_pkt_rx) = mpsc::channel(1);
 
         tokio::spawn(async move {
@@ -142,7 +151,7 @@ impl UdpSession {
     async fn listen_send_packet(
         socket: Arc<UdpSocket>,
         mut send_pkt_rx: SendPacketReceiver,
-    ) -> Result<(), IoError> {
+    ) -> Result<()> {
         while let Some((pkt, addr)) = send_pkt_rx.recv().await {
             match addr {
                 Address::DomainAddress(hostname, port) => {
@@ -162,7 +171,7 @@ impl UdpSession {
         assoc_id: u32,
         recv_pkt_tx: RecvPacketSender,
         max_pkt_size: usize,
-    ) -> Result<(), IoError> {
+    ) -> Result<()> {
         loop {
             let mut buf = vec![0; max_pkt_size];
             let (len, addr) = socket.recv_from(&mut buf).await?;
