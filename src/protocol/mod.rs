@@ -8,7 +8,7 @@ use std::{
     net::SocketAddr,
 };
 
-pub const TUIC_PROTOCOL_VERSION: u8 = 0x04;
+pub const TUIC_PROTOCOL_VERSION: u8 = 0x05;
 
 #[cfg(feature = "protocol_marshaling")]
 pub use self::marshaling::Error;
