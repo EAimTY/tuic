@@ -32,9 +32,10 @@ bytes = { version = "1.2.*", default-features = false, optional = true }
 # log = { version = "0.4.*", features = ["serde", "std"] }
 # once_cell = { version = "1.13.*", features = ["parking_lot"] }
 # parking_lot = "0.12.*"
-# quinn = { version = "0.8.*", features = ["tls-rustls"], default-features = false }
+quinn = { version = "0.8.*", features = ["tls-rustls"], default-features = false, optional = true }
+quinn-proto = { version = "0.8.*", default-features = false, optional = true }
 # rand = "0.8.*"
-# rustls = { version = "0.20.*", features = ["quic"], default-features = false }
+rustls = { version = "0.20.*", default-features = false, optional = true }
 # rustls-native-certs = "0.6.*"
 # rustls-pemfile = "1.0.*"
 # serde = { version = "1.0.*", features = ["derive", "std"], default-features = false }
@@ -54,8 +55,8 @@ all = ["protocol_marshaling_tokio", "server", "client"]
 
 protocol_marshaling_tokio = ["byteorder/std", "bytes", "thiserror", "tokio/io-util"]
 
-server = ["protocol_marshaling_tokio"]
-client = ["protocol_marshaling_tokio"]
+server = ["protocol_marshaling_tokio", "quinn", "rustls"]
+client = ["protocol_marshaling_tokio", "quinn", "quinn-proto", "rustls", "thiserror", "tokio/net"]
 
 [dev-dependencies]
 tuic = { path = ".", features = ["all"] }
