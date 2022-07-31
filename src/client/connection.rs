@@ -6,14 +6,19 @@ use crate::{
     protocol::{Address, Command, Error as TuicError},
     UdpRelayMode,
 };
+use bytes::Bytes;
 use quinn::{
     Connecting as QuinnConnecting, Connection as QuinnConnection, Datagrams, IncomingUniStreams,
     NewConnection as QuinnNewConnection,
 };
 use std::{
-    io::{Error as IoError, Result as IoResult},
-    sync::Arc,
+    io::{Error as IoError, ErrorKind, Result as IoResult},
+    sync::{
+        atomic::{AtomicU16, Ordering},
+        Arc,
+    },
 };
+use tokio::io::AsyncWriteExt;
 
 #[derive(Debug)]
 pub struct Connecting {
@@ -62,6 +67,7 @@ pub struct Connection {
     token: [u8; 32],
     udp_relay_mode: UdpRelayMode,
     stream_reg: Arc<StreamReg>,
+    next_pkt_id: Arc<AtomicU16>,
 }
 
 impl Connection {
@@ -79,6 +85,7 @@ impl Connection {
             token,
             udp_relay_mode,
             stream_reg: stream_reg.clone(),
+            next_pkt_id: Arc::new(AtomicU16::new(0)),
         };
 
         let incoming = IncomingPackets {
@@ -129,12 +136,19 @@ impl Connection {
         res
     }
 
-    pub async fn packet(&self) -> IoResult<()> {
-        todo!()
+    pub async fn send_packet(&self, assoc_id: u32, addr: Address, pkt: Bytes) -> IoResult<()> {
+        match self.udp_relay_mode {
+            UdpRelayMode::Native => self.send_packet_to_datagram(assoc_id, addr, pkt),
+            UdpRelayMode::Quic => self.send_packet_to_uni_stream(assoc_id, addr, pkt).await,
+        }
     }
 
-    pub async fn dissociate(&self) -> IoResult<()> {
-        todo!()
+    pub async fn dissociate(&self, assoc_id: u32) -> IoResult<()> {
+        let mut send = self.get_send_stream().await?;
+        let cmd = Command::Dissociate { assoc_id };
+        cmd.write_to(&mut send).await?;
+        send.finish().await?;
+        Ok(())
     }
 
     async fn get_send_stream(&self) -> IoResult<SendStream> {
@@ -147,6 +161,55 @@ impl Connection {
         let send = SendStream::new(send, self.stream_reg.as_ref().clone());
         let recv = RecvStream::new(recv, self.stream_reg.as_ref().clone());
         Ok(Stream::new(send, recv))
+    }
+
+    fn send_packet_to_datagram(&self, assoc_id: u32, addr: Address, pkt: Bytes) -> IoResult<()> {
+        let max_dg_size = if let Some(size) = self.conn.max_datagram_size() {
+            size
+        } else {
+            return Err(IoError::new(ErrorKind::Other, "datagram not supported"));
+        };
+
+        let pkt_id = self.next_pkt_id.fetch_add(1, Ordering::SeqCst);
+
+        let header_without_addr_len = Command::Packet {
+            assoc_id,
+            pkt_id,
+            frag_total: 0,
+            frag_id: 0,
+            len: 0,
+            addr: None,
+        }
+        .serialized_len();
+
+        let first_frag_len = max_dg_size - header_without_addr_len - addr.serialized_len();
+
+        todo!()
+    }
+
+    async fn send_packet_to_uni_stream(
+        &self,
+        assoc_id: u32,
+        addr: Address,
+        pkt: Bytes,
+    ) -> IoResult<()> {
+        let mut send = self.get_send_stream().await?;
+
+        let cmd = Command::Packet {
+            assoc_id,
+            pkt_id: self.next_pkt_id.fetch_add(1, Ordering::SeqCst),
+            frag_total: 1,
+            frag_id: 0,
+            len: pkt.len() as u16,
+            addr: Some(addr),
+        };
+
+        cmd.write_to(&mut send).await?;
+        send.write_all(&pkt).await?;
+
+        send.finish().await?;
+
+        Ok(())
     }
 }
 

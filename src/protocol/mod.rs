@@ -51,15 +51,15 @@ pub enum Command {
     // +----------+--------+------------+---------+-----+----------+
     // | ASSOC_ID | PKT_ID | FRAG_TOTAL | FRAG_ID | LEN |   ADDR   |
     // +----------+--------+------------+---------+-----+----------+
-    // |    4     |   4    |     1      |    1    |  2  | Variable |
+    // |    4     |   2    |     1      |    1    |  2  | Variable |
     // +----------+--------+------------+---------+-----+----------+
     Packet {
         assoc_id: u32,
-        pkt_id: u32,
+        pkt_id: u16,
         frag_total: u8,
         frag_id: u8,
         len: u16,
-        addr: Address,
+        addr: Option<Address>,
     },
 
     // +----------+
@@ -102,7 +102,7 @@ impl Command {
     }
 
     pub const fn max_serialized_len() -> usize {
-        2 + 12 + Address::max_serialized_len()
+        2 + 10 + Address::max_serialized_len()
     }
 }
 
