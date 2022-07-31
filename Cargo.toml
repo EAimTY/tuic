@@ -51,12 +51,12 @@ tokio = { version = "1.20.*", default-features = false, optional = true }
 [features]
 default = []
 
-all = ["protocol_marshaling_tokio", "server", "client"]
+all = ["protocol_marshaling", "server", "client"]
 
-protocol_marshaling_tokio = ["byteorder/std", "bytes", "thiserror", "tokio/io-util"]
+protocol_marshaling = ["byteorder/std", "bytes", "thiserror", "tokio/io-util"]
 
-server = ["protocol_marshaling_tokio", "quinn", "rustls"]
-client = ["protocol_marshaling_tokio", "quinn", "quinn-proto", "rustls", "thiserror", "tokio/net"]
+server = ["protocol_marshaling", "quinn", "rustls"]
+client = ["protocol_marshaling", "quinn", "quinn-proto", "rustls", "thiserror"]
 
 [dev-dependencies]
 tuic = { path = ".", features = ["all"] }

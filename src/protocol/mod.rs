@@ -1,6 +1,6 @@
 //! The TUIC protocol
 
-#[cfg(feature = "protocol_marshaling_tokio")]
+#[cfg(feature = "protocol_marshaling")]
 mod marshaling;
 
 use std::{
@@ -10,7 +10,7 @@ use std::{
 
 pub const TUIC_PROTOCOL_VERSION: u8 = 0x04;
 
-#[cfg(feature = "protocol_marshaling_tokio")]
+#[cfg(feature = "protocol_marshaling")]
 pub use self::marshaling::Error;
 
 /// Command
@@ -25,19 +25,57 @@ pub use self::marshaling::Error;
 #[non_exhaustive]
 #[derive(Clone, Debug)]
 pub enum Command {
+    // +-----+
+    // | REP |
+    // +-----+
+    // |  1  |
+    // +-----+
     Response(bool),
+
+    // +-----+
+    // | TKN |
+    // +-----+
+    // | 32  |
+    // +-----+
     Authenticate([u8; 32]),
+
+    // +----------+
+    // |   ADDR   |
+    // +----------+
+    // | Variable |
+    // +----------+
     Connect {
         addr: Address,
     },
+
+    // +----------+--------+------------+---------+-----+----------+
+    // | ASSOC_ID | PKT_ID | FRAG_TOTAL | FRAG_ID | LEN |   ADDR   |
+    // +----------+--------+------------+---------+-----+----------+
+    // |    4     |   4    |     1      |    1    |  2  | Variable |
+    // +----------+--------+------------+---------+-----+----------+
     Packet {
         assoc_id: u32,
+        pkt_id: u32,
+        frag_total: u8,
+        frag_id: u8,
         len: u16,
         addr: Address,
     },
+
+    // +----------+
+    // | ASSOC_ID |
+    // +----------+
+    // |    4     |
+    // +----------+
     Dissociate {
         assoc_id: u32,
     },
+
+    // +-+
+    // | |
+    // +-+
+    // | |
+    // +-+
     Heartbeat,
 }
 
@@ -64,7 +102,7 @@ impl Command {
     }
 
     pub const fn max_serialized_len() -> usize {
-        2 + 6 + Address::max_serialized_len()
+        2 + 12 + Address::max_serialized_len()
     }
 }
 

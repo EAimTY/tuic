@@ -41,16 +41,22 @@ impl Command {
                 Ok(Self::Connect { addr })
             }
             Self::TYPE_PACKET => {
-                let mut buf = [0; 6];
+                let mut buf = [0; 12];
                 r.read_exact(&mut buf).await?;
                 let mut rdr = Cursor::new(buf);
 
                 let assoc_id = ReadBytesExt::read_u32::<BigEndian>(&mut rdr).unwrap();
+                let pkt_id = ReadBytesExt::read_u32::<BigEndian>(&mut rdr).unwrap();
+                let frag_total = ReadBytesExt::read_u8(&mut rdr).unwrap();
+                let frag_id = ReadBytesExt::read_u8(&mut rdr).unwrap();
                 let len = ReadBytesExt::read_u16::<BigEndian>(&mut rdr).unwrap();
                 let addr = Address::read_from(r).await?;
 
                 Ok(Self::Packet {
                     assoc_id,
+                    pkt_id,
+                    frag_total,
+                    frag_id,
                     len,
                     addr,
                 })
@@ -96,11 +102,17 @@ impl Command {
             }
             Self::Packet {
                 assoc_id,
+                pkt_id,
+                frag_total,
+                frag_id,
                 len,
                 addr,
             } => {
                 buf.put_u8(Self::TYPE_PACKET);
                 buf.put_u32(*assoc_id);
+                buf.put_u32(*pkt_id);
+                buf.put_u8(*frag_total);
+                buf.put_u8(*frag_id);
                 buf.put_u16(*len);
                 addr.write_to_buf(buf);
             }
@@ -119,7 +131,7 @@ impl Command {
             Self::Response(_) => 1,
             Self::Authenticate { .. } => 32,
             Self::Connect { addr } => addr.serialized_len(),
-            Self::Packet { addr, .. } => 6 + addr.serialized_len(),
+            Self::Packet { addr, .. } => 12 + addr.serialized_len(),
             Self::Dissociate { .. } => 4,
             Self::Heartbeat => 0,
         }
