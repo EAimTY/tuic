@@ -13,4 +13,4 @@ pub mod client;
 pub use crate::common::UdpRelayMode;
 
 #[cfg(feature = "client")]
-pub use crate::client::{Client, ClientConfig, ServerAddr};
+pub use crate::client::{Client, ClientConfig};

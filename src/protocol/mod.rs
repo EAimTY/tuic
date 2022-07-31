@@ -52,6 +52,17 @@ impl Command {
     pub const RESPONSE_SUCCEEDED: u8 = 0x00;
     pub const RESPONSE_FAILED: u8 = 0xff;
 
+    pub const fn type_code(&self) -> u8 {
+        match self {
+            Command::Response(_) => Self::TYPE_RESPONSE,
+            Command::Authenticate(_) => Self::TYPE_AUTHENTICATE,
+            Command::Connect { .. } => Self::TYPE_CONNECT,
+            Command::Packet { .. } => Self::TYPE_PACKET,
+            Command::Dissociate { .. } => Self::TYPE_DISSOCIATE,
+            Command::Heartbeat => Self::TYPE_HEARTBEAT,
+        }
+    }
+
     pub const fn max_serialized_len() -> usize {
         2 + 6 + Address::max_serialized_len()
     }

@@ -1,6 +1,10 @@
 mod connection;
+mod stream;
 
-pub use self::connection::{Connecting, Connection, IncomingPackets};
+pub use self::{
+    connection::{Connecting, Connection, IncomingPackets},
+    stream::Stream,
+};
 
 use crate::UdpRelayMode;
 use quinn::{
@@ -11,7 +15,6 @@ use quinn::{
 use quinn_proto::TransportError;
 use rustls::{version, ClientConfig as RustlsClientConfig, RootCertStore};
 use std::{
-    fmt::{Display, Formatter, Result as FmtResult},
     io::Result as IoResult,
     net::{SocketAddr, ToSocketAddrs, UdpSocket},
     sync::Arc,
@@ -100,18 +103,7 @@ impl Client {
     ) -> Result<(Connection, IncomingPackets), ConnectError> {
         let conn = match self.endpoint.connect(addr, server_name) {
             Ok(conn) => conn,
-            Err(err) => {
-                return Err(match err {
-                    QuinnConnectError::UnsupportedVersion => ConnectError::UnsupportedQUICVersion,
-                    QuinnConnectError::EndpointStopping => ConnectError::EndpointStopping,
-                    QuinnConnectError::TooManyConnections => ConnectError::TooManyConnections,
-                    QuinnConnectError::InvalidDnsName(err) => ConnectError::InvalidDomainName(err),
-                    QuinnConnectError::InvalidRemoteAddress(err) => {
-                        ConnectError::InvalidRemoteAddress(err)
-                    }
-                    QuinnConnectError::NoDefaultClientConfig => unreachable!(),
-                })
-            }
+            Err(err) => return Err(ConnectError::from_quinn_connect_error(err)),
         };
 
         let QuinnNewConnection {
@@ -133,58 +125,31 @@ impl Client {
         } else {
             match conn.await {
                 Ok(conn) => conn,
-                Err(err) => {
-                    return Err(match err {
-                        QuinnConnectionError::VersionMismatch => {
-                            ConnectError::UnsupportedQUICVersion
-                        }
-                        QuinnConnectionError::TransportError(err) => {
-                            ConnectError::TransportError(err)
-                        }
-                        QuinnConnectionError::ConnectionClosed(err) => {
-                            ConnectError::ConnectionClosed(err)
-                        }
-                        QuinnConnectionError::ApplicationClosed(err) => {
-                            ConnectError::ApplicationClosed(err)
-                        }
-                        QuinnConnectionError::Reset => ConnectError::Reset,
-                        QuinnConnectionError::TimedOut => ConnectError::TimedOut,
-                        QuinnConnectionError::LocallyClosed => ConnectError::LocallyClosed,
-                    })
-                }
+                Err(err) => return Err(ConnectError::from_quinn_connection_error(err)),
             }
         };
 
-        let conn = Connection::new(connection, token, self.udp_relay_mode);
-        let pkts = IncomingPackets::new(uni_streams, datagrams, self.udp_relay_mode);
-
-        Ok((conn, pkts))
+        Ok(Connection::new(
+            connection,
+            uni_streams,
+            datagrams,
+            token,
+            self.udp_relay_mode,
+        ))
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct ClientConfig<C> {
+pub struct ClientConfig<C>
+where
+    C: ControllerFactory + Send + Sync + 'static,
+{
     pub certs: RootCertStore,
     pub alpn_protocols: Vec<Vec<u8>>,
     pub disable_sni: bool,
     pub enable_0rtt: bool,
     pub udp_relay_mode: UdpRelayMode,
     pub congestion_controller: C,
-}
-
-#[derive(Clone, Debug)]
-pub enum ServerAddr {
-    SocketAddr { addr: SocketAddr, name: String },
-    DomainAddr { domain: String, port: u16 },
-}
-
-impl Display for ServerAddr {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        match self {
-            ServerAddr::SocketAddr { addr, name } => write!(f, "{addr} ({name})"),
-            ServerAddr::DomainAddr { domain, port } => write!(f, "{domain}:{port}"),
-        }
-    }
 }
 
 #[derive(Error, Debug)]
@@ -213,4 +178,29 @@ pub enum ConnectError {
     TimedOut,
     #[error("closed")]
     LocallyClosed,
+}
+
+impl ConnectError {
+    fn from_quinn_connect_error(err: QuinnConnectError) -> Self {
+        match err {
+            QuinnConnectError::UnsupportedVersion => Self::UnsupportedQUICVersion,
+            QuinnConnectError::EndpointStopping => Self::EndpointStopping,
+            QuinnConnectError::TooManyConnections => Self::TooManyConnections,
+            QuinnConnectError::InvalidDnsName(err) => Self::InvalidDomainName(err),
+            QuinnConnectError::InvalidRemoteAddress(err) => Self::InvalidRemoteAddress(err),
+            QuinnConnectError::NoDefaultClientConfig => unreachable!(),
+        }
+    }
+
+    fn from_quinn_connection_error(err: QuinnConnectionError) -> Self {
+        match err {
+            QuinnConnectionError::VersionMismatch => Self::UnsupportedQUICVersion,
+            QuinnConnectionError::TransportError(err) => Self::TransportError(err),
+            QuinnConnectionError::ConnectionClosed(err) => Self::ConnectionClosed(err),
+            QuinnConnectionError::ApplicationClosed(err) => Self::ApplicationClosed(err),
+            QuinnConnectionError::Reset => Self::Reset,
+            QuinnConnectionError::TimedOut => Self::TimedOut,
+            QuinnConnectionError::LocallyClosed => Self::LocallyClosed,
+        }
+    }
 }
