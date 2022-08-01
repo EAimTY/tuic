@@ -3,8 +3,9 @@ use super::{
     ConnectError, Stream,
 };
 use crate::{
+    common,
     protocol::{Address, Command, Error as TuicError},
-    udp, UdpRelayMode,
+    PacketBuffer, UdpRelayMode,
 };
 use bytes::{Bytes, BytesMut};
 use quinn::{
@@ -93,6 +94,7 @@ impl Connection {
             datagrams,
             udp_relay_mode,
             stream_reg,
+            pkt_buf: PacketBuffer::new(),
         };
 
         (conn, incoming)
@@ -171,7 +173,7 @@ impl Connection {
         };
 
         let pkt_id = self.next_pkt_id.fetch_add(1, Ordering::SeqCst);
-        let mut pkts = udp::split_packet(pkt, &addr, max_datagram_size);
+        let mut pkts = common::split_packet(pkt, &addr, max_datagram_size);
         let frag_total = pkts.len() as u8;
 
         let first_pkt = pkts.next().unwrap();
@@ -244,4 +246,5 @@ pub struct IncomingPackets {
     datagrams: Datagrams,
     udp_relay_mode: UdpRelayMode,
     stream_reg: Arc<StreamReg>,
+    pkt_buf: PacketBuffer,
 }

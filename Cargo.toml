@@ -56,7 +56,7 @@ all = ["protocol_marshaling", "server", "client"]
 protocol_marshaling = ["byteorder/std", "bytes", "thiserror", "tokio/io-util"]
 
 server = ["protocol_marshaling", "quinn", "rustls"]
-client = ["protocol_marshaling", "quinn", "quinn-proto", "rustls", "thiserror"]
+client = ["protocol_marshaling", "quinn", "quinn-proto", "rustls", "thiserror", "tokio/io-util"]
 
 [dev-dependencies]
 tuic = { path = ".", features = ["all"] }

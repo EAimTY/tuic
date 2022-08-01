@@ -10,7 +10,7 @@ mod server;
 pub mod client;
 
 #[cfg(any(feature = "server", feature = "client"))]
-pub use crate::common::udp::{self, UdpRelayMode};
+pub use crate::common::{PacketBuffer, PacketBufferError, UdpRelayMode};
 
 #[cfg(feature = "client")]
 pub use crate::client::{Client, ClientConfig};
