@@ -4,9 +4,9 @@ use super::{
 };
 use crate::{
     protocol::{Address, Command, Error as TuicError},
-    UdpRelayMode,
+    udp, UdpRelayMode,
 };
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use quinn::{
     Connecting as QuinnConnecting, Connection as QuinnConnection, Datagrams, IncomingUniStreams,
     NewConnection as QuinnNewConnection,
@@ -164,27 +164,52 @@ impl Connection {
     }
 
     fn send_packet_to_datagram(&self, assoc_id: u32, addr: Address, pkt: Bytes) -> IoResult<()> {
-        let max_dg_size = if let Some(size) = self.conn.max_datagram_size() {
+        let max_datagram_size = if let Some(size) = self.conn.max_datagram_size() {
             size
         } else {
             return Err(IoError::new(ErrorKind::Other, "datagram not supported"));
         };
 
         let pkt_id = self.next_pkt_id.fetch_add(1, Ordering::SeqCst);
+        let mut pkts = udp::split_packet(pkt, &addr, max_datagram_size);
+        let frag_total = pkts.len() as u8;
 
-        let header_without_addr_len = Command::Packet {
+        let first_pkt = pkts.next().unwrap();
+        let first_pkt_header = Command::Packet {
             assoc_id,
             pkt_id,
-            frag_total: 0,
+            frag_total,
             frag_id: 0,
-            len: 0,
-            addr: None,
+            len: first_pkt.len() as u16,
+            addr: Some(addr),
+        };
+
+        let mut buf = BytesMut::with_capacity(first_pkt_header.serialized_len() + first_pkt.len());
+        first_pkt_header.write_to_buf(&mut buf);
+        buf.extend_from_slice(&first_pkt);
+        let buf = buf.freeze();
+
+        self.conn.send_datagram(buf).unwrap(); // TODO: error handling
+
+        for (id, pkt) in pkts.enumerate() {
+            let pkt_header = Command::Packet {
+                assoc_id,
+                pkt_id,
+                frag_total,
+                frag_id: id as u8 + 1,
+                len: pkt.len() as u16,
+                addr: None,
+            };
+
+            let mut buf = BytesMut::with_capacity(pkt_header.serialized_len() + pkt.len());
+            pkt_header.write_to_buf(&mut buf);
+            buf.extend_from_slice(&pkt);
+            let buf = buf.freeze();
+
+            self.conn.send_datagram(buf).unwrap(); // TODO: error handling
         }
-        .serialized_len();
 
-        let first_frag_len = max_dg_size - header_without_addr_len - addr.serialized_len();
-
-        todo!()
+        Ok(())
     }
 
     async fn send_packet_to_uni_stream(

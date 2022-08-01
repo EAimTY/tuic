@@ -101,8 +101,15 @@ impl Command {
         }
     }
 
-    pub const fn max_serialized_len() -> usize {
-        2 + 10 + Address::max_serialized_len()
+    pub fn serialized_len(&self) -> usize {
+        2 + match self {
+            Self::Response(_) => 1,
+            Self::Authenticate { .. } => 32,
+            Self::Connect { addr } => addr.serialized_len(),
+            Self::Packet { addr, .. } => 10 + addr.as_ref().map_or(0, |addr| addr.serialized_len()),
+            Self::Dissociate { .. } => 4,
+            Self::Heartbeat => 0,
+        }
     }
 }
 
@@ -131,8 +138,14 @@ impl Address {
     pub const TYPE_IPV4: u8 = 0x01;
     pub const TYPE_IPV6: u8 = 0x02;
 
-    pub const fn max_serialized_len() -> usize {
-        1 + 1 + u8::MAX as usize + 2
+    pub fn serialized_len(&self) -> usize {
+        1 + match self {
+            Address::DomainAddress(addr, _) => 1 + addr.len() + 2,
+            Address::SocketAddress(addr) => match addr {
+                SocketAddr::V4(_) => 6,
+                SocketAddr::V6(_) => 18,
+            },
+        }
     }
 }
 

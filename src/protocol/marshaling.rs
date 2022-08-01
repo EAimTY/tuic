@@ -133,17 +133,6 @@ impl Command {
             }
         }
     }
-
-    pub fn serialized_len(&self) -> usize {
-        2 + match self {
-            Self::Response(_) => 1,
-            Self::Authenticate { .. } => 32,
-            Self::Connect { addr } => addr.serialized_len(),
-            Self::Packet { addr, .. } => 10 + addr.as_ref().map_or(0, |addr| addr.serialized_len()),
-            Self::Dissociate { .. } => 4,
-            Self::Heartbeat => 0,
-        }
-    }
 }
 
 impl Address {
@@ -238,16 +227,6 @@ impl Address {
                     }
                     buf.put_u16(addr.port());
                 }
-            },
-        }
-    }
-
-    pub fn serialized_len(&self) -> usize {
-        1 + match self {
-            Address::DomainAddress(addr, _) => 1 + addr.len() + 2,
-            Address::SocketAddress(addr) => match addr {
-                SocketAddr::V4(_) => 6,
-                SocketAddr::V6(_) => 18,
             },
         }
     }
