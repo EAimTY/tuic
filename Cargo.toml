@@ -1,6 +1,6 @@
 [package]
 name = "tuic"
-version = "0.9.0"
+version = "5.0.0"
 authors = ["EAimTY <ea.imty@gmail.com>"]
 description = "Delicately-TUICed high-performance proxy built on top of the QUIC protocol"
 categories = ["network-programming", "command-line-utilities"]
@@ -11,15 +11,11 @@ readme = "README.md"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/EAimTY/tuic"
 
-[[bin]]
-name = "server"
-path = "server/main.rs"
-required-features = ["server"]
-
-[[bin]]
-name = "client"
-path = "client/main.rs"
-required-features = ["client"]
+[workspace]
+members = [
+    "client",
+    "server",
+]
 
 [dependencies]
 # blake3 = "1.3.*"
