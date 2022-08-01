@@ -13,14 +13,14 @@ pub enum UdpRelayMode {
 }
 
 #[derive(Debug)]
-pub struct PacketBuffer(HashMap<PacketBufferKey, PacketBufferValue>);
+pub(crate) struct PacketBuffer(HashMap<PacketBufferKey, PacketBufferValue>);
 
 impl PacketBuffer {
     pub(crate) fn new() -> Self {
         Self(HashMap::new())
     }
 
-    fn insert(
+    pub(crate) fn insert(
         &mut self,
         assoc_id: u32,
         pkt_id: u16,
@@ -28,7 +28,7 @@ impl PacketBuffer {
         frag_id: u8,
         addr: Option<Address>,
         pkt: Bytes,
-    ) -> Result<Option<(u32, Address, Bytes)>, PacketBufferError> {
+    ) -> Result<Option<(u32, u16, Address, Bytes)>, PacketBufferError> {
         let key = PacketBufferKey { assoc_id, pkt_id };
 
         if frag_id == 0 && addr.is_none() {
@@ -67,14 +67,14 @@ impl PacketBuffer {
                         res.extend_from_slice(&pkt.unwrap());
                     }
 
-                    Ok(Some((assoc_id, v.addr.unwrap(), res.freeze())))
+                    Ok(Some((assoc_id, pkt_id, v.addr.unwrap(), res.freeze())))
                 } else {
                     Ok(None)
                 }
             }
             Entry::Vacant(entry) => {
                 if frag_total == 1 {
-                    return Ok(Some((assoc_id, addr.unwrap(), pkt)));
+                    return Ok(Some((assoc_id, pkt_id, addr.unwrap(), pkt)));
                 }
 
                 let mut v = PacketBufferValue {
@@ -82,7 +82,7 @@ impl PacketBuffer {
                     addr,
                     recv_count: 0,
                     total_len: 0,
-                    create_time: Instant::now(),
+                    c_time: Instant::now(),
                 };
 
                 v.total_len += pkt.len();
@@ -95,8 +95,8 @@ impl PacketBuffer {
         }
     }
 
-    fn collect_garbage(&mut self, timeout: Duration) {
-        self.0.retain(|_, v| v.create_time.elapsed() < timeout);
+    pub(crate) fn collect_garbage(&mut self, timeout: Duration) {
+        self.0.retain(|_, v| v.c_time.elapsed() < timeout);
     }
 }
 
@@ -112,7 +112,7 @@ struct PacketBufferValue {
     addr: Option<Address>,
     recv_count: usize,
     total_len: usize,
-    create_time: Instant,
+    c_time: Instant,
 }
 
 #[derive(Error, Debug)]

@@ -27,7 +27,7 @@ byteorder = { version = "1.4.*", default-features = false, optional = true }
 bytes = { version = "1.2.*", default-features = false, optional = true }
 # crossbeam-utils = { version = "0.8.*", default-features = false }
 # env_logger = { version = "0.9.*", features = ["humantime"], default-features = false }
-# futures-util = { version = "0.3.*", default-features = false }
+futures-util = { version = "0.3.*", default-features = false, optional = true }
 # getopts = "0.2.*"
 # log = { version = "0.4.*", features = ["serde", "std"] }
 # once_cell = { version = "1.13.*", features = ["parking_lot"] }
@@ -56,7 +56,7 @@ all = ["protocol_marshaling", "server", "client"]
 protocol_marshaling = ["byteorder/std", "bytes", "thiserror", "tokio/io-util"]
 
 server = ["protocol_marshaling", "quinn", "rustls"]
-client = ["protocol_marshaling", "quinn", "quinn-proto", "rustls", "thiserror", "tokio/io-util"]
+client = ["futures-util", "protocol_marshaling", "quinn", "quinn-proto", "rustls", "thiserror", "tokio/io-util", "tokio/macros", "tokio/time"]
 
 [dev-dependencies]
 tuic = { path = ".", features = ["all"] }

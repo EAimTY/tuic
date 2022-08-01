@@ -3,11 +3,12 @@ use super::{
     ConnectError, Stream,
 };
 use crate::{
-    common,
+    common::{self, PacketBuffer},
     protocol::{Address, Command, Error as TuicError},
-    PacketBuffer, UdpRelayMode,
+    UdpRelayMode,
 };
 use bytes::{Bytes, BytesMut};
+use futures_util::StreamExt;
 use quinn::{
     Connecting as QuinnConnecting, Connection as QuinnConnection, Datagrams, IncomingUniStreams,
     NewConnection as QuinnNewConnection,
@@ -18,8 +19,12 @@ use std::{
         atomic::{AtomicU16, Ordering},
         Arc,
     },
+    time::{Duration, Instant},
 };
-use tokio::io::AsyncWriteExt;
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    time,
+};
 
 #[derive(Debug)]
 pub struct Connecting {
@@ -95,6 +100,7 @@ impl Connection {
             udp_relay_mode,
             stream_reg,
             pkt_buf: PacketBuffer::new(),
+            last_gc_time: Instant::now(),
         };
 
         (conn, incoming)
@@ -233,7 +239,6 @@ impl Connection {
 
         cmd.write_to(&mut send).await?;
         send.write_all(&pkt).await?;
-
         send.finish().await?;
 
         Ok(())
@@ -247,4 +252,114 @@ pub struct IncomingPackets {
     udp_relay_mode: UdpRelayMode,
     stream_reg: Arc<StreamReg>,
     pkt_buf: PacketBuffer,
+    last_gc_time: Instant,
+}
+
+impl IncomingPackets {
+    pub async fn accept(
+        &mut self,
+        gc_interval: Duration,
+        gc_timeout: Duration,
+    ) -> Option<(u32, u16, Address, Bytes)> {
+        match self.udp_relay_mode {
+            UdpRelayMode::Native => self.accept_from_datagrams(gc_interval, gc_timeout).await,
+            UdpRelayMode::Quic => self.accept_from_uni_streams().await,
+        }
+    }
+
+    async fn accept_from_datagrams(
+        &mut self,
+        gc_interval: Duration,
+        gc_timeout: Duration,
+    ) -> Option<(u32, u16, Address, Bytes)> {
+        if self.last_gc_time.elapsed() > gc_interval {
+            self.pkt_buf.collect_garbage(gc_timeout);
+            self.last_gc_time = Instant::now();
+        }
+
+        let mut gc_interval = time::interval(gc_interval);
+
+        loop {
+            tokio::select! {
+                dg = self.datagrams.next() => {
+                    if let Some(dg) = dg {
+                        let dg = dg.unwrap();
+                        let cmd = Command::read_from(&mut dg.as_ref()).await.unwrap();
+                        let cmd_len = cmd.serialized_len();
+
+                        if let Command::Packet {
+                            assoc_id,
+                            pkt_id,
+                            frag_total,
+                            frag_id,
+                            len,
+                            addr,
+                        } = cmd
+                        {
+                            if let Some(pkt) = self
+                                .pkt_buf
+                                .insert(
+                                    assoc_id,
+                                    pkt_id,
+                                    frag_total,
+                                    frag_id,
+                                    addr,
+                                    dg.slice(cmd_len..cmd_len + len as usize),
+                                )
+                                .unwrap()
+                            {
+                                break Some(pkt);
+                            };
+                        } else {
+                            todo!()
+                        }
+                    } else {
+                        break None;
+                    }
+                }
+                _ = gc_interval.tick() => {
+                    self.pkt_buf.collect_garbage(gc_timeout);
+                    self.last_gc_time = Instant::now();
+                }
+            }
+        }
+    }
+
+    async fn accept_from_uni_streams(&mut self) -> Option<(u32, u16, Address, Bytes)> {
+        if let Some(stream) = self.uni_streams.next().await {
+            let mut recv = RecvStream::new(stream.unwrap(), self.stream_reg.as_ref().clone());
+
+            if let Command::Packet {
+                assoc_id,
+                pkt_id,
+                frag_total,
+                frag_id,
+                len,
+                addr,
+            } = Command::read_from(&mut recv).await.unwrap()
+            {
+                if frag_id != 0 {
+                    todo!()
+                }
+
+                if frag_total != 1 {
+                    todo!()
+                }
+
+                if addr.is_none() {
+                    todo!()
+                }
+
+                let mut buf = vec![0; len as usize];
+                recv.read_exact(&mut buf).await.unwrap();
+                let pkt = Bytes::from(buf);
+
+                Some((assoc_id, pkt_id, addr.unwrap(), pkt))
+            } else {
+                todo!()
+            }
+        } else {
+            None
+        }
+    }
 }
