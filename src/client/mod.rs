@@ -181,6 +181,7 @@ pub enum ConnectError {
 }
 
 impl ConnectError {
+    #[inline]
     fn from_quinn_connect_error(err: QuinnConnectError) -> Self {
         match err {
             QuinnConnectError::UnsupportedVersion => Self::UnsupportedQUICVersion,
@@ -192,6 +193,7 @@ impl ConnectError {
         }
     }
 
+    #[inline]
     fn from_quinn_connection_error(err: QuinnConnectionError) -> Self {
         match err {
             QuinnConnectionError::VersionMismatch => Self::UnsupportedQUICVersion,

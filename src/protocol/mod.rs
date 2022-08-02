@@ -90,7 +90,7 @@ impl Command {
     pub const RESPONSE_SUCCEEDED: u8 = 0x00;
     pub const RESPONSE_FAILED: u8 = 0xff;
 
-    pub const fn type_code(&self) -> u8 {
+    pub const fn as_type_code(&self) -> u8 {
         match self {
             Command::Response(_) => Self::TYPE_RESPONSE,
             Command::Authenticate(_) => Self::TYPE_AUTHENTICATE,

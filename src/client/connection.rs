@@ -5,13 +5,14 @@ use super::{
 use crate::{
     common::{self, PacketBuffer},
     protocol::{Address, Command, Error as TuicError},
-    UdpRelayMode,
+    Packet, PacketBufferError, UdpRelayMode,
 };
 use bytes::{Bytes, BytesMut};
 use futures_util::StreamExt;
 use quinn::{
-    Connecting as QuinnConnecting, Connection as QuinnConnection, Datagrams, IncomingUniStreams,
-    NewConnection as QuinnNewConnection,
+    Connecting as QuinnConnecting, Connection as QuinnConnection,
+    ConnectionError as QuinnConnectionError, Datagrams, IncomingUniStreams,
+    NewConnection as QuinnNewConnection, RecvStream as QuinnRecvStream,
 };
 use std::{
     io::{Error as IoError, ErrorKind, Result as IoResult},
@@ -21,6 +22,7 @@ use std::{
     },
     time::{Duration, Instant},
 };
+use thiserror::Error;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     time,
@@ -130,7 +132,7 @@ impl Connection {
 
         let resp = match Command::read_from(&mut stream).await {
             Ok(Command::Response(resp)) => Ok(resp),
-            Ok(cmd) => Err(TuicError::InvalidCommand(cmd.type_code())),
+            Ok(cmd) => Err(TuicError::InvalidCommand(cmd.as_type_code())),
             Err(err) => Err(err),
         };
 
@@ -144,7 +146,7 @@ impl Connection {
         res
     }
 
-    pub async fn send_packet(&self, assoc_id: u32, addr: Address, pkt: Bytes) -> IoResult<()> {
+    pub async fn packet(&self, assoc_id: u32, addr: Address, pkt: Bytes) -> IoResult<()> {
         match self.udp_relay_mode {
             UdpRelayMode::Native => self.send_packet_to_datagram(assoc_id, addr, pkt),
             UdpRelayMode::Quic => self.send_packet_to_uni_stream(assoc_id, addr, pkt).await,
@@ -260,7 +262,7 @@ impl IncomingPackets {
         &mut self,
         gc_interval: Duration,
         gc_timeout: Duration,
-    ) -> Option<(u32, u16, Address, Bytes)> {
+    ) -> Option<Result<Packet, IncomingPacketsError>> {
         match self.udp_relay_mode {
             UdpRelayMode::Native => self.accept_from_datagrams(gc_interval, gc_timeout).await,
             UdpRelayMode::Quic => self.accept_from_uni_streams().await,
@@ -271,7 +273,43 @@ impl IncomingPackets {
         &mut self,
         gc_interval: Duration,
         gc_timeout: Duration,
-    ) -> Option<(u32, u16, Address, Bytes)> {
+    ) -> Option<Result<Packet, IncomingPacketsError>> {
+        async fn process_datagram(
+            pkt_buf: &mut PacketBuffer,
+            dg: Result<Bytes, QuinnConnectionError>,
+        ) -> Result<Option<Packet>, IncomingPacketsError> {
+            let dg = dg.unwrap();
+            let cmd = Command::read_from(&mut dg.as_ref()).await.unwrap();
+            let cmd_len = cmd.serialized_len();
+
+            match cmd {
+                Command::Packet {
+                    assoc_id,
+                    pkt_id,
+                    frag_total,
+                    frag_id,
+                    len,
+                    addr,
+                } => {
+                    if let Some(pkt) = pkt_buf.insert(
+                        assoc_id,
+                        pkt_id,
+                        frag_total,
+                        frag_id,
+                        addr,
+                        dg.slice(cmd_len..cmd_len + len as usize),
+                    )? {
+                        Ok(Some(pkt))
+                    } else {
+                        Ok(None)
+                    }
+                }
+                cmd => Err(IncomingPacketsError::Tuic(TuicError::InvalidCommand(
+                    cmd.as_type_code(),
+                ))),
+            }
+        }
+
         if self.last_gc_time.elapsed() > gc_interval {
             self.pkt_buf.collect_garbage(gc_timeout);
             self.last_gc_time = Instant::now();
@@ -283,35 +321,10 @@ impl IncomingPackets {
             tokio::select! {
                 dg = self.datagrams.next() => {
                     if let Some(dg) = dg {
-                        let dg = dg.unwrap();
-                        let cmd = Command::read_from(&mut dg.as_ref()).await.unwrap();
-                        let cmd_len = cmd.serialized_len();
-
-                        if let Command::Packet {
-                            assoc_id,
-                            pkt_id,
-                            frag_total,
-                            frag_id,
-                            len,
-                            addr,
-                        } = cmd
-                        {
-                            if let Some(pkt) = self
-                                .pkt_buf
-                                .insert(
-                                    assoc_id,
-                                    pkt_id,
-                                    frag_total,
-                                    frag_id,
-                                    addr,
-                                    dg.slice(cmd_len..cmd_len + len as usize),
-                                )
-                                .unwrap()
-                            {
-                                break Some(pkt);
-                            };
-                        } else {
-                            todo!()
+                        match process_datagram(&mut self.pkt_buf, dg).await {
+                            Ok(Some(pkt)) => break Some(Ok(pkt)),
+                            Ok(None) => {}
+                            Err(err) => break Some(Err(err)),
                         }
                     } else {
                         break None;
@@ -325,41 +338,93 @@ impl IncomingPackets {
         }
     }
 
-    async fn accept_from_uni_streams(&mut self) -> Option<(u32, u16, Address, Bytes)> {
-        if let Some(stream) = self.uni_streams.next().await {
-            let mut recv = RecvStream::new(stream.unwrap(), self.stream_reg.as_ref().clone());
+    async fn accept_from_uni_streams(&mut self) -> Option<Result<Packet, IncomingPacketsError>> {
+        async fn process_uni_stream(
+            recv: Result<QuinnRecvStream, QuinnConnectionError>,
+            stream_reg: StreamReg,
+        ) -> Result<Packet, IncomingPacketsError> {
+            let recv = match recv {
+                Ok(recv) => recv,
+                Err(err) => return Err(IncomingPacketsError::from_quinn_connection_error(err)),
+            };
 
-            if let Command::Packet {
-                assoc_id,
-                pkt_id,
-                frag_total,
-                frag_id,
-                len,
-                addr,
-            } = Command::read_from(&mut recv).await.unwrap()
-            {
-                if frag_id != 0 {
-                    todo!()
+            let mut recv = RecvStream::new(recv, stream_reg);
+            let cmd = Command::read_from(&mut recv).await?;
+
+            match cmd {
+                Command::Packet {
+                    assoc_id,
+                    pkt_id,
+                    frag_total,
+                    frag_id,
+                    len,
+                    addr,
+                } => {
+                    if frag_id != 0 || frag_total != 1 {
+                        return Err(IncomingPacketsError::FragmentedPacketFromUniStream);
+                    }
+
+                    if addr.is_none() {
+                        return Err(IncomingPacketsError::NoAddressPacketFromUniStream);
+                    }
+
+                    let mut buf = vec![0; len as usize];
+                    recv.read_exact(&mut buf).await?;
+                    let pkt = Bytes::from(buf);
+
+                    Ok(Packet::new(assoc_id, pkt_id, addr.unwrap(), pkt))
                 }
-
-                if frag_total != 1 {
-                    todo!()
-                }
-
-                if addr.is_none() {
-                    todo!()
-                }
-
-                let mut buf = vec![0; len as usize];
-                recv.read_exact(&mut buf).await.unwrap();
-                let pkt = Bytes::from(buf);
-
-                Some((assoc_id, pkt_id, addr.unwrap(), pkt))
-            } else {
-                todo!()
+                _ => Err(IncomingPacketsError::Tuic(TuicError::InvalidCommand(
+                    cmd.as_type_code(),
+                ))),
             }
+        }
+
+        if let Some(recv) = self.uni_streams.next().await {
+            Some(process_uni_stream(recv, self.stream_reg.as_ref().clone()).await)
         } else {
             None
+        }
+    }
+}
+
+#[derive(Error, Debug)]
+pub enum IncomingPacketsError {
+    #[error(transparent)]
+    Io(#[from] IoError),
+    #[error(transparent)]
+    Tuic(TuicError),
+    #[error(transparent)]
+    PacketBuffer(#[from] PacketBufferError),
+    #[error("received fragmented packet from uni stream")]
+    FragmentedPacketFromUniStream,
+    #[error("received packet without address from uni stream")]
+    NoAddressPacketFromUniStream,
+}
+
+impl IncomingPacketsError {
+    #[inline]
+    fn from_quinn_connection_error(err: QuinnConnectionError) -> Self {
+        Self::Io(IoError::from(err))
+    }
+}
+
+impl From<TuicError> for IncomingPacketsError {
+    #[inline]
+    fn from(err: TuicError) -> Self {
+        match err {
+            TuicError::Io(err) => Self::Io(err),
+            err => Self::Tuic(err),
+        }
+    }
+}
+
+impl From<IncomingPacketsError> for IoError {
+    #[inline]
+    fn from(err: IncomingPacketsError) -> Self {
+        match err {
+            IncomingPacketsError::Io(err) => Self::from(err),
+            err => Self::new(ErrorKind::Other, err),
         }
     }
 }

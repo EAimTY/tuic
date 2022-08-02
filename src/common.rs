@@ -13,6 +13,25 @@ pub enum UdpRelayMode {
 }
 
 #[derive(Debug)]
+pub struct Packet {
+    pub id: u16,
+    pub associate_id: u32,
+    pub address: Address,
+    pub data: Bytes,
+}
+
+impl Packet {
+    pub(crate) fn new(assoc_id: u32, pkt_id: u16, addr: Address, pkt: Bytes) -> Self {
+        Self {
+            id: pkt_id,
+            associate_id: assoc_id,
+            address: addr,
+            data: pkt,
+        }
+    }
+}
+
+#[derive(Debug)]
 pub(crate) struct PacketBuffer(HashMap<PacketBufferKey, PacketBufferValue>);
 
 impl PacketBuffer {
@@ -28,7 +47,7 @@ impl PacketBuffer {
         frag_id: u8,
         addr: Option<Address>,
         pkt: Bytes,
-    ) -> Result<Option<(u32, u16, Address, Bytes)>, PacketBufferError> {
+    ) -> Result<Option<Packet>, PacketBufferError> {
         let key = PacketBufferKey { assoc_id, pkt_id };
 
         if frag_id == 0 && addr.is_none() {
@@ -67,14 +86,19 @@ impl PacketBuffer {
                         res.extend_from_slice(&pkt.unwrap());
                     }
 
-                    Ok(Some((assoc_id, pkt_id, v.addr.unwrap(), res.freeze())))
+                    Ok(Some(Packet::new(
+                        assoc_id,
+                        pkt_id,
+                        v.addr.unwrap(),
+                        res.freeze(),
+                    )))
                 } else {
                     Ok(None)
                 }
             }
             Entry::Vacant(entry) => {
                 if frag_total == 1 {
-                    return Ok(Some((assoc_id, pkt_id, addr.unwrap(), pkt)));
+                    return Ok(Some(Packet::new(assoc_id, pkt_id, addr.unwrap(), pkt)));
                 }
 
                 let mut v = PacketBufferValue {
