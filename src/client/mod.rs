@@ -2,7 +2,7 @@ mod connection;
 mod stream;
 
 pub use self::{
-    connection::{Connecting, Connection, IncomingPackets, IncomingPacketsError},
+    connection::{Connecting, Connection, ConnectionError, IncomingPackets, IncomingPacketsError},
     stream::Stream,
 };
 
