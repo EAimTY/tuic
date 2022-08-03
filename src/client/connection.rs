@@ -12,10 +12,10 @@ use futures_util::StreamExt;
 use quinn::{
     Connecting as QuinnConnecting, Connection as QuinnConnection,
     ConnectionError as QuinnConnectionError, Datagrams, IncomingUniStreams,
-    NewConnection as QuinnNewConnection, RecvStream as QuinnRecvStream,
+    NewConnection as QuinnNewConnection, SendDatagramError as QuinnSendDatagramError,
 };
 use std::{
-    io::{Error as IoError, ErrorKind, Result as IoResult},
+    io::{Error as IoError, ErrorKind},
     sync::{
         atomic::{AtomicU16, Ordering},
         Arc,
@@ -54,10 +54,10 @@ impl Connecting {
             datagrams,
             uni_streams,
             ..
-        } = match self.conn.await {
-            Ok(conn) => conn,
-            Err(err) => return Err(ConnectError::from_quinn_connection_error(err)),
-        };
+        } = self
+            .conn
+            .await
+            .map_err(ConnectError::from_quinn_connection_error)?;
 
         Ok(Connection::new(
             connection,
@@ -108,7 +108,7 @@ impl Connection {
         (conn, incoming)
     }
 
-    pub async fn authenticate(&self) -> IoResult<()> {
+    pub async fn authenticate(&self) -> Result<(), ConnectionError> {
         let mut send = self.get_send_stream().await?;
         let cmd = Command::Authenticate(self.token);
         cmd.write_to(&mut send).await?;
@@ -116,7 +116,7 @@ impl Connection {
         Ok(())
     }
 
-    pub async fn heartbeat(&self) -> IoResult<()> {
+    pub async fn heartbeat(&self) -> Result<(), ConnectionError> {
         let mut send = self.get_send_stream().await?;
         let cmd = Command::Heartbeat;
         cmd.write_to(&mut send).await?;
@@ -124,7 +124,7 @@ impl Connection {
         Ok(())
     }
 
-    pub async fn connect(&self, addr: Address) -> IoResult<Option<Stream>> {
+    pub async fn connect(&self, addr: Address) -> Result<Option<Stream>, ConnectionError> {
         let mut stream = self.get_bi_stream().await?;
 
         let cmd = Command::Connect { addr };
@@ -139,21 +139,26 @@ impl Connection {
         let res = match resp {
             Ok(true) => return Ok(Some(stream)),
             Ok(false) => Ok(None),
-            Err(err) => Err(IoError::from(err)),
+            Err(err) => Err(ConnectionError::from(err)),
         };
 
         stream.finish().await?;
         res
     }
 
-    pub async fn packet(&self, assoc_id: u32, addr: Address, pkt: Bytes) -> IoResult<()> {
+    pub async fn packet(
+        &self,
+        assoc_id: u32,
+        addr: Address,
+        pkt: Bytes,
+    ) -> Result<(), ConnectionError> {
         match self.udp_relay_mode {
             UdpRelayMode::Native => self.send_packet_to_datagram(assoc_id, addr, pkt),
             UdpRelayMode::Quic => self.send_packet_to_uni_stream(assoc_id, addr, pkt).await,
         }
     }
 
-    pub async fn dissociate(&self, assoc_id: u32) -> IoResult<()> {
+    pub async fn dissociate(&self, assoc_id: u32) -> Result<(), ConnectionError> {
         let mut send = self.get_send_stream().await?;
         let cmd = Command::Dissociate { assoc_id };
         cmd.write_to(&mut send).await?;
@@ -161,23 +166,39 @@ impl Connection {
         Ok(())
     }
 
-    async fn get_send_stream(&self) -> IoResult<SendStream> {
-        let send = self.conn.open_uni().await?;
+    async fn get_send_stream(&self) -> Result<SendStream, ConnectionError> {
+        let send = self
+            .conn
+            .open_uni()
+            .await
+            .map_err(ConnectionError::from_quinn_connection_error)?;
+
         Ok(SendStream::new(send, self.stream_reg.as_ref().clone()))
     }
 
-    async fn get_bi_stream(&self) -> IoResult<Stream> {
-        let (send, recv) = self.conn.open_bi().await?;
+    async fn get_bi_stream(&self) -> Result<Stream, ConnectionError> {
+        let (send, recv) = self
+            .conn
+            .open_bi()
+            .await
+            .map_err(ConnectionError::from_quinn_connection_error)?;
+
         let send = SendStream::new(send, self.stream_reg.as_ref().clone());
         let recv = RecvStream::new(recv, self.stream_reg.as_ref().clone());
+
         Ok(Stream::new(send, recv))
     }
 
-    fn send_packet_to_datagram(&self, assoc_id: u32, addr: Address, pkt: Bytes) -> IoResult<()> {
+    fn send_packet_to_datagram(
+        &self,
+        assoc_id: u32,
+        addr: Address,
+        pkt: Bytes,
+    ) -> Result<(), ConnectionError> {
         let max_datagram_size = if let Some(size) = self.conn.max_datagram_size() {
             size
         } else {
-            return Err(IoError::new(ErrorKind::Other, "datagram not supported"));
+            return Err(ConnectionError::DatagramDisabled);
         };
 
         let pkt_id = self.next_pkt_id.fetch_add(1, Ordering::SeqCst);
@@ -199,7 +220,9 @@ impl Connection {
         buf.extend_from_slice(&first_pkt);
         let buf = buf.freeze();
 
-        self.conn.send_datagram(buf).unwrap(); // TODO: error handling
+        self.conn
+            .send_datagram(buf)
+            .map_err(ConnectionError::from_quinn_send_datagram_error)?;
 
         for (id, pkt) in pkts.enumerate() {
             let pkt_header = Command::Packet {
@@ -216,7 +239,9 @@ impl Connection {
             buf.extend_from_slice(&pkt);
             let buf = buf.freeze();
 
-            self.conn.send_datagram(buf).unwrap(); // TODO: error handling
+            self.conn
+                .send_datagram(buf)
+                .map_err(ConnectionError::from_quinn_send_datagram_error)?;
         }
 
         Ok(())
@@ -227,7 +252,7 @@ impl Connection {
         assoc_id: u32,
         addr: Address,
         pkt: Bytes,
-    ) -> IoResult<()> {
+    ) -> Result<(), ConnectionError> {
         let mut send = self.get_send_stream().await?;
 
         let cmd = Command::Packet {
@@ -274,12 +299,13 @@ impl IncomingPackets {
         gc_interval: Duration,
         gc_timeout: Duration,
     ) -> Option<Result<Packet, IncomingPacketsError>> {
+        #[inline]
         async fn process_datagram(
             pkt_buf: &mut PacketBuffer,
-            dg: Result<Bytes, QuinnConnectionError>,
+            dg: Result<Bytes, IncomingPacketsError>,
         ) -> Result<Option<Packet>, IncomingPacketsError> {
-            let dg = dg.unwrap();
-            let cmd = Command::read_from(&mut dg.as_ref()).await.unwrap();
+            let dg = dg?;
+            let cmd = Command::read_from(&mut dg.as_ref()).await?;
             let cmd_len = cmd.serialized_len();
 
             match cmd {
@@ -321,6 +347,7 @@ impl IncomingPackets {
             tokio::select! {
                 dg = self.datagrams.next() => {
                     if let Some(dg) = dg {
+                        let dg = dg.map_err(IncomingPacketsError::from_quinn_connection_error);
                         match process_datagram(&mut self.pkt_buf, dg).await {
                             Ok(Some(pkt)) => break Some(Ok(pkt)),
                             Ok(None) => {}
@@ -339,16 +366,11 @@ impl IncomingPackets {
     }
 
     async fn accept_from_uni_streams(&mut self) -> Option<Result<Packet, IncomingPacketsError>> {
+        #[inline]
         async fn process_uni_stream(
-            recv: Result<QuinnRecvStream, QuinnConnectionError>,
-            stream_reg: StreamReg,
+            recv: Result<RecvStream, IncomingPacketsError>,
         ) -> Result<Packet, IncomingPacketsError> {
-            let recv = match recv {
-                Ok(recv) => recv,
-                Err(err) => return Err(IncomingPacketsError::from_quinn_connection_error(err)),
-            };
-
-            let mut recv = RecvStream::new(recv, stream_reg);
+            let mut recv = recv?;
             let cmd = Command::read_from(&mut recv).await?;
 
             match cmd {
@@ -361,7 +383,9 @@ impl IncomingPackets {
                     addr,
                 } => {
                     if frag_id != 0 || frag_total != 1 {
-                        return Err(IncomingPacketsError::FragmentedPacketFromUniStream);
+                        return Err(IncomingPacketsError::FragmentedPacketFromUniStream(
+                            frag_id, frag_total,
+                        ));
                     }
 
                     if addr.is_none() {
@@ -381,9 +405,53 @@ impl IncomingPackets {
         }
 
         if let Some(recv) = self.uni_streams.next().await {
-            Some(process_uni_stream(recv, self.stream_reg.as_ref().clone()).await)
+            let recv = recv
+                .map(|recv| RecvStream::new(recv, self.stream_reg.as_ref().clone()))
+                .map_err(IncomingPacketsError::from_quinn_connection_error);
+            Some(process_uni_stream(recv).await)
         } else {
             None
+        }
+    }
+}
+
+#[derive(Error, Debug)]
+pub enum ConnectionError {
+    #[error(transparent)]
+    Io(#[from] IoError),
+    #[error(transparent)]
+    Tuic(TuicError),
+    #[error("datagrams not supported by peer")]
+    DatagramUnsupportedByPeer,
+    #[error("datagram support disabled")]
+    DatagramDisabled,
+    #[error("datagram too large")]
+    DatagramTooLarge,
+}
+
+impl ConnectionError {
+    #[inline]
+    fn from_quinn_connection_error(err: QuinnConnectionError) -> Self {
+        Self::Io(IoError::from(err))
+    }
+
+    #[inline]
+    fn from_quinn_send_datagram_error(err: QuinnSendDatagramError) -> Self {
+        match err {
+            QuinnSendDatagramError::UnsupportedByPeer => Self::DatagramUnsupportedByPeer,
+            QuinnSendDatagramError::Disabled => Self::DatagramDisabled,
+            QuinnSendDatagramError::TooLarge => Self::DatagramTooLarge,
+            QuinnSendDatagramError::ConnectionLost(err) => Self::Io(IoError::from(err)),
+        }
+    }
+}
+
+impl From<TuicError> for ConnectionError {
+    #[inline]
+    fn from(err: TuicError) -> Self {
+        match err {
+            TuicError::Io(err) => Self::Io(err),
+            err => Self::Tuic(err),
         }
     }
 }
@@ -396,8 +464,8 @@ pub enum IncomingPacketsError {
     Tuic(TuicError),
     #[error(transparent)]
     PacketBuffer(#[from] PacketBufferError),
-    #[error("received fragmented packet from uni stream")]
-    FragmentedPacketFromUniStream,
+    #[error("received fragmented packet from uni stream: {0} in {1} packets")]
+    FragmentedPacketFromUniStream(u8, u8),
     #[error("received packet without address from uni stream")]
     NoAddressPacketFromUniStream,
 }

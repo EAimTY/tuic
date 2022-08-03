@@ -64,6 +64,10 @@ impl PacketBuffer {
             Entry::Occupied(mut entry) => {
                 let v = entry.get_mut();
 
+                if frag_id >= frag_total {
+                    return Err(PacketBufferError::FragIdExceed);
+                }
+
                 if v.buf[frag_id as usize].is_some() {
                     entry.remove();
                     return Err(PacketBufferError::DuplicatedFragId);
@@ -97,6 +101,10 @@ impl PacketBuffer {
                 }
             }
             Entry::Vacant(entry) => {
+                if frag_id >= frag_total {
+                    return Err(PacketBufferError::FragIdExceed);
+                }
+
                 if frag_total == 1 {
                     return Ok(Some(Packet::new(assoc_id, pkt_id, addr.unwrap(), pkt)));
                 }
@@ -149,11 +157,13 @@ pub enum PacketBufferError {
     DuplicatedFragId,
     #[error("frag_total not match")]
     FragTotalNotMatch,
+    #[error("frag_id exceed")]
+    FragIdExceed,
 }
 
 #[inline]
-pub(crate) fn split_packet(pkt: Bytes, addr: &Address, max_datagram_len: usize) -> SplitPacket {
-    SplitPacket::new(pkt, addr, max_datagram_len)
+pub(crate) fn split_packet(pkt: Bytes, addr: &Address, max_datagram_size: usize) -> SplitPacket {
+    SplitPacket::new(pkt, addr, max_datagram_size)
 }
 
 #[derive(Debug)]

@@ -101,10 +101,10 @@ impl Client {
         server_name: &str,
         token: [u8; 32],
     ) -> Result<(Connection, IncomingPackets), ConnectError> {
-        let conn = match self.endpoint.connect(addr, server_name) {
-            Ok(conn) => conn,
-            Err(err) => return Err(ConnectError::from_quinn_connect_error(err)),
-        };
+        let conn = self
+            .endpoint
+            .connect(addr, server_name)
+            .map_err(ConnectError::from_quinn_connect_error)?;
 
         let QuinnNewConnection {
             connection,
@@ -123,10 +123,8 @@ impl Client {
                 }
             }
         } else {
-            match conn.await {
-                Ok(conn) => conn,
-                Err(err) => return Err(ConnectError::from_quinn_connection_error(err)),
-            }
+            conn.await
+                .map_err(ConnectError::from_quinn_connection_error)?
         };
 
         Ok(Connection::new(
