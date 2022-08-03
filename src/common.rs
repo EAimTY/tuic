@@ -64,18 +64,12 @@ impl PacketBuffer {
             Entry::Occupied(mut entry) => {
                 let v = entry.get_mut();
 
-                if frag_id >= frag_total {
-                    return Err(PacketBufferError::FragIdExceed);
-                }
-
-                if v.buf[frag_id as usize].is_some() {
-                    entry.remove();
-                    return Err(PacketBufferError::DuplicatedFragId);
-                }
-
-                if v.buf.len() != frag_total as usize {
-                    entry.remove();
-                    return Err(PacketBufferError::FragTotalNotMatch);
+                if frag_total == 0
+                    || frag_id >= frag_total
+                    || v.buf.len() != frag_total as usize
+                    || v.buf[frag_id as usize].is_some()
+                {
+                    return Err(PacketBufferError::BadFragment);
                 }
 
                 v.total_len += pkt.len();
@@ -101,8 +95,8 @@ impl PacketBuffer {
                 }
             }
             Entry::Vacant(entry) => {
-                if frag_id >= frag_total {
-                    return Err(PacketBufferError::FragIdExceed);
+                if frag_total == 0 || frag_id >= frag_total {
+                    return Err(PacketBufferError::BadFragment);
                 }
 
                 if frag_total == 1 {
@@ -148,17 +142,13 @@ struct PacketBufferValue {
 }
 
 #[derive(Error, Debug)]
-pub enum PacketBufferError {
+pub(crate) enum PacketBufferError {
     #[error("missing address in packet with frag_id 0")]
     NoAddress,
     #[error("unexpected address in packet")]
     UnexpectedAddress,
-    #[error("duplicated frag_id")]
-    DuplicatedFragId,
-    #[error("frag_total not match")]
-    FragTotalNotMatch,
-    #[error("frag_id exceed")]
-    FragIdExceed,
+    #[error("received bad-fragmented packet")]
+    BadFragment,
 }
 
 #[inline]

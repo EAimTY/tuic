@@ -3,9 +3,9 @@ use super::{
     ConnectError, Stream,
 };
 use crate::{
-    common::{self, PacketBuffer},
+    common::{self, PacketBuffer, PacketBufferError},
     protocol::{Address, Command, Error as TuicError},
-    Packet, PacketBufferError, UdpRelayMode,
+    Packet, UdpRelayMode,
 };
 use bytes::{Bytes, BytesMut};
 use futures_util::StreamExt;
@@ -383,13 +383,11 @@ impl IncomingPackets {
                     addr,
                 } => {
                     if frag_id != 0 || frag_total != 1 {
-                        return Err(IncomingPacketsError::FragmentedPacketFromUniStream(
-                            frag_id, frag_total,
-                        ));
+                        return Err(IncomingPacketsError::BadFragment);
                     }
 
                     if addr.is_none() {
-                        return Err(IncomingPacketsError::NoAddressPacketFromUniStream);
+                        return Err(IncomingPacketsError::NoAddress);
                     }
 
                     let mut buf = vec![0; len as usize];
@@ -462,18 +460,29 @@ pub enum IncomingPacketsError {
     Io(#[from] IoError),
     #[error(transparent)]
     Tuic(TuicError),
-    #[error(transparent)]
-    PacketBuffer(#[from] PacketBufferError),
-    #[error("received fragmented packet from uni stream: {0} in {1} packets")]
-    FragmentedPacketFromUniStream(u8, u8),
-    #[error("received packet without address from uni stream")]
-    NoAddressPacketFromUniStream,
+    #[error("received bad-fragmented packet")]
+    BadFragment,
+    #[error("missing address in packet with frag_id 0")]
+    NoAddress,
+    #[error("unexpected address in packet")]
+    UnexpectedAddress,
 }
 
 impl IncomingPacketsError {
     #[inline]
     fn from_quinn_connection_error(err: QuinnConnectionError) -> Self {
         Self::Io(IoError::from(err))
+    }
+}
+
+impl From<PacketBufferError> for IncomingPacketsError {
+    #[inline]
+    fn from(err: PacketBufferError) -> Self {
+        match err {
+            PacketBufferError::NoAddress => Self::NoAddress,
+            PacketBufferError::UnexpectedAddress => Self::UnexpectedAddress,
+            PacketBufferError::BadFragment => Self::BadFragment,
+        }
     }
 }
 
