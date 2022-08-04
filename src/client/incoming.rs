@@ -13,7 +13,7 @@ use std::{
     time::{Duration, Instant},
 };
 use thiserror::Error;
-use tokio::{io::AsyncReadExt, time};
+use tokio::io::AsyncReadExt;
 
 #[derive(Debug)]
 pub struct IncomingPackets {
@@ -95,31 +95,21 @@ impl IncomingPackets {
             }
         }
 
-        if self.last_gc_time.elapsed() > gc_interval {
-            self.pkt_buf.collect_garbage(gc_timeout);
-            self.last_gc_time = Instant::now();
-        }
-
-        let mut gc_interval = time::interval(gc_interval);
-
         loop {
-            tokio::select! {
-                dg = self.datagrams.next() => {
-                    if let Some(dg) = dg {
-                        let dg = dg.map_err(IncomingPacketsError::from_quinn_connection_error);
-                        match process_datagram(&mut self.pkt_buf, dg).await {
-                            Ok(Some(pkt)) => break Some(Ok(pkt)),
-                            Ok(None) => {}
-                            Err(err) => break Some(Err(err)),
-                        }
-                    } else {
-                        break None;
-                    }
+            if self.last_gc_time.elapsed() > gc_interval {
+                self.pkt_buf.collect_garbage(gc_timeout);
+                self.last_gc_time = Instant::now();
+            }
+
+            if let Some(dg) = self.datagrams.next().await {
+                let dg = dg.map_err(IncomingPacketsError::from_quinn_connection_error);
+                match process_datagram(&mut self.pkt_buf, dg).await {
+                    Ok(Some(pkt)) => break Some(Ok(pkt)),
+                    Ok(None) => {}
+                    Err(err) => break Some(Err(err)),
                 }
-                _ = gc_interval.tick() => {
-                    self.pkt_buf.collect_garbage(gc_timeout);
-                    self.last_gc_time = Instant::now();
-                }
+            } else {
+                break None;
             }
         }
     }
