@@ -7,7 +7,7 @@ use std::{
 use thiserror::Error;
 
 #[derive(Clone, Copy, Debug)]
-pub enum CongestionController {
+pub enum CongestionControl {
     Cubic,
     NewReno,
     Bbr,

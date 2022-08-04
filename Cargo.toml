@@ -29,7 +29,6 @@ futures-util = { version = "0.3.*", default-features = false, optional = true }
 # once_cell = { version = "1.13.*", features = ["parking_lot"] }
 # parking_lot = "0.12.*"
 quinn = { version = "0.8.*", features = ["tls-rustls"], default-features = false, optional = true }
-quinn-proto = { version = "0.8.*", default-features = false, optional = true }
 # rand = "0.8.*"
 rustls = { version = "0.20.*", default-features = false, optional = true }
 # rustls-native-certs = "0.6.*"
@@ -51,8 +50,8 @@ all = ["protocol_marshaling", "server", "client"]
 
 protocol_marshaling = ["byteorder/std", "bytes", "thiserror", "tokio/io-util"]
 
-server = ["protocol_marshaling", "quinn", "rustls"]
-client = ["futures-util", "protocol_marshaling", "quinn", "quinn-proto", "rustls", "thiserror", "tokio/io-util", "tokio/macros", "tokio/time"]
+server = ["protocol_marshaling", "quinn", "rustls", "thiserror"]
+client = ["futures-util", "protocol_marshaling", "quinn", "rustls", "thiserror", "tokio/io-util", "tokio/macros", "tokio/time"]
 
 [dev-dependencies]
 tuic = { path = ".", features = ["all"] }

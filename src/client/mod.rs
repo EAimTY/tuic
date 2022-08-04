@@ -8,44 +8,41 @@ pub use self::{
     stream::Stream,
 };
 
-use crate::{CongestionController, UdpRelayMode};
+use crate::{CongestionControl, UdpRelayMode};
 use quinn::{
     congestion::{BbrConfig, CubicConfig, NewRenoConfig},
-    ApplicationClose, ClientConfig as QuinnClientConfig, ConnectError as QuinnConnectError,
-    ConnectionClose, ConnectionError as QuinnConnectionError, Endpoint, EndpointConfig,
+    ClientConfig as QuinnClientConfig, ConnectError as QuinnConnectError,
+    ConnectionError as QuinnConnectionError, Endpoint, EndpointConfig,
     NewConnection as QuinnNewConnection,
 };
-use quinn_proto::TransportError;
 use rustls::{version, ClientConfig as RustlsClientConfig, RootCertStore};
 use std::{
+    convert::Infallible,
     fmt::Debug,
-    io::Result as IoResult,
-    net::{SocketAddr, ToSocketAddrs, UdpSocket},
+    io::Error as IoError,
+    net::{SocketAddr, UdpSocket},
     sync::Arc,
 };
 use thiserror::Error;
 
 pub struct Client {
     endpoint: Endpoint,
-    enable_0rtt: bool,
+    enable_quic_0rtt: bool,
     udp_relay_mode: UdpRelayMode,
 }
 
 impl Client {
-    pub fn bind(cfg: ClientConfig, addr: impl ToSocketAddrs) -> IoResult<Self> {
-        let socket = UdpSocket::bind(addr)?;
-        let (mut ep, _) = Endpoint::new(EndpointConfig::default(), None, socket)?;
-
+    pub fn bind(cfg: ClientConfig, socket: UdpSocket) -> Result<Self, ClientError> {
         let mut crypto = RustlsClientConfig::builder()
             .with_safe_default_cipher_suites()
             .with_safe_default_kx_groups()
             .with_protocol_versions(&[&version::TLS13])
             .unwrap()
-            .with_root_certificates(cfg.certs)
+            .with_root_certificates(cfg.certificates)
             .with_no_client_auth();
 
         crypto.alpn_protocols = cfg.alpn_protocols;
-        crypto.enable_early_data = cfg.enable_0rtt;
+        crypto.enable_early_data = cfg.enable_quic_0rtt;
         crypto.enable_sni = !cfg.disable_sni;
 
         let mut quinn_config = QuinnClientConfig::new(Arc::new(crypto));
@@ -54,37 +51,38 @@ impl Client {
         transport.max_idle_timeout(None);
 
         match cfg.congestion_controller {
-            CongestionController::Cubic => {
+            CongestionControl::Cubic => {
                 transport.congestion_controller_factory(Arc::new(CubicConfig::default()));
             }
-            CongestionController::NewReno => {
+            CongestionControl::NewReno => {
                 transport.congestion_controller_factory(Arc::new(NewRenoConfig::default()));
             }
-            CongestionController::Bbr => {
+            CongestionControl::Bbr => {
                 transport.congestion_controller_factory(Arc::new(BbrConfig::default()));
             }
         }
 
+        let (mut ep, _) = Endpoint::new(EndpointConfig::default(), None, socket)?;
         ep.set_default_client_config(quinn_config);
 
         Ok(Self {
             endpoint: ep,
             udp_relay_mode: cfg.udp_relay_mode,
-            enable_0rtt: cfg.enable_0rtt,
+            enable_quic_0rtt: cfg.enable_quic_0rtt,
         })
     }
 
-    pub fn reconfigure(&mut self, cfg: ClientConfig) {
+    pub fn reconfigure(&mut self, cfg: ClientConfig) -> Result<(), Infallible> {
         let mut crypto = RustlsClientConfig::builder()
             .with_safe_default_cipher_suites()
             .with_safe_default_kx_groups()
             .with_protocol_versions(&[&version::TLS13])
             .unwrap()
-            .with_root_certificates(cfg.certs)
+            .with_root_certificates(cfg.certificates)
             .with_no_client_auth();
 
         crypto.alpn_protocols = cfg.alpn_protocols;
-        crypto.enable_early_data = cfg.enable_0rtt;
+        crypto.enable_early_data = cfg.enable_quic_0rtt;
         crypto.enable_sni = !cfg.disable_sni;
 
         let mut quinn_config = QuinnClientConfig::new(Arc::new(crypto));
@@ -93,13 +91,13 @@ impl Client {
         transport.max_idle_timeout(None);
 
         match cfg.congestion_controller {
-            CongestionController::Cubic => {
+            CongestionControl::Cubic => {
                 transport.congestion_controller_factory(Arc::new(CubicConfig::default()));
             }
-            CongestionController::NewReno => {
+            CongestionControl::NewReno => {
                 transport.congestion_controller_factory(Arc::new(NewRenoConfig::default()));
             }
-            CongestionController::Bbr => {
+            CongestionControl::Bbr => {
                 transport.congestion_controller_factory(Arc::new(BbrConfig::default()));
             }
         }
@@ -107,12 +105,14 @@ impl Client {
         self.endpoint.set_default_client_config(quinn_config);
 
         self.udp_relay_mode = cfg.udp_relay_mode;
-        self.enable_0rtt = cfg.enable_0rtt;
+        self.enable_quic_0rtt = cfg.enable_quic_0rtt;
+
+        Ok(())
     }
 
-    pub fn rebind(&mut self, addr: impl ToSocketAddrs) -> IoResult<()> {
-        let socket = UdpSocket::bind(addr)?;
-        self.endpoint.rebind(socket)
+    pub fn rebind(&mut self, socket: UdpSocket) -> Result<(), ClientError> {
+        self.endpoint.rebind(socket)?;
+        Ok(())
     }
 
     pub async fn connect(
@@ -120,22 +120,22 @@ impl Client {
         addr: SocketAddr,
         server_name: &str,
         token: [u8; 32],
-    ) -> Result<(Connection, IncomingPackets), ConnectError> {
+    ) -> Result<(Connection, IncomingPackets), ClientError> {
         let conn = self
             .endpoint
             .connect(addr, server_name)
-            .map_err(ConnectError::from_quinn_connect_error)?;
+            .map_err(ClientError::from_quinn_connect_error)?;
 
         let QuinnNewConnection {
             connection,
             datagrams,
             uni_streams,
             ..
-        } = if self.enable_0rtt {
+        } = if self.enable_quic_0rtt {
             match conn.into_0rtt() {
                 Ok((conn, _)) => conn,
                 Err(conn) => {
-                    return Err(ConnectError::Convert0Rtt(Connecting::new(
+                    return Err(ClientError::Convert0Rtt(Connecting::new(
                         conn,
                         token,
                         self.udp_relay_mode,
@@ -144,7 +144,7 @@ impl Client {
             }
         } else {
             conn.await
-                .map_err(ConnectError::from_quinn_connection_error)?
+                .map_err(ClientError::from_quinn_connection_error)?
         };
 
         Ok(Connection::new(
@@ -167,50 +167,40 @@ impl Debug for Client {
 
 #[derive(Clone, Debug)]
 pub struct ClientConfig {
-    pub certs: RootCertStore,
+    pub certificates: RootCertStore,
     pub alpn_protocols: Vec<Vec<u8>>,
     pub disable_sni: bool,
-    pub enable_0rtt: bool,
+    pub enable_quic_0rtt: bool,
     pub udp_relay_mode: UdpRelayMode,
-    pub congestion_controller: CongestionController,
+    pub congestion_controller: CongestionControl,
 }
 
 #[derive(Error, Debug)]
-pub enum ConnectError {
+pub enum ClientError {
     #[error("failed to convert QUIC connection into 0-RTT")]
     Convert0Rtt(Connecting),
-    #[error("unsupported QUIC version")]
-    UnsupportedQUICVersion,
+    #[error(transparent)]
+    Io(#[from] IoError),
     #[error("endpoint stopping")]
     EndpointStopping,
     #[error("too many connections")]
     TooManyConnections,
-    #[error("invalid domain name: {0}")]
-    InvalidDomainName(String),
+    #[error("invalid DNS name: {0}")]
+    InvalidDnsName(String),
     #[error("invalid remote address: {0}")]
     InvalidRemoteAddress(SocketAddr),
-    #[error(transparent)]
-    TransportError(#[from] TransportError),
-    #[error("aborted by peer: {0}")]
-    ConnectionClosed(ConnectionClose),
-    #[error("closed by peer: {0}")]
-    ApplicationClosed(ApplicationClose),
-    #[error("reset by peer")]
-    Reset,
-    #[error("timed out")]
-    TimedOut,
-    #[error("closed")]
-    LocallyClosed,
+    #[error("unsupported QUIC version")]
+    UnsupportedQUICVersion,
 }
 
-impl ConnectError {
+impl ClientError {
     #[inline]
     fn from_quinn_connect_error(err: QuinnConnectError) -> Self {
         match err {
             QuinnConnectError::UnsupportedVersion => Self::UnsupportedQUICVersion,
             QuinnConnectError::EndpointStopping => Self::EndpointStopping,
             QuinnConnectError::TooManyConnections => Self::TooManyConnections,
-            QuinnConnectError::InvalidDnsName(err) => Self::InvalidDomainName(err),
+            QuinnConnectError::InvalidDnsName(err) => Self::InvalidDnsName(err),
             QuinnConnectError::InvalidRemoteAddress(err) => Self::InvalidRemoteAddress(err),
             QuinnConnectError::NoDefaultClientConfig => unreachable!(),
         }
@@ -218,14 +208,6 @@ impl ConnectError {
 
     #[inline]
     fn from_quinn_connection_error(err: QuinnConnectionError) -> Self {
-        match err {
-            QuinnConnectionError::VersionMismatch => Self::UnsupportedQUICVersion,
-            QuinnConnectionError::TransportError(err) => Self::TransportError(err),
-            QuinnConnectionError::ConnectionClosed(err) => Self::ConnectionClosed(err),
-            QuinnConnectionError::ApplicationClosed(err) => Self::ApplicationClosed(err),
-            QuinnConnectionError::Reset => Self::Reset,
-            QuinnConnectionError::TimedOut => Self::TimedOut,
-            QuinnConnectionError::LocallyClosed => Self::LocallyClosed,
-        }
+        Self::from(IoError::from(err))
     }
 }

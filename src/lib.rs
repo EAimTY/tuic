@@ -4,13 +4,16 @@ pub mod protocol;
 mod common;
 
 #[cfg(feature = "server")]
-mod server;
+pub mod server;
 
 #[cfg(feature = "client")]
 pub mod client;
 
 #[cfg(any(feature = "server", feature = "client"))]
-pub use crate::common::{CongestionController, Packet, UdpRelayMode};
+pub use crate::common::{CongestionControl, Packet, UdpRelayMode};
 
 #[cfg(feature = "client")]
-pub use crate::client::{Client, ClientConfig};
+pub use crate::client::{Client, ClientConfig, ClientError};
+
+#[cfg(feature = "server")]
+pub use crate::server::{Server, ServerConfig, ServerError};

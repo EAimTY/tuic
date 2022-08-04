@@ -1,6 +1,6 @@
 use super::{
     stream::{RecvStream, SendStream, StreamReg},
-    ConnectError, IncomingPackets, Stream,
+    IncomingPackets, Stream,
 };
 use crate::{
     common,
@@ -43,7 +43,7 @@ impl Connecting {
         }
     }
 
-    pub async fn establish(self) -> Result<(Connection, IncomingPackets), ConnectError> {
+    pub async fn establish(self) -> Result<(Connection, IncomingPackets), ConnectionError> {
         let QuinnNewConnection {
             connection,
             datagrams,
@@ -52,7 +52,7 @@ impl Connecting {
         } = self
             .conn
             .await
-            .map_err(ConnectError::from_quinn_connection_error)?;
+            .map_err(ConnectionError::from_quinn_connection_error)?;
 
         Ok(Connection::new(
             connection,
