@@ -7,12 +7,19 @@ use std::{
 use thiserror::Error;
 
 #[derive(Clone, Copy, Debug)]
+pub enum CongestionController {
+    Cubic,
+    NewReno,
+    Bbr,
+}
+
+#[derive(Clone, Copy, Debug)]
 pub enum UdpRelayMode {
     Native,
     Quic,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Packet {
     pub id: u16,
     pub associate_id: u32,

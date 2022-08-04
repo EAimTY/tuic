@@ -8,15 +8,17 @@ pub use self::{
     stream::Stream,
 };
 
-use crate::UdpRelayMode;
+use crate::{CongestionController, UdpRelayMode};
 use quinn::{
-    congestion::ControllerFactory, ApplicationClose, ClientConfig as QuinnClientConfig,
-    ConnectError as QuinnConnectError, ConnectionClose, ConnectionError as QuinnConnectionError,
-    Endpoint, EndpointConfig, NewConnection as QuinnNewConnection,
+    congestion::{BbrConfig, CubicConfig, NewRenoConfig},
+    ApplicationClose, ClientConfig as QuinnClientConfig, ConnectError as QuinnConnectError,
+    ConnectionClose, ConnectionError as QuinnConnectionError, Endpoint, EndpointConfig,
+    NewConnection as QuinnNewConnection,
 };
 use quinn_proto::TransportError;
 use rustls::{version, ClientConfig as RustlsClientConfig, RootCertStore};
 use std::{
+    fmt::Debug,
     io::Result as IoResult,
     net::{SocketAddr, ToSocketAddrs, UdpSocket},
     sync::Arc,
@@ -30,10 +32,7 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn bind<C>(cfg: ClientConfig<C>, addr: impl ToSocketAddrs) -> IoResult<Self>
-    where
-        C: ControllerFactory + Send + Sync + 'static,
-    {
+    pub fn bind(cfg: ClientConfig, addr: impl ToSocketAddrs) -> IoResult<Self> {
         let socket = UdpSocket::bind(addr)?;
         let (mut ep, _) = Endpoint::new(EndpointConfig::default(), None, socket)?;
 
@@ -52,8 +51,19 @@ impl Client {
         let mut quinn_config = QuinnClientConfig::new(Arc::new(crypto));
 
         let transport = Arc::get_mut(&mut quinn_config.transport).unwrap();
-        transport.congestion_controller_factory(cfg.congestion_controller);
         transport.max_idle_timeout(None);
+
+        match cfg.congestion_controller {
+            CongestionController::Cubic => {
+                transport.congestion_controller_factory(Arc::new(CubicConfig::default()));
+            }
+            CongestionController::NewReno => {
+                transport.congestion_controller_factory(Arc::new(NewRenoConfig::default()));
+            }
+            CongestionController::Bbr => {
+                transport.congestion_controller_factory(Arc::new(BbrConfig::default()));
+            }
+        }
 
         ep.set_default_client_config(quinn_config);
 
@@ -64,10 +74,7 @@ impl Client {
         })
     }
 
-    pub fn reconfigure<C>(&mut self, cfg: ClientConfig<C>)
-    where
-        C: ControllerFactory + Send + Sync + 'static,
-    {
+    pub fn reconfigure(&mut self, cfg: ClientConfig) {
         let mut crypto = RustlsClientConfig::builder()
             .with_safe_default_cipher_suites()
             .with_safe_default_kx_groups()
@@ -83,8 +90,19 @@ impl Client {
         let mut quinn_config = QuinnClientConfig::new(Arc::new(crypto));
 
         let transport = Arc::get_mut(&mut quinn_config.transport).unwrap();
-        transport.congestion_controller_factory(cfg.congestion_controller);
         transport.max_idle_timeout(None);
+
+        match cfg.congestion_controller {
+            CongestionController::Cubic => {
+                transport.congestion_controller_factory(Arc::new(CubicConfig::default()));
+            }
+            CongestionController::NewReno => {
+                transport.congestion_controller_factory(Arc::new(NewRenoConfig::default()));
+            }
+            CongestionController::Bbr => {
+                transport.congestion_controller_factory(Arc::new(BbrConfig::default()));
+            }
+        }
 
         self.endpoint.set_default_client_config(quinn_config);
 
@@ -139,17 +157,22 @@ impl Client {
     }
 }
 
+impl Debug for Client {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Client")
+            .field("endpoint", &self.endpoint)
+            .finish()
+    }
+}
+
 #[derive(Clone, Debug)]
-pub struct ClientConfig<C>
-where
-    C: ControllerFactory + Send + Sync + 'static,
-{
+pub struct ClientConfig {
     pub certs: RootCertStore,
     pub alpn_protocols: Vec<Vec<u8>>,
     pub disable_sni: bool,
     pub enable_0rtt: bool,
     pub udp_relay_mode: UdpRelayMode,
-    pub congestion_controller: C,
+    pub congestion_controller: CongestionController,
 }
 
 #[derive(Error, Debug)]
