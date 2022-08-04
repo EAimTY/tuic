@@ -11,9 +11,7 @@ pub use self::{
 use crate::{CongestionControl, UdpRelayMode};
 use quinn::{
     congestion::{BbrConfig, CubicConfig, NewRenoConfig},
-    ClientConfig as QuinnClientConfig, ConnectError as QuinnConnectError,
-    ConnectionError as QuinnConnectionError, Endpoint, EndpointConfig,
-    NewConnection as QuinnNewConnection,
+    ClientConfig as QuinnClientConfig, ConnectError as QuinnConnectError, Endpoint, EndpointConfig,
 };
 use rustls::{version, ClientConfig as RustlsClientConfig, RootCertStore};
 use std::{
@@ -25,6 +23,7 @@ use std::{
 };
 use thiserror::Error;
 
+#[derive(Debug)]
 pub struct Client {
     endpoint: Endpoint,
     enable_quic_0rtt: bool,
@@ -120,48 +119,18 @@ impl Client {
         addr: SocketAddr,
         server_name: &str,
         token: [u8; 32],
-    ) -> Result<(Connection, IncomingPackets), ClientError> {
+    ) -> Result<Connecting, ClientError> {
         let conn = self
             .endpoint
             .connect(addr, server_name)
             .map_err(ClientError::from_quinn_connect_error)?;
 
-        let QuinnNewConnection {
-            connection,
-            datagrams,
-            uni_streams,
-            ..
-        } = if self.enable_quic_0rtt {
-            match conn.into_0rtt() {
-                Ok((conn, _)) => conn,
-                Err(conn) => {
-                    return Err(ClientError::Convert0Rtt(Connecting::new(
-                        conn,
-                        token,
-                        self.udp_relay_mode,
-                    )))
-                }
-            }
-        } else {
-            conn.await
-                .map_err(ClientError::from_quinn_connection_error)?
-        };
-
-        Ok(Connection::new(
-            connection,
-            uni_streams,
-            datagrams,
+        Ok(Connecting::new(
+            conn,
             token,
+            self.enable_quic_0rtt,
             self.udp_relay_mode,
         ))
-    }
-}
-
-impl Debug for Client {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Client")
-            .field("endpoint", &self.endpoint)
-            .finish()
     }
 }
 
@@ -177,8 +146,6 @@ pub struct ClientConfig {
 
 #[derive(Error, Debug)]
 pub enum ClientError {
-    #[error("failed to convert QUIC connection into 0-RTT")]
-    Convert0Rtt(Connecting),
     #[error(transparent)]
     Io(#[from] IoError),
     #[error("endpoint stopping")]
@@ -204,10 +171,5 @@ impl ClientError {
             QuinnConnectError::InvalidRemoteAddress(err) => Self::InvalidRemoteAddress(err),
             QuinnConnectError::NoDefaultClientConfig => unreachable!(),
         }
-    }
-
-    #[inline]
-    fn from_quinn_connection_error(err: QuinnConnectionError) -> Self {
-        Self::from(IoError::from(err))
     }
 }

@@ -27,6 +27,7 @@ use tokio::io::AsyncWriteExt;
 pub struct Connecting {
     conn: QuinnConnecting,
     token: [u8; 32],
+    enable_quic_0rtt: bool,
     udp_relay_mode: UdpRelayMode,
 }
 
@@ -34,11 +35,13 @@ impl Connecting {
     pub(super) fn new(
         conn: QuinnConnecting,
         token: [u8; 32],
+        enable_quic_0rtt: bool,
         udp_relay_mode: UdpRelayMode,
     ) -> Self {
         Self {
             conn,
             token,
+            enable_quic_0rtt,
             udp_relay_mode,
         }
     }
@@ -49,10 +52,23 @@ impl Connecting {
             datagrams,
             uni_streams,
             ..
-        } = self
-            .conn
-            .await
-            .map_err(ConnectionError::from_quinn_connection_error)?;
+        } = if self.enable_quic_0rtt {
+            match self.conn.into_0rtt() {
+                Ok((conn, _)) => conn,
+                Err(conn) => {
+                    return Err(ConnectionError::Convert0Rtt(Connecting::new(
+                        conn,
+                        self.token,
+                        false,
+                        self.udp_relay_mode,
+                    )))
+                }
+            }
+        } else {
+            self.conn
+                .await
+                .map_err(ConnectionError::from_quinn_connection_error)?
+        };
 
         Ok(Connection::new(
             connection,
@@ -262,6 +278,8 @@ impl Connection {
 
 #[derive(Error, Debug)]
 pub enum ConnectionError {
+    #[error("failed to convert QUIC connection into 0-RTT")]
+    Convert0Rtt(Connecting),
     #[error(transparent)]
     Io(#[from] IoError),
     #[error(transparent)]
