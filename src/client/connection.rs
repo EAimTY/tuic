@@ -1,17 +1,17 @@
-use super::{
-    stream::{RecvStream, SendStream, StreamReg},
-    IncomingPackets, Stream,
-};
+use super::Incoming;
 use crate::{
-    common,
+    common::{
+        stream::{RecvStream, SendStream, StreamReg},
+        util,
+    },
     protocol::{Address, Command, Error as TuicError},
-    UdpRelayMode,
+    Stream, UdpRelayMode,
 };
 use bytes::{Bytes, BytesMut};
 use quinn::{
     Connecting as QuinnConnecting, Connection as QuinnConnection,
-    ConnectionError as QuinnConnectionError, Datagrams, IncomingUniStreams,
-    NewConnection as QuinnNewConnection, SendDatagramError as QuinnSendDatagramError,
+    ConnectionError as QuinnConnectionError, NewConnection as QuinnNewConnection,
+    SendDatagramError as QuinnSendDatagramError,
 };
 use std::{
     io::{Error as IoError, ErrorKind},
@@ -26,7 +26,6 @@ use tokio::io::AsyncWriteExt;
 #[derive(Debug)]
 pub struct Connecting {
     conn: QuinnConnecting,
-    token: [u8; 32],
     enable_quic_0rtt: bool,
     udp_relay_mode: UdpRelayMode,
 }
@@ -34,19 +33,17 @@ pub struct Connecting {
 impl Connecting {
     pub(super) fn new(
         conn: QuinnConnecting,
-        token: [u8; 32],
         enable_quic_0rtt: bool,
         udp_relay_mode: UdpRelayMode,
     ) -> Self {
         Self {
             conn,
-            token,
             enable_quic_0rtt,
             udp_relay_mode,
         }
     }
 
-    pub async fn establish(self) -> Result<(Connection, IncomingPackets), ConnectionError> {
+    pub async fn establish(self) -> Result<(Connection, Incoming), ConnectionError> {
         let QuinnNewConnection {
             connection,
             datagrams,
@@ -58,7 +55,6 @@ impl Connecting {
                 Err(conn) => {
                     return Err(ConnectionError::Convert0Rtt(Connecting::new(
                         conn,
-                        self.token,
                         false,
                         self.udp_relay_mode,
                     )))
@@ -70,51 +66,41 @@ impl Connecting {
                 .map_err(ConnectionError::from_quinn_connection_error)?
         };
 
-        Ok(Connection::new(
-            connection,
-            uni_streams,
-            datagrams,
-            self.token,
-            self.udp_relay_mode,
-        ))
+        let stream_reg = Arc::new(Arc::new(()));
+
+        let conn = Connection::new(connection, self.udp_relay_mode, stream_reg.clone());
+
+        let incoming = Incoming::new(uni_streams, datagrams, self.udp_relay_mode, stream_reg);
+
+        Ok((conn, incoming))
     }
 }
 
 #[derive(Debug)]
 pub struct Connection {
     conn: QuinnConnection,
-    token: [u8; 32],
     udp_relay_mode: UdpRelayMode,
     stream_reg: Arc<StreamReg>,
     next_pkt_id: Arc<AtomicU16>,
 }
 
 impl Connection {
-    pub(super) fn new(
+    fn new(
         conn: QuinnConnection,
-        uni_streams: IncomingUniStreams,
-        datagrams: Datagrams,
-        token: [u8; 32],
         udp_relay_mode: UdpRelayMode,
-    ) -> (Self, IncomingPackets) {
-        let stream_reg = Arc::new(Arc::new(()));
-
-        let conn = Self {
+        stream_reg: Arc<StreamReg>,
+    ) -> Self {
+        Self {
             conn,
-            token,
             udp_relay_mode,
             stream_reg: stream_reg.clone(),
             next_pkt_id: Arc::new(AtomicU16::new(0)),
-        };
-
-        let incoming = IncomingPackets::new(uni_streams, datagrams, udp_relay_mode, stream_reg);
-
-        (conn, incoming)
+        }
     }
 
-    pub async fn authenticate(&self) -> Result<(), ConnectionError> {
+    pub async fn authenticate(&self, token: [u8; 32]) -> Result<(), ConnectionError> {
         let mut send = self.get_send_stream().await?;
-        let cmd = Command::Authenticate(self.token);
+        let cmd = Command::Authenticate(token);
         cmd.write_to(&mut send).await?;
         send.finish().await?;
         Ok(())
@@ -206,7 +192,7 @@ impl Connection {
         };
 
         let pkt_id = self.next_pkt_id.fetch_add(1, Ordering::SeqCst);
-        let mut pkts = common::split_packet(pkt, &addr, max_datagram_size);
+        let mut pkts = util::split_packet(pkt, &addr, max_datagram_size);
         let frag_total = pkts.len() as u8;
 
         let first_pkt = pkts.next().unwrap();

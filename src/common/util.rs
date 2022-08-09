@@ -1,42 +1,13 @@
-use crate::protocol::{Address, Command};
+use crate::{
+    protocol::{Address, Command},
+    task::Packet,
+};
 use bytes::{Bytes, BytesMut};
 use std::{
     collections::{hash_map::Entry, HashMap},
     time::{Duration, Instant},
 };
 use thiserror::Error;
-
-#[derive(Clone, Copy, Debug)]
-pub enum CongestionControl {
-    Cubic,
-    NewReno,
-    Bbr,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum UdpRelayMode {
-    Native,
-    Quic,
-}
-
-#[derive(Clone, Debug)]
-pub struct Packet {
-    pub id: u16,
-    pub associate_id: u32,
-    pub address: Address,
-    pub data: Bytes,
-}
-
-impl Packet {
-    pub(crate) fn new(assoc_id: u32, pkt_id: u16, addr: Address, pkt: Bytes) -> Self {
-        Self {
-            id: pkt_id,
-            associate_id: assoc_id,
-            address: addr,
-            data: pkt,
-        }
-    }
-}
 
 #[derive(Debug)]
 pub(crate) struct PacketBuffer(HashMap<PacketBufferKey, PacketBufferValue>);

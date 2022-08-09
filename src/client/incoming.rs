@@ -1,8 +1,11 @@
-use super::stream::{RecvStream, StreamReg};
 use crate::{
-    common::{PacketBuffer, PacketBufferError},
+    common::{
+        stream::{RecvStream, StreamReg},
+        util::{PacketBuffer, PacketBufferError},
+    },
     protocol::{Command, Error as TuicError},
-    Packet, UdpRelayMode,
+    task::Packet,
+    UdpRelayMode,
 };
 use bytes::Bytes;
 use futures_util::StreamExt;
@@ -16,7 +19,7 @@ use thiserror::Error;
 use tokio::io::AsyncReadExt;
 
 #[derive(Debug)]
-pub struct IncomingPackets {
+pub struct Incoming {
     uni_streams: IncomingUniStreams,
     datagrams: Datagrams,
     udp_relay_mode: UdpRelayMode,
@@ -25,7 +28,7 @@ pub struct IncomingPackets {
     last_gc_time: Instant,
 }
 
-impl IncomingPackets {
+impl Incoming {
     pub(super) fn new(
         uni_streams: IncomingUniStreams,
         datagrams: Datagrams,
@@ -46,7 +49,7 @@ impl IncomingPackets {
         &mut self,
         gc_interval: Duration,
         gc_timeout: Duration,
-    ) -> Option<Result<Packet, IncomingPacketsError>> {
+    ) -> Option<Result<Packet, IncomingError>> {
         match self.udp_relay_mode {
             UdpRelayMode::Native => self.accept_from_datagrams(gc_interval, gc_timeout).await,
             UdpRelayMode::Quic => self.accept_from_uni_streams().await,
@@ -57,12 +60,12 @@ impl IncomingPackets {
         &mut self,
         gc_interval: Duration,
         gc_timeout: Duration,
-    ) -> Option<Result<Packet, IncomingPacketsError>> {
+    ) -> Option<Result<Packet, IncomingError>> {
         #[inline]
         async fn process_datagram(
             pkt_buf: &mut PacketBuffer,
-            dg: Result<Bytes, IncomingPacketsError>,
-        ) -> Result<Option<Packet>, IncomingPacketsError> {
+            dg: Result<Bytes, IncomingError>,
+        ) -> Result<Option<Packet>, IncomingError> {
             let dg = dg?;
             let cmd = Command::read_from(&mut dg.as_ref()).await?;
             let cmd_len = cmd.serialized_len();
@@ -89,7 +92,7 @@ impl IncomingPackets {
                         Ok(None)
                     }
                 }
-                cmd => Err(IncomingPacketsError::Tuic(TuicError::InvalidCommand(
+                cmd => Err(IncomingError::Tuic(TuicError::InvalidCommand(
                     cmd.as_type_code(),
                 ))),
             }
@@ -102,7 +105,7 @@ impl IncomingPackets {
             }
 
             if let Some(dg) = self.datagrams.next().await {
-                let dg = dg.map_err(IncomingPacketsError::from_quinn_connection_error);
+                let dg = dg.map_err(IncomingError::from_quinn_connection_error);
                 match process_datagram(&mut self.pkt_buf, dg).await {
                     Ok(Some(pkt)) => break Some(Ok(pkt)),
                     Ok(None) => {}
@@ -114,11 +117,11 @@ impl IncomingPackets {
         }
     }
 
-    async fn accept_from_uni_streams(&mut self) -> Option<Result<Packet, IncomingPacketsError>> {
+    async fn accept_from_uni_streams(&mut self) -> Option<Result<Packet, IncomingError>> {
         #[inline]
         async fn process_uni_stream(
-            recv: Result<RecvStream, IncomingPacketsError>,
-        ) -> Result<Packet, IncomingPacketsError> {
+            recv: Result<RecvStream, IncomingError>,
+        ) -> Result<Packet, IncomingError> {
             let mut recv = recv?;
             let cmd = Command::read_from(&mut recv).await?;
 
@@ -132,11 +135,11 @@ impl IncomingPackets {
                     addr,
                 } => {
                     if frag_id != 0 || frag_total != 1 {
-                        return Err(IncomingPacketsError::BadFragment);
+                        return Err(IncomingError::BadFragment);
                     }
 
                     if addr.is_none() {
-                        return Err(IncomingPacketsError::NoAddress);
+                        return Err(IncomingError::NoAddress);
                     }
 
                     let mut buf = vec![0; len as usize];
@@ -145,7 +148,7 @@ impl IncomingPackets {
 
                     Ok(Packet::new(assoc_id, pkt_id, addr.unwrap(), pkt))
                 }
-                _ => Err(IncomingPacketsError::Tuic(TuicError::InvalidCommand(
+                _ => Err(IncomingError::Tuic(TuicError::InvalidCommand(
                     cmd.as_type_code(),
                 ))),
             }
@@ -154,7 +157,7 @@ impl IncomingPackets {
         if let Some(recv) = self.uni_streams.next().await {
             let recv = recv
                 .map(|recv| RecvStream::new(recv, self.stream_reg.as_ref().clone()))
-                .map_err(IncomingPacketsError::from_quinn_connection_error);
+                .map_err(IncomingError::from_quinn_connection_error);
             Some(process_uni_stream(recv).await)
         } else {
             None
@@ -163,7 +166,7 @@ impl IncomingPackets {
 }
 
 #[derive(Error, Debug)]
-pub enum IncomingPacketsError {
+pub enum IncomingError {
     #[error(transparent)]
     Io(#[from] IoError),
     #[error(transparent)]
@@ -176,14 +179,14 @@ pub enum IncomingPacketsError {
     UnexpectedAddress,
 }
 
-impl IncomingPacketsError {
+impl IncomingError {
     #[inline]
     fn from_quinn_connection_error(err: QuinnConnectionError) -> Self {
         Self::Io(IoError::from(err))
     }
 }
 
-impl From<PacketBufferError> for IncomingPacketsError {
+impl From<PacketBufferError> for IncomingError {
     #[inline]
     fn from(err: PacketBufferError) -> Self {
         match err {
@@ -194,7 +197,7 @@ impl From<PacketBufferError> for IncomingPacketsError {
     }
 }
 
-impl From<TuicError> for IncomingPacketsError {
+impl From<TuicError> for IncomingError {
     #[inline]
     fn from(err: TuicError) -> Self {
         match err {
@@ -204,11 +207,11 @@ impl From<TuicError> for IncomingPacketsError {
     }
 }
 
-impl From<IncomingPacketsError> for IoError {
+impl From<IncomingError> for IoError {
     #[inline]
-    fn from(err: IncomingPacketsError) -> Self {
+    fn from(err: IncomingError) -> Self {
         match err {
-            IncomingPacketsError::Io(err) => Self::from(err),
+            IncomingError::Io(err) => Self::from(err),
             err => Self::new(ErrorKind::Other, err),
         }
     }

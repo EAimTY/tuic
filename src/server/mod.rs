@@ -1,9 +1,13 @@
 mod connection;
 mod incoming;
 
-pub use self::connection::Connecting;
+pub use self::{
+    connection::{Connecting, Connection, ConnectionError},
+    incoming::IncomingTasks,
+};
 
 use crate::CongestionControl;
+use futures_util::StreamExt;
 use quinn::{
     congestion::{BbrConfig, CubicConfig, NewRenoConfig},
     Endpoint, EndpointConfig, IdleTimeout, Incoming, ServerConfig as QuinnServerConfig, VarInt,
@@ -109,8 +113,8 @@ impl Server {
         Ok(())
     }
 
-    pub async fn accept(&self) -> Connecting {
-        todo!()
+    pub async fn accept(&mut self) -> Option<Connecting> {
+        self.incoming.next().await.map(Connecting::new)
     }
 }
 

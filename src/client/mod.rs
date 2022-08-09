@@ -1,11 +1,9 @@
 mod connection;
 mod incoming;
-mod stream;
 
 pub use self::{
     connection::{Connecting, Connection, ConnectionError},
-    incoming::{IncomingPackets, IncomingPacketsError},
-    stream::Stream,
+    incoming::{Incoming, IncomingError},
 };
 
 use crate::{CongestionControl, UdpRelayMode};
@@ -118,7 +116,6 @@ impl Client {
         &self,
         addr: SocketAddr,
         server_name: &str,
-        token: [u8; 32],
     ) -> Result<Connecting, ClientError> {
         let conn = self
             .endpoint
@@ -127,7 +124,6 @@ impl Client {
 
         Ok(Connecting::new(
             conn,
-            token,
             self.enable_quic_0rtt,
             self.udp_relay_mode,
         ))

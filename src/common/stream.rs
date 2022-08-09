@@ -7,12 +7,12 @@ use std::{
 };
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
-pub(super) type StreamReg = Arc<()>;
+pub(crate) type StreamReg = Arc<()>;
 
-pub(super) struct SendStream(QuinnSendStream, StreamReg);
+pub(crate) struct SendStream(QuinnSendStream, StreamReg);
 
 impl SendStream {
-    pub(super) fn new(send: QuinnSendStream, reg: StreamReg) -> Self {
+    pub(crate) fn new(send: QuinnSendStream, reg: StreamReg) -> Self {
         Self(send, reg)
     }
 
@@ -23,10 +23,10 @@ impl SendStream {
     }
 }
 
-pub(super) struct RecvStream(QuinnRecvStream, StreamReg);
+pub(crate) struct RecvStream(QuinnRecvStream, StreamReg);
 
 impl RecvStream {
-    pub(super) fn new(recv: QuinnRecvStream, reg: StreamReg) -> Self {
+    pub(crate) fn new(recv: QuinnRecvStream, reg: StreamReg) -> Self {
         Self(recv, reg)
     }
 }
@@ -34,7 +34,7 @@ impl RecvStream {
 pub struct Stream(SendStream, RecvStream);
 
 impl Stream {
-    pub(super) fn new(send: SendStream, recv: RecvStream) -> Self {
+    pub(crate) fn new(send: SendStream, recv: RecvStream) -> Self {
         Self(send, recv)
     }
 
