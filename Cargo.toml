@@ -27,7 +27,7 @@ futures-util = { version = "0.3.*", default-features = false, optional = true }
 # getopts = "0.2.*"
 # log = { version = "0.4.*", features = ["serde", "std"] }
 # once_cell = { version = "1.13.*", features = ["parking_lot"] }
-# parking_lot = "0.12.*"
+parking_lot = { version = "0.12.*", default-features = false, optional = true }
 quinn = { version = "0.8.*", features = ["tls-rustls"], default-features = false, optional = true }
 # rand = "0.8.*"
 rustls = { version = "0.20.*", default-features = false, optional = true }
@@ -50,8 +50,8 @@ all = ["protocol_marshaling", "server", "client"]
 
 protocol_marshaling = ["byteorder/std", "bytes", "thiserror", "tokio/io-util"]
 
-server = ["crossbeam-utils", "futures-util", "protocol_marshaling", "quinn", "rustls", "thiserror", "tokio/io-util"]
-client = ["futures-util", "protocol_marshaling", "quinn", "rustls", "thiserror", "tokio/io-util"]
+server = ["crossbeam-utils", "futures-util", "protocol_marshaling", "quinn", "rustls", "thiserror", "tokio/io-util", "tokio/macros"]
+client = ["futures-util", "parking_lot", "protocol_marshaling", "quinn", "rustls", "thiserror", "tokio/io-util", "tokio/macros"]
 
 [dev-dependencies]
 tuic = { path = ".", features = ["all"] }

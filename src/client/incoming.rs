@@ -5,15 +5,17 @@ use crate::{
     },
     protocol::{Command, Error as TuicError},
     task::Packet,
-    UdpRelayMode,
+    PacketBufferGcHandle, UdpRelayMode,
 };
 use bytes::Bytes;
 use futures_util::StreamExt;
-use quinn::{ConnectionError as QuinnConnectionError, Datagrams, IncomingUniStreams};
+use quinn::{
+    ConnectionError as QuinnConnectionError, Datagrams, IncomingUniStreams,
+    RecvStream as QuinnRecvStream,
+};
 use std::{
     io::{Error as IoError, ErrorKind},
     sync::Arc,
-    time::{Duration, Instant},
 };
 use thiserror::Error;
 use tokio::io::AsyncReadExt;
@@ -25,7 +27,6 @@ pub struct Incoming {
     udp_relay_mode: UdpRelayMode,
     stream_reg: Arc<StreamReg>,
     pkt_buf: PacketBuffer,
-    last_gc_time: Instant,
 }
 
 impl Incoming {
@@ -41,128 +42,174 @@ impl Incoming {
             udp_relay_mode,
             stream_reg,
             pkt_buf: PacketBuffer::new(),
-            last_gc_time: Instant::now(),
         }
     }
 
-    pub async fn accept(
-        &mut self,
-        gc_interval: Duration,
-        gc_timeout: Duration,
-    ) -> Option<Result<Packet, IncomingError>> {
-        match self.udp_relay_mode {
-            UdpRelayMode::Native => self.accept_from_datagrams(gc_interval, gc_timeout).await,
-            UdpRelayMode::Quic => self.accept_from_uni_streams().await,
+    pub async fn accept(&mut self) -> Option<Result<PendingTask, IncomingError>> {
+        let handle_raw_datagram = |dg: Result<Bytes, QuinnConnectionError>| {
+            dg.map(|dg| {
+                PendingTask::new(
+                    TaskSource::Datagram(dg),
+                    self.udp_relay_mode,
+                    self.pkt_buf.clone(),
+                )
+            })
+            .map_err(IncomingError::from_quinn_connection_error)
+        };
+
+        let handle_raw_uni_stream = |recv: Result<QuinnRecvStream, QuinnConnectionError>| {
+            recv.map(|recv| {
+                PendingTask::new(
+                    TaskSource::RecvStream(RecvStream::new(recv, self.stream_reg.as_ref().clone())),
+                    self.udp_relay_mode,
+                    self.pkt_buf.clone(),
+                )
+            })
+            .map_err(IncomingError::from_quinn_connection_error)
+        };
+
+        tokio::select! {
+            dg = self.datagrams.next() => if let Some(dg) = dg {
+                    Some(handle_raw_datagram(dg))
+                } else {
+                    self.uni_streams.next().await.map(handle_raw_uni_stream)
+                },
+            recv = self.uni_streams.next() => if let Some(recv) = recv {
+                    Some(handle_raw_uni_stream(recv))
+                } else {
+                    self.datagrams.next().await.map(handle_raw_datagram)
+                },
         }
     }
 
-    async fn accept_from_datagrams(
-        &mut self,
-        gc_interval: Duration,
-        gc_timeout: Duration,
-    ) -> Option<Result<Packet, IncomingError>> {
-        #[inline]
-        async fn process_datagram(
-            pkt_buf: &mut PacketBuffer,
-            dg: Result<Bytes, IncomingError>,
-        ) -> Result<Option<Packet>, IncomingError> {
-            let dg = dg?;
-            let cmd = Command::read_from(&mut dg.as_ref()).await?;
-            let cmd_len = cmd.serialized_len();
+    pub fn get_packet_buffer_gc_handler(&self) -> PacketBufferGcHandle {
+        self.pkt_buf.get_gc_handler()
+    }
+}
 
-            match cmd {
-                Command::Packet {
+#[derive(Debug)]
+pub struct PendingTask {
+    source: TaskSource,
+    udp_relay_mode: UdpRelayMode,
+    pkt_buf: PacketBuffer,
+}
+
+impl PendingTask {
+    fn new(source: TaskSource, udp_relay_mode: UdpRelayMode, pkt_buf: PacketBuffer) -> Self {
+        Self {
+            source,
+            udp_relay_mode,
+            pkt_buf,
+        }
+    }
+
+    pub async fn parse(self) -> Result<Task, IncomingError> {
+        match self.source {
+            TaskSource::Datagram(dg) => {
+                Self::parse_datagram(dg, self.udp_relay_mode, self.pkt_buf).await
+            }
+            TaskSource::RecvStream(recv) => {
+                Self::parse_recv_stream(recv, self.udp_relay_mode).await
+            }
+        }
+    }
+
+    #[inline]
+    async fn parse_datagram(
+        dg: Bytes,
+        udp_relay_mode: UdpRelayMode,
+        mut pkt_buf: PacketBuffer,
+    ) -> Result<Task, IncomingError> {
+        let cmd = Command::read_from(&mut dg.as_ref()).await?;
+        let cmd_len = cmd.serialized_len();
+
+        match cmd {
+            Command::Packet {
+                assoc_id,
+                pkt_id,
+                frag_total,
+                frag_id,
+                len,
+                addr,
+            } => {
+                if !matches!(udp_relay_mode, UdpRelayMode::Native) {
+                    return Err(IncomingError::BadCommand(Command::TYPE_PACKET, "datagram"));
+                }
+
+                if let Some(pkt) = pkt_buf.insert(
                     assoc_id,
                     pkt_id,
                     frag_total,
                     frag_id,
-                    len,
                     addr,
-                } => {
-                    if let Some(pkt) = pkt_buf.insert(
-                        assoc_id,
-                        pkt_id,
-                        frag_total,
-                        frag_id,
-                        addr,
-                        dg.slice(cmd_len..cmd_len + len as usize),
-                    )? {
-                        Ok(Some(pkt))
-                    } else {
-                        Ok(None)
-                    }
+                    dg.slice(cmd_len..cmd_len + len as usize),
+                )? {
+                    Ok(Task::Packet(Some(pkt)))
+                } else {
+                    Ok(Task::Packet(None))
                 }
-                cmd => Err(IncomingError::Tuic(TuicError::InvalidCommand(
-                    cmd.as_type_code(),
-                ))),
             }
-        }
-
-        loop {
-            if self.last_gc_time.elapsed() > gc_interval {
-                self.pkt_buf.collect_garbage(gc_timeout);
-                self.last_gc_time = Instant::now();
-            }
-
-            if let Some(dg) = self.datagrams.next().await {
-                let dg = dg.map_err(IncomingError::from_quinn_connection_error);
-                match process_datagram(&mut self.pkt_buf, dg).await {
-                    Ok(Some(pkt)) => break Some(Ok(pkt)),
-                    Ok(None) => {}
-                    Err(err) => break Some(Err(err)),
-                }
-            } else {
-                break None;
-            }
+            cmd => Err(IncomingError::BadCommand(cmd.as_type_code(), "datagram")),
         }
     }
 
-    async fn accept_from_uni_streams(&mut self) -> Option<Result<Packet, IncomingError>> {
-        #[inline]
-        async fn process_uni_stream(
-            recv: Result<RecvStream, IncomingError>,
-        ) -> Result<Packet, IncomingError> {
-            let mut recv = recv?;
-            let cmd = Command::read_from(&mut recv).await?;
+    #[inline]
+    async fn parse_recv_stream(
+        mut recv: RecvStream,
+        udp_relay_mode: UdpRelayMode,
+    ) -> Result<Task, IncomingError> {
+        let cmd = Command::read_from(&mut recv).await?;
 
-            match cmd {
-                Command::Packet {
+        match cmd {
+            Command::Packet {
+                assoc_id,
+                pkt_id,
+                frag_total,
+                frag_id,
+                len,
+                addr,
+            } => {
+                if !matches!(udp_relay_mode, UdpRelayMode::Quic) {
+                    return Err(IncomingError::BadCommand(
+                        Command::TYPE_PACKET,
+                        "uni_stream",
+                    ));
+                }
+
+                if frag_id != 0 || frag_total != 1 {
+                    return Err(IncomingError::BadFragment);
+                }
+
+                if addr.is_none() {
+                    return Err(IncomingError::NoAddress);
+                }
+
+                let mut buf = vec![0; len as usize];
+                recv.read_exact(&mut buf).await?;
+                let pkt = Bytes::from(buf);
+
+                Ok(Task::Packet(Some(Packet::new(
                     assoc_id,
                     pkt_id,
-                    frag_total,
-                    frag_id,
-                    len,
-                    addr,
-                } => {
-                    if frag_id != 0 || frag_total != 1 {
-                        return Err(IncomingError::BadFragment);
-                    }
-
-                    if addr.is_none() {
-                        return Err(IncomingError::NoAddress);
-                    }
-
-                    let mut buf = vec![0; len as usize];
-                    recv.read_exact(&mut buf).await?;
-                    let pkt = Bytes::from(buf);
-
-                    Ok(Packet::new(assoc_id, pkt_id, addr.unwrap(), pkt))
-                }
-                _ => Err(IncomingError::Tuic(TuicError::InvalidCommand(
-                    cmd.as_type_code(),
-                ))),
+                    addr.unwrap(),
+                    pkt,
+                ))))
             }
-        }
-
-        if let Some(recv) = self.uni_streams.next().await {
-            let recv = recv
-                .map(|recv| RecvStream::new(recv, self.stream_reg.as_ref().clone()))
-                .map_err(IncomingError::from_quinn_connection_error);
-            Some(process_uni_stream(recv).await)
-        } else {
-            None
+            _ => Err(IncomingError::BadCommand(cmd.as_type_code(), "uni_stream")),
         }
     }
+}
+
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum Task {
+    Packet(Option<Packet>),
+}
+
+#[derive(Debug)]
+enum TaskSource {
+    Datagram(Bytes),
+    RecvStream(RecvStream),
 }
 
 #[derive(Error, Debug)]
@@ -171,6 +218,8 @@ pub enum IncomingError {
     Io(#[from] IoError),
     #[error(transparent)]
     Tuic(TuicError),
+    #[error("received bad command {0:#x} from {1}")]
+    BadCommand(u8, &'static str),
     #[error("received bad-fragmented packet")]
     BadFragment,
     #[error("missing address in packet with frag_id 0")]

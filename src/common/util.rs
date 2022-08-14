@@ -3,18 +3,20 @@ use crate::{
     task::Packet,
 };
 use bytes::{Bytes, BytesMut};
+use parking_lot::Mutex;
 use std::{
     collections::{hash_map::Entry, HashMap},
+    sync::Arc,
     time::{Duration, Instant},
 };
 use thiserror::Error;
 
-#[derive(Debug)]
-pub(crate) struct PacketBuffer(HashMap<PacketBufferKey, PacketBufferValue>);
+#[derive(Clone, Debug)]
+pub(crate) struct PacketBuffer(Arc<Mutex<HashMap<PacketBufferKey, PacketBufferValue>>>);
 
 impl PacketBuffer {
     pub(crate) fn new() -> Self {
-        Self(HashMap::new())
+        Self(Arc::new(Mutex::new(HashMap::new())))
     }
 
     pub(crate) fn insert(
@@ -26,19 +28,20 @@ impl PacketBuffer {
         addr: Option<Address>,
         pkt: Bytes,
     ) -> Result<Option<Packet>, PacketBufferError> {
+        let mut pkt_buf = self.0.lock();
         let key = PacketBufferKey { assoc_id, pkt_id };
 
         if frag_id == 0 && addr.is_none() {
-            self.0.remove(&key);
+            pkt_buf.remove(&key);
             return Err(PacketBufferError::NoAddress);
         }
 
         if frag_id != 0 && addr.is_some() {
-            self.0.remove(&key);
+            pkt_buf.remove(&key);
             return Err(PacketBufferError::UnexpectedAddress);
         }
 
-        match self.0.entry(key) {
+        match pkt_buf.entry(key) {
             Entry::Occupied(mut entry) => {
                 let v = entry.get_mut();
 
@@ -99,8 +102,20 @@ impl PacketBuffer {
         }
     }
 
-    pub(crate) fn collect_garbage(&mut self, timeout: Duration) {
-        self.0.retain(|_, v| v.c_time.elapsed() < timeout);
+    pub(crate) fn get_gc_handler(&self) -> PacketBufferGcHandle {
+        PacketBufferGcHandle(self.clone())
+    }
+
+    fn collect_garbage(&self, timeout: Duration) {
+        self.0.lock().retain(|_, v| v.c_time.elapsed() < timeout);
+    }
+}
+
+pub struct PacketBufferGcHandle(PacketBuffer);
+
+impl PacketBufferGcHandle {
+    pub fn collect_garbage(&self, timeout: Duration) {
+        self.0.collect_garbage(timeout)
     }
 }
 
