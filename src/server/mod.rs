@@ -7,7 +7,7 @@ pub use self::{
 };
 
 use crate::CongestionControl;
-use futures_util::StreamExt;
+use futures::StreamExt;
 use quinn::{
     congestion::{BbrConfig, CubicConfig, NewRenoConfig},
     Endpoint, EndpointConfig, IdleTimeout, Incoming, ServerConfig as QuinnServerConfig, VarInt,

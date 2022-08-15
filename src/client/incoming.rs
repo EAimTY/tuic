@@ -8,7 +8,7 @@ use crate::{
     PacketBufferGcHandle, UdpRelayMode,
 };
 use bytes::Bytes;
-use futures_util::StreamExt;
+use futures::StreamExt;
 use quinn::{
     ConnectionError as QuinnConnectionError, Datagrams, IncomingUniStreams,
     RecvStream as QuinnRecvStream,
