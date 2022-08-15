@@ -7,11 +7,12 @@ use std::{
     fmt::{Display, Formatter, Result as FmtResult},
     net::SocketAddr,
 };
+use thiserror::Error;
 
 pub const TUIC_PROTOCOL_VERSION: u8 = 0x05;
 
 #[cfg(feature = "protocol_marshaling")]
-pub use self::marshaling::Error;
+pub use self::marshaling::MarshalingError;
 
 /// Command
 ///
@@ -156,4 +157,16 @@ impl Display for Address {
             Self::SocketAddress(addr) => write!(f, "{addr}"),
         }
     }
+}
+
+#[derive(Error, Debug)]
+pub enum ProtocolError {
+    #[error("unsupported TUIC version: {0:#x}")]
+    UnsupportedVersion(u8),
+    #[error("invalid command: {0:#x}")]
+    InvalidCommand(u8),
+    #[error("invalid response: {0:#x}")]
+    InvalidResponse(u8),
+    #[error("invalid address type: {0:#x}")]
+    InvalidAddressType(u8),
 }

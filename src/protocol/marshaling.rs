@@ -1,4 +1,4 @@
-use super::{Address, Command, TUIC_PROTOCOL_VERSION};
+use super::{Address, Command, ProtocolError, TUIC_PROTOCOL_VERSION};
 use byteorder::{BigEndian, ReadBytesExt};
 use bytes::BufMut;
 use std::{
@@ -10,14 +10,16 @@ use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 impl Command {
-    pub async fn read_from<R>(r: &mut R) -> Result<Self, Error>
+    pub async fn read_from<R>(r: &mut R) -> Result<Self, MarshalingError>
     where
         R: AsyncRead + Unpin,
     {
         let ver = r.read_u8().await?;
 
         if ver != TUIC_PROTOCOL_VERSION {
-            return Err(Error::UnsupportedVersion(ver));
+            return Err(MarshalingError::from(ProtocolError::UnsupportedVersion(
+                ver,
+            )));
         }
 
         let cmd = r.read_u8().await?;
@@ -28,7 +30,7 @@ impl Command {
                 match resp {
                     Self::RESPONSE_SUCCEEDED => Ok(Self::Response(true)),
                     Self::RESPONSE_FAILED => Ok(Self::Response(false)),
-                    _ => Err(Error::InvalidResponse(resp)),
+                    _ => Err(MarshalingError::from(ProtocolError::InvalidResponse(resp))),
                 }
             }
             Self::TYPE_AUTHENTICATE => {
@@ -71,11 +73,11 @@ impl Command {
                 Ok(Self::Dissociate { assoc_id })
             }
             Self::TYPE_HEARTBEAT => Ok(Self::Heartbeat),
-            _ => Err(Error::InvalidCommand(cmd)),
+            _ => Err(MarshalingError::from(ProtocolError::InvalidCommand(cmd))),
         }
     }
 
-    pub async fn write_to<W>(&self, w: &mut W) -> Result<(), Error>
+    pub async fn write_to<W>(&self, w: &mut W) -> Result<(), MarshalingError>
     where
         W: AsyncWrite + Unpin,
     {
@@ -136,7 +138,7 @@ impl Command {
 }
 
 impl Address {
-    pub async fn read_from<R>(stream: &mut R) -> Result<Self, Error>
+    pub async fn read_from<R>(stream: &mut R) -> Result<Self, MarshalingError>
     where
         R: AsyncRead + Unpin,
     {
@@ -192,11 +194,13 @@ impl Address {
 
                 Ok(Self::SocketAddress(SocketAddr::from((addr, port))))
             }
-            _ => Err(Error::InvalidAddressType(addr_type)),
+            _ => Err(MarshalingError::from(ProtocolError::InvalidAddressType(
+                addr_type,
+            ))),
         }
     }
 
-    pub async fn write_to<W>(&self, writer: &mut W) -> Result<(), Error>
+    pub async fn write_to<W>(&self, writer: &mut W) -> Result<(), MarshalingError>
     where
         W: AsyncWrite + Unpin,
     {
@@ -233,28 +237,17 @@ impl Address {
 }
 
 #[derive(Error, Debug)]
-pub enum Error {
+pub enum MarshalingError {
     #[error(transparent)]
     Io(#[from] IoError),
-    #[error("unsupported TUIC version: {0:#x}")]
-    UnsupportedVersion(u8),
-    #[error("invalid response: {0:#x}")]
-    InvalidResponse(u8),
-    #[error("invalid command: {0:#x}")]
-    InvalidCommand(u8),
-    #[error("invalid address type: {0:#x}")]
-    InvalidAddressType(u8),
+    #[error(transparent)]
+    Protocol(#[from] ProtocolError),
     #[error("invalid address encoding: {0}")]
-    InvalidAddressEncoding(#[from] FromUtf8Error),
+    InvalidEncoding(#[from] FromUtf8Error),
 }
 
-impl From<Error> for IoError {
-    fn from(err: Error) -> Self {
-        let kind = match err {
-            Error::Io(err) => return err,
-            _ => IoErrorKind::Other,
-        };
-
-        Self::new(kind, err)
+impl From<MarshalingError> for IoError {
+    fn from(err: MarshalingError) -> Self {
+        Self::new(IoErrorKind::Other, err)
     }
 }

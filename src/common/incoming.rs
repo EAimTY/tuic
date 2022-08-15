@@ -2,12 +2,12 @@ use super::{
     stream::{RecvStream, SendStream, Stream as BiStream, StreamReg},
     task::{RawTask, RawTaskPayload},
 };
-use crate::protocol::{Command, Error as ProtocalError};
+use crate::protocol::{Command, MarshalingError};
 use bytes::Bytes;
 use futures::{stream::SelectAll, Stream};
 use quinn::{
-    ConnectionError as QuinnConnectionError, Datagrams, IncomingBiStreams, IncomingUniStreams,
-    RecvStream as QuinnRecvStream, SendStream as QuinnSendStream,
+    Datagrams, IncomingBiStreams, IncomingUniStreams, RecvStream as QuinnRecvStream,
+    SendStream as QuinnSendStream,
 };
 use std::{
     io::Error as IoError,
@@ -15,7 +15,6 @@ use std::{
     sync::Arc,
     task::{Context, Poll},
 };
-use thiserror::Error;
 
 pub(crate) struct RawIncomingTasks {
     incoming: SelectAll<IncomingSource>,
@@ -43,7 +42,7 @@ impl RawIncomingTasks {
 }
 
 impl Stream for RawIncomingTasks {
-    type Item = Result<RawPendingTask, QuinnConnectionError>;
+    type Item = Result<RawPendingTask, IoError>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         Pin::new(&mut self.incoming)
@@ -59,6 +58,7 @@ impl Stream for RawIncomingTasks {
                 )),
                 IncomingItem::Datagram(datagram) => RawPendingTask::Datagram(datagram),
             })
+            .map_err(IoError::from)
     }
 }
 
@@ -69,19 +69,22 @@ enum IncomingSource {
 }
 
 impl Stream for IncomingSource {
-    type Item = Result<IncomingItem, QuinnConnectionError>;
+    type Item = Result<IncomingItem, IoError>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         match self.get_mut() {
             IncomingSource::BiStreams(bi_streams) => Pin::new(bi_streams)
                 .poll_next(cx)
-                .map_ok(IncomingItem::BiStream),
+                .map_ok(IncomingItem::BiStream)
+                .map_err(IoError::from),
             IncomingSource::UniStreams(uni_streams) => Pin::new(uni_streams)
                 .poll_next(cx)
-                .map_ok(IncomingItem::UniStream),
+                .map_ok(IncomingItem::UniStream)
+                .map_err(IoError::from),
             IncomingSource::Datagrams(datagrams) => Pin::new(datagrams)
                 .poll_next(cx)
-                .map_ok(IncomingItem::Datagram),
+                .map_ok(IncomingItem::Datagram)
+                .map_err(IoError::from),
         }
     }
 
@@ -103,29 +106,21 @@ pub(crate) enum RawPendingTask {
 }
 
 impl RawPendingTask {
-    pub(crate) async fn accept(self) -> RawTask {
+    pub(crate) async fn accept(self) -> Result<RawTask, MarshalingError> {
         match self {
-            RawPendingTask::BiStream(mut bi_stream) => RawTask::new(
-                Command::read_from(&mut bi_stream).await.unwrap(),
+            RawPendingTask::BiStream(mut bi_stream) => Ok(RawTask::new(
+                Command::read_from(&mut bi_stream).await?,
                 RawTaskPayload::BiStream(bi_stream),
-            ),
-            RawPendingTask::UniStream(mut uni_stream) => RawTask::new(
-                Command::read_from(&mut uni_stream).await.unwrap(),
+            )),
+            RawPendingTask::UniStream(mut uni_stream) => Ok(RawTask::new(
+                Command::read_from(&mut uni_stream).await?,
                 RawTaskPayload::UniStream(uni_stream),
-            ),
+            )),
             RawPendingTask::Datagram(datagram) => {
-                let cmd = Command::read_from(&mut datagram.as_ref()).await.unwrap();
+                let cmd = Command::read_from(&mut datagram.as_ref()).await?;
                 let payload = datagram.slice(cmd.serialized_len()..);
-                RawTask::new(cmd, RawTaskPayload::Datagram(payload))
+                Ok(RawTask::new(cmd, RawTaskPayload::Datagram(payload)))
             }
         }
     }
-}
-
-#[derive(Error, Debug)]
-pub enum IncomingError {
-    #[error(transparent)]
-    Io(#[from] IoError),
-    #[error(transparent)]
-    Protocol(ProtocalError),
 }
