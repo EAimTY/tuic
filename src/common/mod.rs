@@ -1,10 +1,7 @@
 pub(crate) mod incoming;
 pub(crate) mod stream;
+pub(crate) mod task;
 pub(crate) mod util;
-
-pub mod task;
-
-pub use self::util::PacketBufferGcHandle;
 
 #[derive(Clone, Copy, Debug)]
 pub enum CongestionControl {

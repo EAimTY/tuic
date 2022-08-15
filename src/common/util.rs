@@ -1,6 +1,6 @@
 use crate::{
     protocol::{Address, Command},
-    task::Packet,
+    Packet,
 };
 use bytes::{Bytes, BytesMut};
 use parking_lot::Mutex;

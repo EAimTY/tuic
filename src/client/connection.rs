@@ -1,20 +1,20 @@
-use super::Incoming;
+use super::IncomingTasks;
 use crate::{
     common::{
         stream::{RecvStream, SendStream, StreamReg},
         util,
     },
-    protocol::{Address, Command, Error as TuicError},
+    protocol::{Address, Command, MarshalingError, ProtocolError},
     Stream, UdpRelayMode,
 };
 use bytes::{Bytes, BytesMut};
 use quinn::{
     Connecting as QuinnConnecting, Connection as QuinnConnection,
-    ConnectionError as QuinnConnectionError, NewConnection as QuinnNewConnection,
-    SendDatagramError as QuinnSendDatagramError,
+    NewConnection as QuinnNewConnection, SendDatagramError as QuinnSendDatagramError,
 };
 use std::{
-    io::{Error as IoError, ErrorKind},
+    io::Error as IoError,
+    string::FromUtf8Error,
     sync::{
         atomic::{AtomicU16, Ordering},
         Arc,
@@ -23,7 +23,6 @@ use std::{
 use thiserror::Error;
 use tokio::io::AsyncWriteExt;
 
-#[derive(Debug)]
 pub struct Connecting {
     conn: QuinnConnecting,
     enable_quic_0rtt: bool,
@@ -43,40 +42,47 @@ impl Connecting {
         }
     }
 
-    pub async fn establish(self) -> Result<(Connection, Incoming), ConnectionError> {
+    pub async fn establish(
+        self,
+    ) -> Result<Result<(Connection, IncomingTasks), ConnectionError>, Self> {
         let QuinnNewConnection {
             connection,
-            datagrams,
+            bi_streams,
             uni_streams,
+            datagrams,
             ..
         } = if self.enable_quic_0rtt {
             match self.conn.into_0rtt() {
                 Ok((conn, _)) => conn,
                 Err(conn) => {
-                    return Err(ConnectionError::Convert0Rtt(Connecting::new(
+                    return Err(Self {
                         conn,
-                        false,
-                        self.udp_relay_mode,
-                    )))
+                        enable_quic_0rtt: false,
+                        udp_relay_mode: self.udp_relay_mode,
+                    });
                 }
             }
         } else {
-            self.conn
-                .await
-                .map_err(ConnectionError::from_quinn_connection_error)?
+            match self.conn.await {
+                Ok(conn) => conn,
+                Err(err) => return Ok(Err(ConnectionError::from(IoError::from(err)))),
+            }
         };
 
         let stream_reg = Arc::new(Arc::new(()));
-
         let conn = Connection::new(connection, self.udp_relay_mode, stream_reg.clone());
+        let incoming = IncomingTasks::new(
+            bi_streams,
+            uni_streams,
+            datagrams,
+            self.udp_relay_mode,
+            stream_reg,
+        );
 
-        let incoming = Incoming::new(uni_streams, datagrams, self.udp_relay_mode, stream_reg);
-
-        Ok((conn, incoming))
+        Ok(Ok((conn, incoming)))
     }
 }
 
-#[derive(Debug)]
 pub struct Connection {
     conn: QuinnConnection,
     udp_relay_mode: UdpRelayMode,
@@ -121,15 +127,15 @@ impl Connection {
         cmd.write_to(&mut stream).await?;
 
         let resp = match Command::read_from(&mut stream).await {
-            Ok(Command::Response(resp)) => Ok(resp),
-            Ok(cmd) => Err(TuicError::InvalidCommand(cmd.as_type_code())),
-            Err(err) => Err(err),
+            Ok(Command::Respond(resp)) => Ok(resp),
+            Ok(cmd) => Err(ConnectionError::ShouldBeRespond(cmd)),
+            Err(err) => Err(ConnectionError::from(err)),
         };
 
         let res = match resp {
             Ok(true) => return Ok(Some(stream)),
             Ok(false) => Ok(None),
-            Err(err) => Err(ConnectionError::from(err)),
+            Err(err) => Err(err),
         };
 
         stream.finish().await?;
@@ -157,21 +163,13 @@ impl Connection {
     }
 
     async fn get_send_stream(&self) -> Result<SendStream, ConnectionError> {
-        let send = self
-            .conn
-            .open_uni()
-            .await
-            .map_err(ConnectionError::from_quinn_connection_error)?;
+        let send = self.conn.open_uni().await.map_err(IoError::from)?;
 
         Ok(SendStream::new(send, self.stream_reg.as_ref().clone()))
     }
 
     async fn get_bi_stream(&self) -> Result<Stream, ConnectionError> {
-        let (send, recv) = self
-            .conn
-            .open_bi()
-            .await
-            .map_err(ConnectionError::from_quinn_connection_error)?;
+        let (send, recv) = self.conn.open_bi().await.map_err(IoError::from)?;
 
         let send = SendStream::new(send, self.stream_reg.as_ref().clone());
         let recv = RecvStream::new(recv, self.stream_reg.as_ref().clone());
@@ -264,12 +262,20 @@ impl Connection {
 
 #[derive(Error, Debug)]
 pub enum ConnectionError {
-    #[error("failed to convert QUIC connection into 0-RTT")]
-    Convert0Rtt(Connecting),
     #[error(transparent)]
     Io(#[from] IoError),
     #[error(transparent)]
-    Tuic(TuicError),
+    Protocol(#[from] ProtocolError),
+    #[error("invalid address encoding: {0}")]
+    InvalidEncoding(#[from] FromUtf8Error),
+    #[error("expecting a `Respond`, got a command")]
+    ShouldBeRespond(Command),
+    #[error("unexpected incoming bi_stream")]
+    UnexpectedIncomingBiStream(Stream),
+    #[error("unexpected incoming uni_stream")]
+    UnexpectedIncomingUniStream(RecvStream),
+    #[error("unexpected incoming datagram")]
+    UnexpectedIncomingDatagram(Bytes),
     #[error("datagrams not supported by peer")]
     DatagramUnsupportedByPeer,
     #[error("datagram support disabled")]
@@ -279,11 +285,6 @@ pub enum ConnectionError {
 }
 
 impl ConnectionError {
-    #[inline]
-    fn from_quinn_connection_error(err: QuinnConnectionError) -> Self {
-        Self::Io(IoError::from(err))
-    }
-
     #[inline]
     fn from_quinn_send_datagram_error(err: QuinnSendDatagramError) -> Self {
         match err {
@@ -295,22 +296,12 @@ impl ConnectionError {
     }
 }
 
-impl From<TuicError> for ConnectionError {
-    #[inline]
-    fn from(err: TuicError) -> Self {
+impl From<MarshalingError> for ConnectionError {
+    fn from(err: MarshalingError) -> Self {
         match err {
-            TuicError::Io(err) => Self::Io(err),
-            err => Self::Tuic(err),
-        }
-    }
-}
-
-impl From<ConnectionError> for IoError {
-    #[inline]
-    fn from(err: ConnectionError) -> Self {
-        match err {
-            ConnectionError::Io(err) => Self::from(err),
-            err => Self::new(ErrorKind::Other, err),
+            MarshalingError::Io(err) => Self::Io(err),
+            MarshalingError::Protocol(err) => Self::Protocol(err),
+            MarshalingError::InvalidEncoding(err) => Self::InvalidEncoding(err),
         }
     }
 }

@@ -11,7 +11,10 @@ pub mod client;
 
 #[cfg(any(feature = "server", feature = "client"))]
 pub use crate::common::{
-    stream::Stream, task, CongestionControl, PacketBufferGcHandle, UdpRelayMode,
+    stream::{RecvStream, SendStream, Stream},
+    task::Packet,
+    util::PacketBufferGcHandle,
+    CongestionControl, UdpRelayMode,
 };
 
 #[cfg(feature = "client")]

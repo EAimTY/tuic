@@ -3,7 +3,7 @@ mod incoming;
 
 pub use self::{
     connection::{Connecting, Connection, ConnectionError},
-    incoming::{Incoming, IncomingError},
+    incoming::IncomingTasks,
 };
 
 use crate::{CongestionControl, UdpRelayMode};

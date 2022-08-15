@@ -10,7 +10,7 @@ use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 pub(crate) type StreamReg = Arc<()>;
 
 #[derive(Debug)]
-pub(crate) struct SendStream(QuinnSendStream, StreamReg);
+pub struct SendStream(QuinnSendStream, StreamReg);
 
 impl SendStream {
     pub(crate) fn new(send: QuinnSendStream, reg: StreamReg) -> Self {
@@ -25,7 +25,7 @@ impl SendStream {
 }
 
 #[derive(Debug)]
-pub(crate) struct RecvStream(QuinnRecvStream, StreamReg);
+pub struct RecvStream(QuinnRecvStream, StreamReg);
 
 impl RecvStream {
     pub(crate) fn new(recv: QuinnRecvStream, reg: StreamReg) -> Self {

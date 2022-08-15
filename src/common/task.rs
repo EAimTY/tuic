@@ -1,5 +1,5 @@
 use super::stream::{RecvStream, Stream};
-use crate::protocol::{Address, Command};
+use crate::protocol::{Address, Command, MarshalingError};
 use bytes::Bytes;
 
 #[derive(Clone, Debug)]
@@ -17,6 +17,32 @@ impl Packet {
             associate_id: assoc_id,
             address: addr,
             data: pkt,
+        }
+    }
+}
+
+pub(crate) enum TaskSource {
+    BiStream(Stream),
+    UniStream(RecvStream),
+    Datagram(Bytes),
+}
+
+impl TaskSource {
+    pub(crate) async fn accept(self) -> Result<RawTask, MarshalingError> {
+        match self {
+            TaskSource::BiStream(mut bi_stream) => Ok(RawTask::new(
+                Command::read_from(&mut bi_stream).await?,
+                RawTaskPayload::BiStream(bi_stream),
+            )),
+            TaskSource::UniStream(mut uni_stream) => Ok(RawTask::new(
+                Command::read_from(&mut uni_stream).await?,
+                RawTaskPayload::UniStream(uni_stream),
+            )),
+            TaskSource::Datagram(datagram) => {
+                let cmd = Command::read_from(&mut datagram.as_ref()).await?;
+                let payload = datagram.slice(cmd.serialized_len()..);
+                Ok(RawTask::new(cmd, RawTaskPayload::Datagram(payload)))
+            }
         }
     }
 }

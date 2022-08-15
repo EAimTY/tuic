@@ -2,7 +2,7 @@ use super::{Address, Command, ProtocolError, TUIC_PROTOCOL_VERSION};
 use byteorder::{BigEndian, ReadBytesExt};
 use bytes::BufMut;
 use std::{
-    io::{Cursor, Error as IoError, ErrorKind as IoErrorKind},
+    io::{Cursor, Error as IoError},
     net::{Ipv4Addr, Ipv6Addr, SocketAddr},
     string::FromUtf8Error,
 };
@@ -25,11 +25,11 @@ impl Command {
         let cmd = r.read_u8().await?;
 
         match cmd {
-            Self::TYPE_RESPONSE => {
+            Self::TYPE_RESPOND => {
                 let resp = r.read_u8().await?;
                 match resp {
-                    Self::RESPONSE_SUCCEEDED => Ok(Self::Response(true)),
-                    Self::RESPONSE_FAILED => Ok(Self::Response(false)),
+                    Self::RESPONSE_SUCCEEDED => Ok(Self::Respond(true)),
+                    Self::RESPONSE_FAILED => Ok(Self::Respond(false)),
                     _ => Err(MarshalingError::from(ProtocolError::InvalidResponse(resp))),
                 }
             }
@@ -77,7 +77,7 @@ impl Command {
         }
     }
 
-    pub async fn write_to<W>(&self, w: &mut W) -> Result<(), MarshalingError>
+    pub async fn write_to<W>(&self, w: &mut W) -> Result<(), IoError>
     where
         W: AsyncWrite + Unpin,
     {
@@ -91,8 +91,8 @@ impl Command {
         buf.put_u8(TUIC_PROTOCOL_VERSION);
 
         match self {
-            Self::Response(is_succeeded) => {
-                buf.put_u8(Self::TYPE_RESPONSE);
+            Self::Respond(is_succeeded) => {
+                buf.put_u8(Self::TYPE_RESPOND);
                 if *is_succeeded {
                     buf.put_u8(Self::RESPONSE_SUCCEEDED);
                 } else {
@@ -200,7 +200,7 @@ impl Address {
         }
     }
 
-    pub async fn write_to<W>(&self, writer: &mut W) -> Result<(), MarshalingError>
+    pub async fn write_to<W>(&self, writer: &mut W) -> Result<(), IoError>
     where
         W: AsyncWrite + Unpin,
     {
@@ -244,10 +244,4 @@ pub enum MarshalingError {
     Protocol(#[from] ProtocolError),
     #[error("invalid address encoding: {0}")]
     InvalidEncoding(#[from] FromUtf8Error),
-}
-
-impl From<MarshalingError> for IoError {
-    fn from(err: MarshalingError) -> Self {
-        Self::new(IoErrorKind::Other, err)
-    }
 }

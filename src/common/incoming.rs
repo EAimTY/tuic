@@ -1,8 +1,7 @@
 use super::{
     stream::{RecvStream, SendStream, Stream as BiStream, StreamReg},
-    task::{RawTask, RawTaskPayload},
+    task::TaskSource,
 };
-use crate::protocol::{Command, MarshalingError};
 use bytes::Bytes;
 use futures::{stream::SelectAll, Stream};
 use quinn::{
@@ -42,21 +41,20 @@ impl RawIncomingTasks {
 }
 
 impl Stream for RawIncomingTasks {
-    type Item = Result<RawPendingTask, IoError>;
+    type Item = Result<TaskSource, IoError>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         Pin::new(&mut self.incoming)
             .poll_next(cx)
             .map_ok(|src| match src {
-                IncomingItem::BiStream((send, recv)) => RawPendingTask::BiStream(BiStream::new(
+                IncomingItem::BiStream((send, recv)) => TaskSource::BiStream(BiStream::new(
                     SendStream::new(send, self.stream_reg.as_ref().clone()),
                     RecvStream::new(recv, self.stream_reg.as_ref().clone()),
                 )),
-                IncomingItem::UniStream(recv) => RawPendingTask::UniStream(RecvStream::new(
-                    recv,
-                    self.stream_reg.as_ref().clone(),
-                )),
-                IncomingItem::Datagram(datagram) => RawPendingTask::Datagram(datagram),
+                IncomingItem::UniStream(recv) => {
+                    TaskSource::UniStream(RecvStream::new(recv, self.stream_reg.as_ref().clone()))
+                }
+                IncomingItem::Datagram(datagram) => TaskSource::Datagram(datagram),
             })
             .map_err(IoError::from)
     }
@@ -87,40 +85,10 @@ impl Stream for IncomingSource {
                 .map_err(IoError::from),
         }
     }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        (0, None)
-    }
 }
 
 enum IncomingItem {
     BiStream((QuinnSendStream, QuinnRecvStream)),
     UniStream(QuinnRecvStream),
     Datagram(Bytes),
-}
-
-pub(crate) enum RawPendingTask {
-    BiStream(BiStream),
-    UniStream(RecvStream),
-    Datagram(Bytes),
-}
-
-impl RawPendingTask {
-    pub(crate) async fn accept(self) -> Result<RawTask, MarshalingError> {
-        match self {
-            RawPendingTask::BiStream(mut bi_stream) => Ok(RawTask::new(
-                Command::read_from(&mut bi_stream).await?,
-                RawTaskPayload::BiStream(bi_stream),
-            )),
-            RawPendingTask::UniStream(mut uni_stream) => Ok(RawTask::new(
-                Command::read_from(&mut uni_stream).await?,
-                RawTaskPayload::UniStream(uni_stream),
-            )),
-            RawPendingTask::Datagram(datagram) => {
-                let cmd = Command::read_from(&mut datagram.as_ref()).await?;
-                let payload = datagram.slice(cmd.serialized_len()..);
-                Ok(RawTask::new(cmd, RawTaskPayload::Datagram(payload)))
-            }
-        }
-    }
 }

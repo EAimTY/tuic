@@ -31,7 +31,7 @@ pub enum Command {
     // +-----+
     // |  1  |
     // +-----+
-    Response(bool),
+    Respond(bool),
 
     // +-----+
     // | TKN |
@@ -81,7 +81,7 @@ pub enum Command {
 }
 
 impl Command {
-    pub const TYPE_RESPONSE: u8 = 0xff;
+    pub const TYPE_RESPOND: u8 = 0xff;
     pub const TYPE_AUTHENTICATE: u8 = 0x00;
     pub const TYPE_CONNECT: u8 = 0x01;
     pub const TYPE_PACKET: u8 = 0x02;
@@ -91,20 +91,9 @@ impl Command {
     pub const RESPONSE_SUCCEEDED: u8 = 0x00;
     pub const RESPONSE_FAILED: u8 = 0xff;
 
-    pub const fn as_type_code(&self) -> u8 {
-        match self {
-            Command::Response(_) => Self::TYPE_RESPONSE,
-            Command::Authenticate(_) => Self::TYPE_AUTHENTICATE,
-            Command::Connect { .. } => Self::TYPE_CONNECT,
-            Command::Packet { .. } => Self::TYPE_PACKET,
-            Command::Dissociate { .. } => Self::TYPE_DISSOCIATE,
-            Command::Heartbeat => Self::TYPE_HEARTBEAT,
-        }
-    }
-
     pub fn serialized_len(&self) -> usize {
         2 + match self {
-            Self::Response(_) => 1,
+            Self::Respond(_) => 1,
             Self::Authenticate { .. } => 32,
             Self::Connect { addr } => addr.serialized_len(),
             Self::Packet { addr, .. } => 10 + addr.as_ref().map_or(0, |addr| addr.serialized_len()),
