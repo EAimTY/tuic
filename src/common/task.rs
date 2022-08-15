@@ -1,4 +1,5 @@
-use crate::protocol::Address;
+use super::stream::{RecvStream, Stream};
+use crate::protocol::{Address, Command};
 use bytes::Bytes;
 
 #[derive(Clone, Debug)]
@@ -18,4 +19,21 @@ impl Packet {
             data: pkt,
         }
     }
+}
+
+pub(crate) struct RawTask {
+    header: Command,
+    payload: RawTaskPayload,
+}
+
+impl RawTask {
+    pub(crate) fn new(header: Command, payload: RawTaskPayload) -> Self {
+        Self { header, payload }
+    }
+}
+
+pub(crate) enum RawTaskPayload {
+    BiStream(Stream),
+    UniStream(RecvStream),
+    Datagram(Bytes),
 }
