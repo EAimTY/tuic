@@ -1,3 +1,4 @@
+pub(crate) mod incoming;
 pub(crate) mod stream;
 pub(crate) mod util;
 
