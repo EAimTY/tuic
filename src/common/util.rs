@@ -1,7 +1,4 @@
-use crate::{
-    protocol::{Address, Command},
-    Packet,
-};
+use crate::protocol::{Address, Command};
 use bytes::{Bytes, BytesMut};
 use parking_lot::Mutex;
 use std::{
@@ -27,7 +24,7 @@ impl PacketBuffer {
         frag_id: u8,
         addr: Option<Address>,
         pkt: Bytes,
-    ) -> Result<Option<Packet>, PacketBufferError> {
+    ) -> Result<Option<(u32, u16, Address, Bytes)>, PacketBufferError> {
         let mut pkt_buf = self.0.lock();
         let key = PacketBufferKey { assoc_id, pkt_id };
 
@@ -65,12 +62,7 @@ impl PacketBuffer {
                         res.extend_from_slice(&pkt.unwrap());
                     }
 
-                    Ok(Some(Packet::new(
-                        assoc_id,
-                        pkt_id,
-                        v.addr.unwrap(),
-                        res.freeze(),
-                    )))
+                    Ok(Some((assoc_id, pkt_id, v.addr.unwrap(), res.freeze())))
                 } else {
                     Ok(None)
                 }
@@ -81,7 +73,7 @@ impl PacketBuffer {
                 }
 
                 if frag_total == 1 {
-                    return Ok(Some(Packet::new(assoc_id, pkt_id, addr.unwrap(), pkt)));
+                    return Ok(Some((assoc_id, pkt_id, addr.unwrap(), pkt)));
                 }
 
                 let mut v = PacketBufferValue {

@@ -5,7 +5,7 @@ use crate::{
         util,
     },
     protocol::{Address, Command, MarshalingError, ProtocolError},
-    Stream, UdpRelayMode,
+    BiStream, UdpRelayMode,
 };
 use bytes::{Bytes, BytesMut};
 use quinn::{
@@ -120,7 +120,7 @@ impl Connection {
         Ok(())
     }
 
-    pub async fn connect(&self, addr: Address) -> Result<Option<Stream>, ConnectionError> {
+    pub async fn connect(&self, addr: Address) -> Result<Option<BiStream>, ConnectionError> {
         let mut stream = self.get_bi_stream().await?;
 
         let cmd = Command::Connect { addr };
@@ -168,13 +168,13 @@ impl Connection {
         Ok(SendStream::new(send, self.stream_reg.as_ref().clone()))
     }
 
-    async fn get_bi_stream(&self) -> Result<Stream, ConnectionError> {
+    async fn get_bi_stream(&self) -> Result<BiStream, ConnectionError> {
         let (send, recv) = self.conn.open_bi().await.map_err(IoError::from)?;
 
         let send = SendStream::new(send, self.stream_reg.as_ref().clone());
         let recv = RecvStream::new(recv, self.stream_reg.as_ref().clone());
 
-        Ok(Stream::new(send, recv))
+        Ok(BiStream::new(send, recv))
     }
 
     fn send_packet_to_datagram(
@@ -270,12 +270,6 @@ pub enum ConnectionError {
     InvalidEncoding(#[from] FromUtf8Error),
     #[error("expecting a `Respond`, got a command")]
     ShouldBeRespond(Command),
-    #[error("unexpected incoming bi_stream")]
-    UnexpectedIncomingBiStream(Stream),
-    #[error("unexpected incoming uni_stream")]
-    UnexpectedIncomingUniStream(RecvStream),
-    #[error("unexpected incoming datagram")]
-    UnexpectedIncomingDatagram(Bytes),
     #[error("datagrams not supported by peer")]
     DatagramUnsupportedByPeer,
     #[error("datagram support disabled")]

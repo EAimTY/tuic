@@ -1,6 +1,5 @@
 pub(crate) mod incoming;
 pub(crate) mod stream;
-pub(crate) mod task;
 pub(crate) mod util;
 
 #[derive(Clone, Copy, Debug)]

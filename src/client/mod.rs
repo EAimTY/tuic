@@ -3,7 +3,7 @@ mod incoming;
 
 pub use self::{
     connection::{Connecting, Connection, ConnectionError},
-    incoming::IncomingTasks,
+    incoming::{IncomingTasks, PendingIncomingTask},
 };
 
 use crate::{CongestionControl, UdpRelayMode};
@@ -142,8 +142,8 @@ pub struct ClientConfig {
 
 #[derive(Error, Debug)]
 pub enum ClientError {
-    #[error(transparent)]
-    Io(#[from] IoError),
+    #[error("socket binding error: {0}")]
+    Socket(#[from] IoError),
     #[error("endpoint stopping")]
     EndpointStopping,
     #[error("too many connections")]

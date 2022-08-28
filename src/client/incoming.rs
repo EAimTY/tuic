@@ -1,7 +1,10 @@
-use super::ConnectionError;
 use crate::{
-    common::{incoming::RawIncomingTasks, stream::StreamReg, task::TaskSource, util::PacketBuffer},
-    Packet, PacketBufferGcHandle, UdpRelayMode,
+    common::{
+        incoming::{IncomingError, RawIncomingTasks, RawPendingIncomingTask},
+        stream::StreamReg,
+        util::PacketBuffer,
+    },
+    PacketBufferGcHandle, UdpRelayMode,
 };
 use futures::Stream;
 use quinn::{Datagrams, IncomingBiStreams, IncomingUniStreams};
@@ -38,42 +41,36 @@ impl IncomingTasks {
 }
 
 impl Stream for IncomingTasks {
-    type Item = Result<PendingTask, ConnectionError>;
+    type Item = Result<PendingIncomingTask, IncomingError>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         Pin::new(&mut self.inner).poll_next(cx).map(|poll| {
             poll.map(|res| match res {
                 Ok(source) => match (source, self.udp_relay_mode) {
-                    (TaskSource::BiStream(stream), _) => {
-                        Err(ConnectionError::UnexpectedIncomingBiStream(stream))
+                    (RawPendingIncomingTask::BiStream(stream), _) => {
+                        Err(IncomingError::UnexpectedIncomingBiStream(stream))
                     }
-                    (TaskSource::UniStream(stream), UdpRelayMode::Native) => {
-                        Err(ConnectionError::UnexpectedIncomingUniStream(stream))
+                    (RawPendingIncomingTask::UniStream(stream), UdpRelayMode::Native) => {
+                        Err(IncomingError::UnexpectedIncomingUniStream(stream))
                     }
-                    (TaskSource::Datagram(datagram), UdpRelayMode::Quic) => {
-                        Err(ConnectionError::UnexpectedIncomingDatagram(datagram))
+                    (RawPendingIncomingTask::Datagram(datagram), UdpRelayMode::Quic) => {
+                        Err(IncomingError::UnexpectedIncomingDatagram(datagram))
                     }
-                    (source, _) => Ok(PendingTask::new(source, self.pkt_buf.clone())),
+                    (source, _) => Ok(PendingIncomingTask::new(source, self.pkt_buf.clone())),
                 },
-                Err(err) => Err(ConnectionError::from(err)),
+                Err(err) => Err(IncomingError::from(err)),
             })
         })
     }
 }
 
-pub struct PendingTask {
-    inner: TaskSource,
+pub struct PendingIncomingTask {
+    inner: RawPendingIncomingTask,
     pkt_buf: PacketBuffer,
 }
 
-impl PendingTask {
-    fn new(inner: TaskSource, pkt_buf: PacketBuffer) -> Self {
+impl PendingIncomingTask {
+    fn new(inner: RawPendingIncomingTask, pkt_buf: PacketBuffer) -> Self {
         Self { inner, pkt_buf }
     }
-}
-
-#[derive(Debug)]
-#[non_exhaustive]
-pub enum Task {
-    Packet(Option<Packet>),
 }

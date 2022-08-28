@@ -13,6 +13,7 @@ pub(crate) type StreamReg = Arc<()>;
 pub struct SendStream(QuinnSendStream, StreamReg);
 
 impl SendStream {
+    #[inline]
     pub(crate) fn new(send: QuinnSendStream, reg: StreamReg) -> Self {
         Self(send, reg)
     }
@@ -21,29 +22,6 @@ impl SendStream {
     pub async fn finish(&mut self) -> Result<()> {
         self.0.finish().await?;
         Ok(())
-    }
-}
-
-#[derive(Debug)]
-pub struct RecvStream(QuinnRecvStream, StreamReg);
-
-impl RecvStream {
-    pub(crate) fn new(recv: QuinnRecvStream, reg: StreamReg) -> Self {
-        Self(recv, reg)
-    }
-}
-
-#[derive(Debug)]
-pub struct Stream(SendStream, RecvStream);
-
-impl Stream {
-    pub(crate) fn new(send: SendStream, recv: RecvStream) -> Self {
-        Self(send, recv)
-    }
-
-    #[inline]
-    pub async fn finish(&mut self) -> Result<()> {
-        self.0.finish().await
     }
 }
 
@@ -82,6 +60,16 @@ impl AsyncWrite for SendStream {
     }
 }
 
+#[derive(Debug)]
+pub struct RecvStream(QuinnRecvStream, StreamReg);
+
+impl RecvStream {
+    #[inline]
+    pub(crate) fn new(recv: QuinnRecvStream, reg: StreamReg) -> Self {
+        Self(recv, reg)
+    }
+}
+
 impl AsyncRead for RecvStream {
     #[inline]
     fn poll_read(
@@ -93,7 +81,22 @@ impl AsyncRead for RecvStream {
     }
 }
 
-impl AsyncWrite for Stream {
+#[derive(Debug)]
+pub struct BiStream(SendStream, RecvStream);
+
+impl BiStream {
+    #[inline]
+    pub(crate) fn new(send: SendStream, recv: RecvStream) -> Self {
+        Self(send, recv)
+    }
+
+    #[inline]
+    pub async fn finish(&mut self) -> Result<()> {
+        self.0.finish().await
+    }
+}
+
+impl AsyncWrite for BiStream {
     #[inline]
     fn poll_write(
         mut self: Pin<&mut Self>,
@@ -128,7 +131,7 @@ impl AsyncWrite for Stream {
     }
 }
 
-impl AsyncRead for Stream {
+impl AsyncRead for BiStream {
     #[inline]
     fn poll_read(
         mut self: Pin<&mut Self>,
