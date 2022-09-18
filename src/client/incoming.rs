@@ -1,8 +1,8 @@
 use crate::{
     common::{
-        incoming::{IncomingError, RawIncomingTasks, RawPendingIncomingTask},
+        incoming::{IncomingError, RawIncomingTask, RawIncomingTasks, RawPendingIncomingTask},
+        packet::PacketBuffer,
         stream::StreamReg,
-        util::PacketBuffer,
     },
     PacketBufferGcHandle, UdpRelayMode,
 };
@@ -73,4 +73,33 @@ impl PendingIncomingTask {
     fn new(inner: RawPendingIncomingTask, pkt_buf: PacketBuffer) -> Self {
         Self { inner, pkt_buf }
     }
+
+    pub async fn accept(self) -> Result<IncomingTask, IncomingError> {
+        match self.inner.accept().await? {
+            RawIncomingTask::Authenticate { token } => todo!(),
+            RawIncomingTask::Connect { addr, payload } => todo!(),
+            RawIncomingTask::PacketFromDatagram {
+                assoc_id,
+                pkt_id,
+                frag_total,
+                frag_id,
+                len,
+                addr,
+                payload,
+            } => todo!(),
+            RawIncomingTask::PacketFromUniStream {
+                assoc_id,
+                pkt_id,
+                frag_total,
+                frag_id,
+                len,
+                addr,
+                payload,
+            } => todo!(),
+            RawIncomingTask::Dissociate { assoc_id } => todo!(),
+            RawIncomingTask::Heartbeat => todo!(),
+        }
+    }
 }
+
+pub enum IncomingTask {}

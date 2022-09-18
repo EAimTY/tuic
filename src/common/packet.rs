@@ -1,4 +1,7 @@
-use crate::protocol::{Address, Command};
+use crate::{
+    protocol::{Address, Command},
+    RecvStream,
+};
 use bytes::{Bytes, BytesMut};
 use parking_lot::Mutex;
 use std::{
@@ -7,6 +10,80 @@ use std::{
     time::{Duration, Instant},
 };
 use thiserror::Error;
+
+pub struct NeedAccept;
+pub struct NeedAssembly;
+pub struct Ready;
+
+pub struct Packet<S> {
+    assoc_id: u32,
+    pkt_id: u16,
+    frag_id: Option<u8>,
+    frag_total: u8,
+    addr: Option<Address>,
+    src: Option<RecvStream>,
+    inner: Option<Bytes>,
+    _state: S,
+}
+
+impl Packet<NeedAccept> {
+    fn new(
+        assoc_id: u32,
+        pkt_id: u16,
+        frag_id: u8,
+        frag_total: u8,
+        addr: Address,
+        stream: RecvStream,
+    ) -> Self {
+        Self {
+            assoc_id,
+            pkt_id,
+            frag_id: Some(frag_id),
+            frag_total,
+            addr: Some(addr),
+            inner: None,
+            src: Some(stream),
+            _state: NeedAccept,
+        }
+    }
+}
+
+impl Packet<NeedAssembly> {
+    fn new(
+        assoc_id: u32,
+        pkt_id: u16,
+        frag_id: u8,
+        frag_total: u8,
+        addr: Option<Address>,
+        pkt: Bytes,
+    ) -> Self {
+        Self {
+            assoc_id,
+            pkt_id,
+            frag_id: Some(frag_id),
+            frag_total,
+            addr,
+            inner: Some(pkt),
+            src: None,
+            _state: NeedAssembly,
+        }
+    }
+}
+
+impl Packet<Ready> {
+    fn new(assoc_id: u32, pkt_id: u16, frag_total: u8, addr: Address, pkt: Bytes) -> Self {
+        Self {
+            assoc_id,
+            pkt_id,
+            frag_id: None,
+            frag_total,
+            addr: Some(addr),
+            inner: Some(pkt),
+            src: None,
+            _state: Ready,
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub(crate) struct PacketBuffer(Arc<Mutex<HashMap<PacketBufferKey, PacketBufferValue>>>);
@@ -18,22 +95,20 @@ impl PacketBuffer {
 
     pub(crate) fn insert(
         &mut self,
-        assoc_id: u32,
-        pkt_id: u16,
-        frag_total: u8,
-        frag_id: u8,
-        addr: Option<Address>,
-        pkt: Bytes,
-    ) -> Result<Option<(u32, u16, Address, Bytes)>, PacketBufferError> {
+        pkt: Packet<NeedAssembly>,
+    ) -> Result<Option<Packet<Ready>>, PacketBufferError> {
         let mut pkt_buf = self.0.lock();
-        let key = PacketBufferKey { assoc_id, pkt_id };
+        let key = PacketBufferKey {
+            assoc_id: pkt.assoc_id,
+            pkt_id: pkt.pkt_id,
+        };
 
-        if frag_id == 0 && addr.is_none() {
+        if pkt.frag_id.unwrap() == 0 && pkt.addr.is_none() {
             pkt_buf.remove(&key);
             return Err(PacketBufferError::NoAddress);
         }
 
-        if frag_id != 0 && addr.is_some() {
+        if pkt.frag_id.unwrap() != 0 && pkt.addr.is_some() {
             pkt_buf.remove(&key);
             return Err(PacketBufferError::UnexpectedAddress);
         }
@@ -42,19 +117,19 @@ impl PacketBuffer {
             Entry::Occupied(mut entry) => {
                 let v = entry.get_mut();
 
-                if frag_total == 0
-                    || frag_id >= frag_total
-                    || v.buf.len() != frag_total as usize
-                    || v.buf[frag_id as usize].is_some()
+                if pkt.frag_total == 0
+                    || pkt.frag_id.unwrap() >= pkt.frag_total
+                    || v.buf.len() != pkt.frag_total as usize
+                    || v.buf[pkt.frag_id.unwrap() as usize].is_some()
                 {
                     return Err(PacketBufferError::BadFragment);
                 }
 
-                v.total_len += pkt.len();
-                v.buf[frag_id as usize] = Some(pkt);
+                v.total_len += pkt.inner.as_ref().unwrap().len();
+                v.buf[pkt.frag_id.unwrap() as usize] = Some(pkt.inner.unwrap());
                 v.recv_count += 1;
 
-                if v.recv_count == frag_total as usize {
+                if v.recv_count == pkt.frag_total as usize {
                     let v = entry.remove();
                     let mut res = BytesMut::with_capacity(v.total_len);
 
@@ -62,30 +137,42 @@ impl PacketBuffer {
                         res.extend_from_slice(&pkt.unwrap());
                     }
 
-                    Ok(Some((assoc_id, pkt_id, v.addr.unwrap(), res.freeze())))
+                    Ok(Some(Packet::<Ready>::new(
+                        pkt.assoc_id,
+                        pkt.pkt_id,
+                        pkt.frag_total,
+                        v.addr.unwrap(),
+                        res.freeze(),
+                    )))
                 } else {
                     Ok(None)
                 }
             }
             Entry::Vacant(entry) => {
-                if frag_total == 0 || frag_id >= frag_total {
+                if pkt.frag_total == 0 || pkt.frag_id.unwrap() >= pkt.frag_total {
                     return Err(PacketBufferError::BadFragment);
                 }
 
-                if frag_total == 1 {
-                    return Ok(Some((assoc_id, pkt_id, addr.unwrap(), pkt)));
+                if pkt.frag_total == 1 {
+                    return Ok(Some(Packet::<Ready>::new(
+                        pkt.assoc_id,
+                        pkt.pkt_id,
+                        pkt.frag_total,
+                        pkt.addr.unwrap(),
+                        pkt.inner.unwrap(),
+                    )));
                 }
 
                 let mut v = PacketBufferValue {
-                    buf: vec![None; frag_total as usize],
-                    addr,
+                    buf: vec![None; pkt.frag_total as usize],
+                    addr: pkt.addr,
                     recv_count: 0,
                     total_len: 0,
                     c_time: Instant::now(),
                 };
 
-                v.total_len += pkt.len();
-                v.buf[frag_id as usize] = Some(pkt);
+                v.total_len += pkt.inner.as_ref().unwrap().len();
+                v.buf[pkt.frag_id.unwrap() as usize] = Some(pkt.inner.unwrap());
                 v.recv_count += 1;
                 entry.insert(v);
 

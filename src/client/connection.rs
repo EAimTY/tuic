@@ -1,8 +1,8 @@
 use super::IncomingTasks;
 use crate::{
     common::{
+        packet,
         stream::{RecvStream, SendStream, StreamReg},
-        util,
     },
     protocol::{Address, Command, MarshalingError, ProtocolError},
     BiStream, UdpRelayMode,
@@ -190,7 +190,7 @@ impl Connection {
         };
 
         let pkt_id = self.next_pkt_id.fetch_add(1, Ordering::SeqCst);
-        let mut pkts = util::split_packet(pkt, &addr, max_datagram_size);
+        let mut pkts = packet::split_packet(pkt, &addr, max_datagram_size);
         let frag_total = pkts.len() as u8;
 
         let first_pkt = pkts.next().unwrap();

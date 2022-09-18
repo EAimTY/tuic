@@ -116,8 +116,11 @@ impl RawPendingIncomingTask {
             .map_err(IncomingError::from_marshaling_error)?;
 
         match cmd {
-            Command::Connect { addr } => Ok(RawIncomingTask::Connect { addr, stream }),
-            cmd => Err(IncomingError::UnexpectedCommand("bi_stream", cmd)),
+            Command::Connect { addr } => Ok(RawIncomingTask::Connect {
+                addr,
+                payload: stream,
+            }),
+            cmd => Err(IncomingError::UnexpectedCommandFromBiStream(stream, cmd)),
         }
     }
 
@@ -148,7 +151,7 @@ impl RawPendingIncomingTask {
             }),
             Command::Dissociate { assoc_id } => Ok(RawIncomingTask::Dissociate { assoc_id }),
             Command::Heartbeat => Ok(RawIncomingTask::Heartbeat),
-            cmd => Err(IncomingError::UnexpectedCommand("uni_stream", cmd)),
+            cmd => Err(IncomingError::UnexpectedCommandFromUniStream(stream, cmd)),
         }
     }
 
@@ -175,7 +178,7 @@ impl RawPendingIncomingTask {
                 addr,
                 payload: datagram,
             }),
-            cmd => Err(IncomingError::UnexpectedCommand("datagram", cmd)),
+            cmd => Err(IncomingError::UnexpectedCommandFromDatagram(payload, cmd)),
         }
     }
 }
@@ -187,7 +190,7 @@ pub(crate) enum RawIncomingTask {
     },
     Connect {
         addr: Address,
-        stream: BiStream,
+        payload: BiStream,
     },
     PacketFromDatagram {
         assoc_id: u32,
@@ -227,8 +230,12 @@ pub enum IncomingError {
     UnexpectedIncomingUniStream(RecvStream),
     #[error("unexpected incoming datagram")]
     UnexpectedIncomingDatagram(Bytes),
-    #[error("unexpected command from {0}: {1:?}")]
-    UnexpectedCommand(&'static str, Command),
+    #[error("unexpected command from bi_stream: {1:?}")]
+    UnexpectedCommandFromBiStream(BiStream, Command),
+    #[error("unexpected command from uni_stream: {1:?}")]
+    UnexpectedCommandFromUniStream(RecvStream, Command),
+    #[error("unexpected command from datagram: {1:?}")]
+    UnexpectedCommandFromDatagram(Bytes, Command),
 }
 
 impl IncomingError {
