@@ -21,40 +21,44 @@ pub struct Packet<S> {
     frag_id: Option<u8>,
     frag_total: u8,
     addr: Option<Address>,
-    src: Option<RecvStream>,
+    src: Option<(RecvStream, u16)>,
+    pkt_buf: Option<PacketBuffer>,
     inner: Option<Bytes>,
     _state: S,
 }
 
 impl Packet<NeedAccept> {
-    fn new(
+    pub(super) fn new(
         assoc_id: u32,
         pkt_id: u16,
-        frag_id: u8,
         frag_total: u8,
-        addr: Address,
+        frag_id: u8,
+        addr: Option<Address>,
         stream: RecvStream,
+        len: u16,
     ) -> Self {
         Self {
             assoc_id,
             pkt_id,
             frag_id: Some(frag_id),
             frag_total,
-            addr: Some(addr),
+            addr: addr,
+            src: Some((stream, len)),
+            pkt_buf: None,
             inner: None,
-            src: Some(stream),
             _state: NeedAccept,
         }
     }
 }
 
 impl Packet<NeedAssembly> {
-    fn new(
+    pub(super) fn new(
         assoc_id: u32,
         pkt_id: u16,
-        frag_id: u8,
         frag_total: u8,
+        frag_id: u8,
         addr: Option<Address>,
+        pkt_buf: PacketBuffer,
         pkt: Bytes,
     ) -> Self {
         Self {
@@ -63,8 +67,9 @@ impl Packet<NeedAssembly> {
             frag_id: Some(frag_id),
             frag_total,
             addr,
-            inner: Some(pkt),
             src: None,
+            pkt_buf: Some(pkt_buf),
+            inner: Some(pkt),
             _state: NeedAssembly,
         }
     }
@@ -78,8 +83,9 @@ impl Packet<Ready> {
             frag_id: None,
             frag_total,
             addr: Some(addr),
-            inner: Some(pkt),
             src: None,
+            pkt_buf: None,
+            inner: Some(pkt),
             _state: Ready,
         }
     }

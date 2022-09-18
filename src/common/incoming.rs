@@ -1,4 +1,7 @@
-use super::stream::{BiStream, RecvStream, SendStream, StreamReg};
+use super::{
+    packet::{NeedAccept, NeedAssembly, Packet, PacketBuffer},
+    stream::{BiStream, RecvStream, SendStream, StreamReg},
+};
 use crate::protocol::{Address, Command, MarshalingError, ProtocolError};
 use bytes::Bytes;
 use futures::{stream::SelectAll, Stream};
@@ -18,6 +21,7 @@ use thiserror::Error;
 pub(crate) struct RawIncomingTasks {
     incoming: SelectAll<IncomingSource>,
     stream_reg: Arc<StreamReg>,
+    pkt_buf: PacketBuffer,
 }
 
 impl RawIncomingTasks {
@@ -36,6 +40,7 @@ impl RawIncomingTasks {
         Self {
             incoming,
             stream_reg,
+            pkt_buf: PacketBuffer::new(),
         }
     }
 }
@@ -56,7 +61,9 @@ impl Stream for RawIncomingTasks {
                 IncomingItem::UniStream(recv) => RawPendingIncomingTask::UniStream(
                     RecvStream::new(recv, self.stream_reg.as_ref().clone()),
                 ),
-                IncomingItem::Datagram(datagram) => RawPendingIncomingTask::Datagram(datagram),
+                IncomingItem::Datagram(datagram) => {
+                    RawPendingIncomingTask::Datagram(datagram, self.pkt_buf.clone())
+                }
             })
             .map_err(IoError::from)
     }
@@ -98,7 +105,7 @@ enum IncomingItem {
 pub(crate) enum RawPendingIncomingTask {
     BiStream(BiStream),
     UniStream(RecvStream),
-    Datagram(Bytes),
+    Datagram(Bytes, PacketBuffer),
 }
 
 impl RawPendingIncomingTask {
@@ -106,7 +113,9 @@ impl RawPendingIncomingTask {
         match self {
             Self::BiStream(stream) => Self::accept_from_bi_stream(stream).await,
             Self::UniStream(stream) => Self::accept_from_uni_stream(stream).await,
-            Self::Datagram(datagram) => Self::accept_from_datagram(datagram).await,
+            Self::Datagram(datagram, pkt_buf) => {
+                Self::accept_from_datagram(datagram, pkt_buf).await
+            }
         }
     }
 
@@ -116,10 +125,7 @@ impl RawPendingIncomingTask {
             .map_err(IncomingError::from_marshaling_error)?;
 
         match cmd {
-            Command::Connect { addr } => Ok(RawIncomingTask::Connect {
-                addr,
-                payload: stream,
-            }),
+            Command::Connect { addr } => Ok(RawIncomingTask::Connect(addr, stream)),
             cmd => Err(IncomingError::UnexpectedCommandFromBiStream(stream, cmd)),
         }
     }
@@ -132,7 +138,7 @@ impl RawPendingIncomingTask {
             .map_err(IncomingError::from_marshaling_error)?;
 
         match cmd {
-            Command::Authenticate(token) => Ok(RawIncomingTask::Authenticate { token }),
+            Command::Authenticate(token) => Ok(RawIncomingTask::Authenticate(token)),
             Command::Packet {
                 assoc_id,
                 pkt_id,
@@ -140,26 +146,23 @@ impl RawPendingIncomingTask {
                 frag_id,
                 len,
                 addr,
-            } => Ok(RawIncomingTask::PacketFromUniStream {
-                assoc_id,
-                pkt_id,
-                frag_total,
-                frag_id,
-                len,
-                addr,
-                payload: stream,
-            }),
-            Command::Dissociate { assoc_id } => Ok(RawIncomingTask::Dissociate { assoc_id }),
+            } => Ok(RawIncomingTask::PacketFromUniStream(
+                Packet::<NeedAccept>::new(assoc_id, pkt_id, frag_total, frag_id, addr, stream, len),
+            )),
+            Command::Dissociate { assoc_id } => Ok(RawIncomingTask::Dissociate(assoc_id)),
             Command::Heartbeat => Ok(RawIncomingTask::Heartbeat),
             cmd => Err(IncomingError::UnexpectedCommandFromUniStream(stream, cmd)),
         }
     }
 
-    async fn accept_from_datagram(datagram: Bytes) -> Result<RawIncomingTask, IncomingError> {
+    async fn accept_from_datagram(
+        datagram: Bytes,
+        pkt_buf: PacketBuffer,
+    ) -> Result<RawIncomingTask, IncomingError> {
         let cmd = Command::read_from(&mut datagram.as_ref())
             .await
             .map_err(IncomingError::from_marshaling_error)?;
-        let payload = datagram.slice(cmd.serialized_len()..);
+        let pkt = datagram.slice(cmd.serialized_len()..);
 
         match cmd {
             Command::Packet {
@@ -169,50 +172,23 @@ impl RawPendingIncomingTask {
                 frag_id,
                 len,
                 addr,
-            } => Ok(RawIncomingTask::PacketFromDatagram {
-                assoc_id,
-                pkt_id,
-                frag_total,
-                frag_id,
-                len,
-                addr,
-                payload: datagram,
-            }),
-            cmd => Err(IncomingError::UnexpectedCommandFromDatagram(payload, cmd)),
+            } => Ok(RawIncomingTask::PacketFromDatagram(
+                Packet::<NeedAssembly>::new(
+                    assoc_id, pkt_id, frag_total, frag_id, addr, pkt_buf, pkt,
+                ),
+            )),
+            cmd => Err(IncomingError::UnexpectedCommandFromDatagram(datagram, cmd)),
         }
     }
 }
 
 #[non_exhaustive]
 pub(crate) enum RawIncomingTask {
-    Authenticate {
-        token: [u8; 32],
-    },
-    Connect {
-        addr: Address,
-        payload: BiStream,
-    },
-    PacketFromDatagram {
-        assoc_id: u32,
-        pkt_id: u16,
-        frag_total: u8,
-        frag_id: u8,
-        len: u16,
-        addr: Option<Address>,
-        payload: Bytes,
-    },
-    PacketFromUniStream {
-        assoc_id: u32,
-        pkt_id: u16,
-        frag_total: u8,
-        frag_id: u8,
-        len: u16,
-        addr: Option<Address>,
-        payload: RecvStream,
-    },
-    Dissociate {
-        assoc_id: u32,
-    },
+    Authenticate([u8; 32]),
+    Connect(Address, BiStream),
+    PacketFromDatagram(Packet<NeedAssembly>),
+    PacketFromUniStream(Packet<NeedAccept>),
+    Dissociate(u32),
     Heartbeat,
 }
 

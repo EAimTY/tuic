@@ -17,7 +17,6 @@ use std::{
 pub struct IncomingTasks {
     inner: RawIncomingTasks,
     udp_relay_mode: UdpRelayMode,
-    pkt_buf: PacketBuffer,
 }
 
 impl IncomingTasks {
@@ -31,12 +30,7 @@ impl IncomingTasks {
         Self {
             inner: RawIncomingTasks::new(bi_streams, uni_streams, datagrams, stream_reg),
             udp_relay_mode,
-            pkt_buf: PacketBuffer::new(),
         }
-    }
-
-    pub fn get_packet_buffer_gc_handler(&self) -> PacketBufferGcHandle {
-        self.pkt_buf.get_gc_handler()
     }
 }
 
@@ -53,10 +47,10 @@ impl Stream for IncomingTasks {
                     (RawPendingIncomingTask::UniStream(stream), UdpRelayMode::Native) => {
                         Err(IncomingError::UnexpectedIncomingUniStream(stream))
                     }
-                    (RawPendingIncomingTask::Datagram(datagram), UdpRelayMode::Quic) => {
+                    (RawPendingIncomingTask::Datagram(datagram, ..), UdpRelayMode::Quic) => {
                         Err(IncomingError::UnexpectedIncomingDatagram(datagram))
                     }
-                    (source, _) => Ok(PendingIncomingTask::new(source, self.pkt_buf.clone())),
+                    (source, _) => Ok(PendingIncomingTask(source)),
                 },
                 Err(err) => Err(IncomingError::from(err)),
             })
@@ -64,41 +58,11 @@ impl Stream for IncomingTasks {
     }
 }
 
-pub struct PendingIncomingTask {
-    inner: RawPendingIncomingTask,
-    pkt_buf: PacketBuffer,
-}
+pub struct PendingIncomingTask(RawPendingIncomingTask);
 
 impl PendingIncomingTask {
-    fn new(inner: RawPendingIncomingTask, pkt_buf: PacketBuffer) -> Self {
-        Self { inner, pkt_buf }
-    }
-
     pub async fn accept(self) -> Result<IncomingTask, IncomingError> {
-        match self.inner.accept().await? {
-            RawIncomingTask::Authenticate { token } => todo!(),
-            RawIncomingTask::Connect { addr, payload } => todo!(),
-            RawIncomingTask::PacketFromDatagram {
-                assoc_id,
-                pkt_id,
-                frag_total,
-                frag_id,
-                len,
-                addr,
-                payload,
-            } => todo!(),
-            RawIncomingTask::PacketFromUniStream {
-                assoc_id,
-                pkt_id,
-                frag_total,
-                frag_id,
-                len,
-                addr,
-                payload,
-            } => todo!(),
-            RawIncomingTask::Dissociate { assoc_id } => todo!(),
-            RawIncomingTask::Heartbeat => todo!(),
-        }
+        todo!()
     }
 }
 
