@@ -1,3 +1,4 @@
+use self::state::{NeedAccept, Ready, StateInner};
 use crate::{
     protocol::{Address, Command},
     RecvStream,
@@ -11,25 +12,57 @@ use std::{
 };
 use thiserror::Error;
 
-pub struct NeedAccept;
-pub struct NeedAssembly;
-pub struct Ready;
+pub mod state {
+    use super::PacketBuffer;
+    use crate::RecvStream;
+    use bytes::Bytes;
+    use std::sync::Arc;
+
+    pub struct NeedAccept;
+    pub struct Ready;
+
+    pub(super) enum StateInner {
+        FromDatagram(Bytes, Arc<PacketBuffer>),
+        FromUniStream(RecvStream),
+        Ready(Bytes),
+    }
+}
 
 pub struct Packet<S> {
     assoc_id: u32,
     pkt_id: u16,
-    frag_id: Option<u8>,
+    frag_id: u8,
     frag_total: u8,
     len: u16,
     addr: Option<Address>,
-    src: Option<RecvStream>,
-    pkt_buf: Option<Arc<PacketBuffer>>,
-    inner: Option<Bytes>,
+    inner: StateInner,
     _state: S,
 }
 
 impl Packet<NeedAccept> {
-    pub(super) fn new(
+    pub(super) fn new_from_datagram(
+        assoc_id: u32,
+        pkt_id: u16,
+        frag_total: u8,
+        frag_id: u8,
+        len: u16,
+        addr: Option<Address>,
+        pkt_buf: Arc<PacketBuffer>,
+        payload: Bytes,
+    ) -> Self {
+        Self {
+            assoc_id,
+            pkt_id,
+            frag_id,
+            frag_total,
+            len,
+            addr,
+            inner: StateInner::FromDatagram(payload, pkt_buf),
+            _state: NeedAccept,
+        }
+    }
+
+    pub(super) fn new_from_uni_stream(
         assoc_id: u32,
         pkt_id: u16,
         frag_total: u8,
@@ -41,48 +74,16 @@ impl Packet<NeedAccept> {
         Self {
             assoc_id,
             pkt_id,
-            frag_id: Some(frag_id),
+            frag_id,
             frag_total,
             len,
             addr,
-            src: Some(stream),
-            pkt_buf: None,
-            inner: None,
+            inner: StateInner::FromUniStream(stream),
             _state: NeedAccept,
         }
     }
 
-    pub async fn accept(self) -> Result<Packet<Ready>, PacketError> {
-        todo!()
-    }
-}
-
-impl Packet<NeedAssembly> {
-    pub(super) fn new(
-        assoc_id: u32,
-        pkt_id: u16,
-        frag_total: u8,
-        frag_id: u8,
-        len: u16,
-        addr: Option<Address>,
-        pkt_buf: Arc<PacketBuffer>,
-        pkt: Bytes,
-    ) -> Self {
-        Self {
-            assoc_id,
-            pkt_id,
-            frag_id: Some(frag_id),
-            frag_total,
-            len,
-            addr,
-            src: None,
-            pkt_buf: Some(pkt_buf),
-            inner: Some(pkt),
-            _state: NeedAssembly,
-        }
-    }
-
-    pub fn assemble(self) -> Result<Packet<Ready>, PacketError> {
+    pub async fn accept(self) -> Result<Option<Packet<Ready>>, PacketError> {
         todo!()
     }
 }
@@ -99,13 +100,11 @@ impl Packet<Ready> {
         Self {
             assoc_id,
             pkt_id,
-            frag_id: None,
+            frag_id: 0,
             frag_total,
             len,
             addr: Some(addr),
-            src: None,
-            pkt_buf: None,
-            inner: Some(pkt),
+            inner: StateInner::Ready(pkt),
             _state: Ready,
         }
     }
@@ -120,20 +119,23 @@ impl PacketBuffer {
 
     pub(crate) fn insert(
         &mut self,
-        pkt: Packet<NeedAssembly>,
+        assoc_id: u32,
+        pkt_id: u16,
+        frag_total: u8,
+        frag_id: u8,
+        len: u16,
+        addr: Option<Address>,
+        pkt: Bytes,
     ) -> Result<Option<Packet<Ready>>, PacketError> {
         let mut pkt_buf = self.0.lock();
-        let key = PacketBufferKey {
-            assoc_id: pkt.assoc_id,
-            pkt_id: pkt.pkt_id,
-        };
+        let key = PacketBufferKey { assoc_id, pkt_id };
 
-        if pkt.frag_id.unwrap() == 0 && pkt.addr.is_none() {
+        if frag_id == 0 && addr.is_none() {
             pkt_buf.remove(&key);
             return Err(PacketError::NoAddress);
         }
 
-        if pkt.frag_id.unwrap() != 0 && pkt.addr.is_some() {
+        if frag_id != 0 && addr.is_some() {
             pkt_buf.remove(&key);
             return Err(PacketError::UnexpectedAddress);
         }
@@ -142,19 +144,19 @@ impl PacketBuffer {
             Entry::Occupied(mut entry) => {
                 let v = entry.get_mut();
 
-                if pkt.frag_total == 0
-                    || pkt.frag_id.unwrap() >= pkt.frag_total
-                    || v.buf.len() != pkt.frag_total as usize
-                    || v.buf[pkt.frag_id.unwrap() as usize].is_some()
+                if frag_total == 0
+                    || frag_id >= frag_total
+                    || v.buf.len() != frag_total as usize
+                    || v.buf[frag_id as usize].is_some()
                 {
                     return Err(PacketError::BadFragment);
                 }
 
-                v.total_len += pkt.len as usize;
-                v.buf[pkt.frag_id.unwrap() as usize] = Some(pkt.inner.unwrap());
+                v.total_len += len as usize;
+                v.buf[frag_id as usize] = Some(pkt);
                 v.recv_count += 1;
 
-                if v.recv_count == pkt.frag_total as usize {
+                if v.recv_count == frag_total as usize {
                     let v = entry.remove();
                     let mut res = BytesMut::with_capacity(v.total_len);
 
@@ -163,10 +165,10 @@ impl PacketBuffer {
                     }
 
                     Ok(Some(Packet::<Ready>::new(
-                        pkt.assoc_id,
-                        pkt.pkt_id,
-                        pkt.frag_total,
-                        pkt.len,
+                        assoc_id,
+                        pkt_id,
+                        frag_total,
+                        len,
                         v.addr.unwrap(),
                         res.freeze(),
                     )))
@@ -175,31 +177,31 @@ impl PacketBuffer {
                 }
             }
             Entry::Vacant(entry) => {
-                if pkt.frag_total == 0 || pkt.frag_id.unwrap() >= pkt.frag_total {
+                if frag_total == 0 || frag_id >= frag_total {
                     return Err(PacketError::BadFragment);
                 }
 
-                if pkt.frag_total == 1 {
+                if frag_total == 1 {
                     return Ok(Some(Packet::<Ready>::new(
-                        pkt.assoc_id,
-                        pkt.pkt_id,
-                        pkt.frag_total,
-                        pkt.len,
-                        pkt.addr.unwrap(),
-                        pkt.inner.unwrap(),
+                        assoc_id,
+                        pkt_id,
+                        frag_total,
+                        len,
+                        addr.unwrap(),
+                        pkt,
                     )));
                 }
 
                 let mut v = PacketBufferValue {
-                    buf: vec![None; pkt.frag_total as usize],
-                    addr: pkt.addr,
+                    buf: vec![None; frag_total as usize],
+                    addr,
                     recv_count: 0,
                     total_len: 0,
                     c_time: Instant::now(),
                 };
 
-                v.total_len += pkt.len as usize;
-                v.buf[pkt.frag_id.unwrap() as usize] = Some(pkt.inner.unwrap());
+                v.total_len += len as usize;
+                v.buf[frag_id as usize] = Some(pkt);
                 v.recv_count += 1;
                 entry.insert(v);
 
