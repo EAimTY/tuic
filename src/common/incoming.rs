@@ -147,7 +147,7 @@ impl RawPendingIncomingTask {
                 len,
                 addr,
             } => Ok(RawIncomingTask::PacketFromUniStream(
-                Packet::<NeedAccept>::new(assoc_id, pkt_id, frag_total, frag_id, addr, stream, len),
+                Packet::<NeedAccept>::new(assoc_id, pkt_id, frag_total, frag_id, len, addr, stream),
             )),
             Command::Dissociate { assoc_id } => Ok(RawIncomingTask::Dissociate(assoc_id)),
             Command::Heartbeat => Ok(RawIncomingTask::Heartbeat),
@@ -174,7 +174,7 @@ impl RawPendingIncomingTask {
                 addr,
             } => Ok(RawIncomingTask::PacketFromDatagram(
                 Packet::<NeedAssembly>::new(
-                    assoc_id, pkt_id, frag_total, frag_id, addr, pkt_buf, pkt,
+                    assoc_id, pkt_id, frag_total, frag_id, len, addr, pkt_buf, pkt,
                 ),
             )),
             cmd => Err(IncomingError::UnexpectedCommandFromDatagram(datagram, cmd)),

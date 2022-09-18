@@ -20,8 +20,9 @@ pub struct Packet<S> {
     pkt_id: u16,
     frag_id: Option<u8>,
     frag_total: u8,
+    len: u16,
     addr: Option<Address>,
-    src: Option<(RecvStream, u16)>,
+    src: Option<RecvStream>,
     pkt_buf: Option<Arc<PacketBuffer>>,
     inner: Option<Bytes>,
     _state: S,
@@ -33,21 +34,26 @@ impl Packet<NeedAccept> {
         pkt_id: u16,
         frag_total: u8,
         frag_id: u8,
+        len: u16,
         addr: Option<Address>,
         stream: RecvStream,
-        len: u16,
     ) -> Self {
         Self {
             assoc_id,
             pkt_id,
             frag_id: Some(frag_id),
             frag_total,
-            addr: addr,
-            src: Some((stream, len)),
+            len,
+            addr,
+            src: Some(stream),
             pkt_buf: None,
             inner: None,
             _state: NeedAccept,
         }
+    }
+
+    pub async fn accept(self) -> Result<Packet<Ready>, PacketError> {
+        todo!()
     }
 }
 
@@ -57,6 +63,7 @@ impl Packet<NeedAssembly> {
         pkt_id: u16,
         frag_total: u8,
         frag_id: u8,
+        len: u16,
         addr: Option<Address>,
         pkt_buf: Arc<PacketBuffer>,
         pkt: Bytes,
@@ -66,6 +73,7 @@ impl Packet<NeedAssembly> {
             pkt_id,
             frag_id: Some(frag_id),
             frag_total,
+            len,
             addr,
             src: None,
             pkt_buf: Some(pkt_buf),
@@ -73,15 +81,27 @@ impl Packet<NeedAssembly> {
             _state: NeedAssembly,
         }
     }
+
+    pub fn assemble(self) -> Result<Packet<Ready>, PacketError> {
+        todo!()
+    }
 }
 
 impl Packet<Ready> {
-    fn new(assoc_id: u32, pkt_id: u16, frag_total: u8, addr: Address, pkt: Bytes) -> Self {
+    fn new(
+        assoc_id: u32,
+        pkt_id: u16,
+        frag_total: u8,
+        len: u16,
+        addr: Address,
+        pkt: Bytes,
+    ) -> Self {
         Self {
             assoc_id,
             pkt_id,
             frag_id: None,
             frag_total,
+            len,
             addr: Some(addr),
             src: None,
             pkt_buf: None,
@@ -101,7 +121,7 @@ impl PacketBuffer {
     pub(crate) fn insert(
         &mut self,
         pkt: Packet<NeedAssembly>,
-    ) -> Result<Option<Packet<Ready>>, PacketBufferError> {
+    ) -> Result<Option<Packet<Ready>>, PacketError> {
         let mut pkt_buf = self.0.lock();
         let key = PacketBufferKey {
             assoc_id: pkt.assoc_id,
@@ -110,12 +130,12 @@ impl PacketBuffer {
 
         if pkt.frag_id.unwrap() == 0 && pkt.addr.is_none() {
             pkt_buf.remove(&key);
-            return Err(PacketBufferError::NoAddress);
+            return Err(PacketError::NoAddress);
         }
 
         if pkt.frag_id.unwrap() != 0 && pkt.addr.is_some() {
             pkt_buf.remove(&key);
-            return Err(PacketBufferError::UnexpectedAddress);
+            return Err(PacketError::UnexpectedAddress);
         }
 
         match pkt_buf.entry(key) {
@@ -127,10 +147,10 @@ impl PacketBuffer {
                     || v.buf.len() != pkt.frag_total as usize
                     || v.buf[pkt.frag_id.unwrap() as usize].is_some()
                 {
-                    return Err(PacketBufferError::BadFragment);
+                    return Err(PacketError::BadFragment);
                 }
 
-                v.total_len += pkt.inner.as_ref().unwrap().len();
+                v.total_len += pkt.len as usize;
                 v.buf[pkt.frag_id.unwrap() as usize] = Some(pkt.inner.unwrap());
                 v.recv_count += 1;
 
@@ -146,6 +166,7 @@ impl PacketBuffer {
                         pkt.assoc_id,
                         pkt.pkt_id,
                         pkt.frag_total,
+                        pkt.len,
                         v.addr.unwrap(),
                         res.freeze(),
                     )))
@@ -155,7 +176,7 @@ impl PacketBuffer {
             }
             Entry::Vacant(entry) => {
                 if pkt.frag_total == 0 || pkt.frag_id.unwrap() >= pkt.frag_total {
-                    return Err(PacketBufferError::BadFragment);
+                    return Err(PacketError::BadFragment);
                 }
 
                 if pkt.frag_total == 1 {
@@ -163,6 +184,7 @@ impl PacketBuffer {
                         pkt.assoc_id,
                         pkt.pkt_id,
                         pkt.frag_total,
+                        pkt.len,
                         pkt.addr.unwrap(),
                         pkt.inner.unwrap(),
                     )));
@@ -176,7 +198,7 @@ impl PacketBuffer {
                     c_time: Instant::now(),
                 };
 
-                v.total_len += pkt.inner.as_ref().unwrap().len();
+                v.total_len += pkt.len as usize;
                 v.buf[pkt.frag_id.unwrap() as usize] = Some(pkt.inner.unwrap());
                 v.recv_count += 1;
                 entry.insert(v);
@@ -222,7 +244,7 @@ struct PacketBufferValue {
 }
 
 #[derive(Error, Debug)]
-pub(crate) enum PacketBufferError {
+pub enum PacketError {
     #[error("missing address in packet with frag_id 0")]
     NoAddress,
     #[error("unexpected address in packet")]
