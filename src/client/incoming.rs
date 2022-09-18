@@ -4,7 +4,7 @@ use crate::{
         packet::PacketBuffer,
         stream::StreamReg,
     },
-    PacketBufferGcHandle, UdpRelayMode,
+    PacketBufferHandle, UdpRelayMode,
 };
 use futures::Stream;
 use quinn::{Datagrams, IncomingBiStreams, IncomingUniStreams};

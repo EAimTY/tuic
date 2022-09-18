@@ -21,7 +21,7 @@ use thiserror::Error;
 pub(crate) struct RawIncomingTasks {
     incoming: SelectAll<IncomingSource>,
     stream_reg: Arc<StreamReg>,
-    pkt_buf: PacketBuffer,
+    pkt_buf: Arc<PacketBuffer>,
 }
 
 impl RawIncomingTasks {
@@ -40,7 +40,7 @@ impl RawIncomingTasks {
         Self {
             incoming,
             stream_reg,
-            pkt_buf: PacketBuffer::new(),
+            pkt_buf: Arc::new(PacketBuffer::new()),
         }
     }
 }
@@ -105,7 +105,7 @@ enum IncomingItem {
 pub(crate) enum RawPendingIncomingTask {
     BiStream(BiStream),
     UniStream(RecvStream),
-    Datagram(Bytes, PacketBuffer),
+    Datagram(Bytes, Arc<PacketBuffer>),
 }
 
 impl RawPendingIncomingTask {
@@ -157,7 +157,7 @@ impl RawPendingIncomingTask {
 
     async fn accept_from_datagram(
         datagram: Bytes,
-        pkt_buf: PacketBuffer,
+        pkt_buf: Arc<PacketBuffer>,
     ) -> Result<RawIncomingTask, IncomingError> {
         let cmd = Command::read_from(&mut datagram.as_ref())
             .await

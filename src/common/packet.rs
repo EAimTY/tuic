@@ -22,7 +22,7 @@ pub struct Packet<S> {
     frag_total: u8,
     addr: Option<Address>,
     src: Option<(RecvStream, u16)>,
-    pkt_buf: Option<PacketBuffer>,
+    pkt_buf: Option<Arc<PacketBuffer>>,
     inner: Option<Bytes>,
     _state: S,
 }
@@ -58,7 +58,7 @@ impl Packet<NeedAssembly> {
         frag_total: u8,
         frag_id: u8,
         addr: Option<Address>,
-        pkt_buf: PacketBuffer,
+        pkt_buf: Arc<PacketBuffer>,
         pkt: Bytes,
     ) -> Self {
         Self {
@@ -91,12 +91,11 @@ impl Packet<Ready> {
     }
 }
 
-#[derive(Clone, Debug)]
-pub(crate) struct PacketBuffer(Arc<Mutex<HashMap<PacketBufferKey, PacketBufferValue>>>);
+pub(crate) struct PacketBuffer(Mutex<HashMap<PacketBufferKey, PacketBufferValue>>);
 
 impl PacketBuffer {
     pub(crate) fn new() -> Self {
-        Self(Arc::new(Mutex::new(HashMap::new())))
+        Self(Mutex::new(HashMap::new()))
     }
 
     pub(crate) fn insert(
@@ -187,18 +186,21 @@ impl PacketBuffer {
         }
     }
 
-    pub(crate) fn get_gc_handler(&self) -> PacketBufferGcHandle {
-        PacketBufferGcHandle(self.clone())
-    }
-
     fn collect_garbage(&self, timeout: Duration) {
         self.0.lock().retain(|_, v| v.c_time.elapsed() < timeout);
     }
+
+    pub(crate) fn get_handler(self: Arc<Self>) -> PacketBufferHandle {
+        PacketBufferHandle(self.clone())
+    }
 }
 
-pub struct PacketBufferGcHandle(PacketBuffer);
+pub struct PacketBufferHandle(Arc<PacketBuffer>);
 
-impl PacketBufferGcHandle {
+impl PacketBufferHandle {
+    fn new(pkt_buf: Arc<PacketBuffer>) -> Self {
+        Self(pkt_buf)
+    }
     pub fn collect_garbage(&self, timeout: Duration) {
         self.0.collect_garbage(timeout)
     }
