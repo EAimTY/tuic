@@ -83,6 +83,8 @@ impl Config {
             }
 
             transport.max_idle_timeout(None);
+            transport.max_concurrent_bidi_streams(raw.relay.max_stream_count.into());
+            transport.max_concurrent_uni_streams(raw.relay.max_stream_count.into());
 
             config
         };
@@ -187,6 +189,9 @@ struct RawRelayConfig {
 
     #[serde(default = "default::max_udp_relay_packet_size")]
     max_udp_relay_packet_size: usize,
+
+    #[serde(default = "default::max_stream_count")]
+    max_stream_count: u32,
 }
 
 #[derive(Deserialize)]
@@ -227,6 +232,7 @@ impl Default for RawRelayConfig {
             reduce_rtt: default::reduce_rtt(),
             request_timeout: default::request_timeout(),
             max_udp_relay_packet_size: default::max_udp_relay_packet_size(),
+            max_stream_count: default::max_stream_count(),
         }
     }
 }
@@ -368,6 +374,13 @@ impl RawConfig {
             "LOG_LEVEL",
         );
 
+        opts.optopt(
+            "",
+            "max-stream-count",
+            "Maximum number of streams in each connection",
+            "MAX_STREAM_COUNT",
+        );
+
         opts.optflag("v", "version", "Print the version");
         opts.optflag("h", "help", "Print this help menu");
 
@@ -478,6 +491,10 @@ impl RawConfig {
         if let Some(size) = matches.opt_str("max-udp-relay-packet-size") {
             raw.relay.max_udp_relay_packet_size = size.parse()?;
         };
+
+        if let Some(max_stream_count) = matches.opt_str("max-stream-count") {
+            raw.relay.max_stream_count = max_stream_count.parse()?;
+        }
 
         if let Some(local_ip) = matches.opt_str("local-ip") {
             raw.local.ip = local_ip.parse()?;
@@ -591,6 +608,10 @@ mod default {
 
     pub(super) const fn log_level() -> LevelFilter {
         LevelFilter::Info
+    }
+
+    pub(super) const fn max_stream_count() -> u32 {
+        100
     }
 }
 
