@@ -72,6 +72,8 @@ impl Config {
 
             transport
                 .max_idle_timeout(Some(IdleTimeout::from(VarInt::from_u32(raw.max_idle_time))));
+            transport.max_concurrent_bidi_streams(raw.max_stream_count.into());
+            transport.max_concurrent_uni_streams(raw.max_stream_count.into());
 
             config
         };
@@ -130,6 +132,9 @@ struct RawConfig {
 
     #[serde(default = "default::log_level")]
     log_level: LevelFilter,
+
+    #[serde(default = "default::max_stream_count")]
+    max_stream_count: u32,
 }
 
 impl Default for RawConfig {
@@ -146,6 +151,7 @@ impl Default for RawConfig {
             alpn: default::alpn(),
             max_udp_relay_packet_size: default::max_udp_relay_packet_size(),
             log_level: default::log_level(),
+            max_stream_count: default::max_stream_count(),
         }
     }
 }
@@ -231,6 +237,13 @@ impl RawConfig {
             "log-level",
             r#"Set the log level. Available: "off", "error", "warn", "info", "debug", "trace". Default: "info""#,
             "LOG_LEVEL",
+        );
+
+        opts.optopt(
+            "",
+            "max-stream-count",
+            "Maximum number of streams in each connection",
+            "MAX_STREAM_COUNT",
         );
 
         opts.optflag("v", "version", "Print the version");
@@ -325,6 +338,10 @@ impl RawConfig {
             raw.log_level = log_level.parse()?;
         };
 
+        if let Some(max_stream_count) = matches.opt_str("max-stream-count") {
+            raw.max_stream_count = max_stream_count.parse()?;
+        }
+
         Ok(raw)
     }
 
@@ -396,6 +413,10 @@ mod default {
 
     pub(super) const fn log_level() -> LevelFilter {
         LevelFilter::Info
+    }
+
+    pub(super) const fn max_stream_count() -> u32 {
+        100
     }
 }
 
