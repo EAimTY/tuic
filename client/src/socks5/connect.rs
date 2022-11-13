@@ -3,6 +3,7 @@ use socks5_proto::{Address, Reply};
 use socks5_server::{connection::connect::NeedReply, Connect};
 use std::io::Result;
 use tokio::{io, sync::mpsc::Sender};
+use crate::FAST;
 
 pub async fn handle(
     conn: Connect<NeedReply>,
@@ -16,7 +17,7 @@ pub async fn handle(
         Address::SocketAddress(addr) => RelayAddress::SocketAddress(addr),
     };
 
-    let (relay_req, relay_resp_rx) = RelayRequest::new_connect(target_addr);
+    let (relay_req, relay_resp_rx) = RelayRequest::new_connect(target_addr, unsafe{FAST});
     let _ = req_tx.send(relay_req).await;
 
     if let Ok(mut relay) = relay_resp_rx.await {
