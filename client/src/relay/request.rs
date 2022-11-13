@@ -50,7 +50,7 @@ async fn process_request(
         drop(lock);
 
         match req {
-            Request::Connect { addr, tx } => conn.clone().handle_connect(addr, tx).await,
+            Request::Connect { addr, tx, fast } => conn.clone().handle_connect(addr, tx, fast).await,
             Request::Associate {
                 assoc_id,
                 mut pkt_send_rx,
@@ -80,6 +80,7 @@ pub enum Request {
     Connect {
         addr: Address,
         tx: ConnectResponseSender,
+        fast: bool,
     },
     Associate {
         assoc_id: u32,
@@ -96,9 +97,9 @@ type AssociateRecvPacketSender = MpscSender<(Bytes, Address)>;
 type AssociateRecvPacketReceiver = MpscReceiver<(Bytes, Address)>;
 
 impl Request {
-    pub fn new_connect(addr: Address) -> (Self, ConnectResponseReceiver) {
+    pub fn new_connect(addr: Address, fast: bool) -> (Self, ConnectResponseReceiver) {
         let (tx, rx) = oneshot::channel();
-        (Request::Connect { addr, tx }, rx)
+        (Request::Connect { addr, tx, fast }, rx)
     }
 
     pub fn new_associate() -> (Self, AssociateSendPacketSender, AssociateRecvPacketReceiver) {
@@ -121,7 +122,7 @@ impl Request {
 impl Display for Request {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
-            Request::Connect { addr, .. } => write!(f, "[connect] [{addr}]"),
+            Request::Connect { addr, fast, .. } => write!(f, "[{}] [{addr}]", if *fast {"connect2"} else {"connect"}),
             Request::Associate { assoc_id, .. } => write!(f, "[associate] [{assoc_id}]"),
         }
     }
