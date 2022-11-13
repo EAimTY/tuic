@@ -36,8 +36,6 @@ There are six types of commands:
 - `0x04` - `Heartbeat` - used to keep a QUIC connection alive
 - `0xff` - `Response` - used to respond to a `Command` (currently only used for replying `Connect`)
 
-- `0xa0` - `Connect0r` - used to request a client-to-server TCP relay(0-rtt)
-
 ### Command Type Specific Data
 
 #### `Authenticate`
