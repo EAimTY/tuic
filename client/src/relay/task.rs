@@ -19,17 +19,16 @@ impl Connection {
                         stream.finish().await?;
                         return Err(err);
                     }
+                };
 
-                } else {
+                if let TuicCommand::Response(true) = resp {
                     Ok(Some(stream))
+                } else {
+                    stream.finish().await?;
+                    Ok(None)
                 }
-            };
-
-            if let TuicCommand::Response(true) = resp {
-                Ok(Some(stream))
             } else {
-                stream.finish().await?;
-                Ok(None)
+                Ok(Some(stream))
             }
         }
 
