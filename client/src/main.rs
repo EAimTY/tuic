@@ -6,6 +6,8 @@ mod config;
 mod relay;
 mod socks5;
 
+static mut FAST: bool = false;
+
 #[tokio::main]
 async fn main() {
     let args = env::args_os();
