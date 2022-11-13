@@ -29,6 +29,7 @@ pub enum Command {
     },
     Connect {
         addr: Address,
+        fast: bool,
     },
     Packet {
         assoc_id: u32,
@@ -45,6 +46,7 @@ impl Command {
     const TYPE_RESPONSE: u8 = 0xff;
     const TYPE_AUTHENTICATE: u8 = 0x00;
     const TYPE_CONNECT: u8 = 0x01;
+    const TYPE_FAST_CONNECT: u8 = 0xf1;
     const TYPE_PACKET: u8 = 0x02;
     const TYPE_DISSOCIATE: u8 = 0x03;
     const TYPE_HEARTBEAT: u8 = 0x04;
@@ -60,8 +62,8 @@ impl Command {
         Self::Authenticate { digest }
     }
 
-    pub fn new_connect(addr: Address) -> Self {
-        Self::Connect { addr }
+    pub fn new_connect(addr: Address, fast: bool) -> Self {
+        Self::Connect { addr, fast }
     }
 
     pub fn new_packet(assoc_id: u32, len: u16, addr: Address) -> Self {
@@ -109,12 +111,19 @@ impl Command {
             Self::TYPE_AUTHENTICATE => {
                 let mut digest = [0; 32];
                 r.read_exact(&mut digest).await?;
-                Ok(Self::new_authenticate(digest))
+                Ok(Self::new_connect(addr, false))
+            }
+            Self::TYPE_FAST_CONNECT => {
+                let addr = Address::read_from(r).await?;
+                Ok(Self::new_connect(addr, true))
             }
             Self::TYPE_CONNECT => {
                 let addr = Address::read_from(r).await?;
-                Ok(Self::new_connect(addr))
+                Ok(Self::new_connect(addr, false))
             }
+            Self::TYPE_FAST_CONNECT => {
+                let addr = Address::read_from(r).await?;
+                Ok(Self::new_connect(addr, true))            }
             Self::TYPE_PACKET => {
                 let mut buf = [0; 6];
                 r.read_exact(&mut buf).await?;
@@ -163,8 +172,8 @@ impl Command {
                 buf.put_u8(Self::TYPE_AUTHENTICATE);
                 buf.put_slice(digest);
             }
-            Self::Connect { addr } => {
-                buf.put_u8(Self::TYPE_CONNECT);
+            Self::Connect { addr, fast } => {
+                buf.put_u8(if *fast {Self::TYPE_FAST_CONNECT} else {Self::TYPE_CONNECT});
                 addr.write_to_buf(buf);
             }
             Self::Packet {
@@ -191,7 +200,7 @@ impl Command {
         2 + match self {
             Self::Response(_) => 1,
             Self::Authenticate { .. } => 32,
-            Self::Connect { addr } => addr.serialized_len(),
+            Self::Connect { addr, .. } => addr.serialized_len(),
             Self::Packet { addr, .. } => 6 + addr.serialized_len(),
             Self::Dissociate { .. } => 4,
             Self::Heartbeat => 0,
