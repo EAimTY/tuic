@@ -91,15 +91,16 @@ impl Connection {
 
         if self.is_authenticated.clone().await {
             match cmd {
-                Command::Connect { addr } => {
+                Command::Connect { addr, fast } => {
                     let dst_addr = addr.to_string();
-                    log::info!("[{rmt_addr}] [connect] [{dst_addr}]");
+                    let method = if fast {"connect2"} else {"connect"};
+                    log::info!("[{rmt_addr}] [{method}] [{dst_addr}]");
 
-                    let res = task::connect(send, recv, addr).await;
+                    let res = task::connect(send, recv, addr, fast).await;
 
                     match res {
                         Ok(()) => {}
-                        Err(err) => log::warn!("[{rmt_addr}] [connect] [{dst_addr}] {err}"),
+                        Err(err) => log::warn!("[{rmt_addr}] [{method}] [{dst_addr}] {err}"),
                     }
 
                     Ok(())
