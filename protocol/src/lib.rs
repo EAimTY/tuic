@@ -111,11 +111,7 @@ impl Command {
             Self::TYPE_AUTHENTICATE => {
                 let mut digest = [0; 32];
                 r.read_exact(&mut digest).await?;
-                Ok(Self::new_connect(addr, false))
-            }
-            Self::TYPE_FAST_CONNECT => {
-                let addr = Address::read_from(r).await?;
-                Ok(Self::new_connect(addr, true))
+                Ok(Self::new_authenticate(digest))
             }
             Self::TYPE_CONNECT => {
                 let addr = Address::read_from(r).await?;
@@ -123,7 +119,8 @@ impl Command {
             }
             Self::TYPE_FAST_CONNECT => {
                 let addr = Address::read_from(r).await?;
-                Ok(Self::new_connect(addr, true))            }
+                Ok(Self::new_connect(addr, true))
+            }
             Self::TYPE_PACKET => {
                 let mut buf = [0; 6];
                 r.read_exact(&mut buf).await?;
