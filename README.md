@@ -6,7 +6,7 @@ Delicately-TUICed high-performance proxy built on top of the [QUIC](https://en.w
 
 ## Features
 
-- 1-RTT TCP relaying
+- 1-RTT TCP relaying/0-RTT TCP relaying(fast_connect)
 - 0-RTT UDP relaying with [Full Cone NAT](https://www.rfc-editor.org/rfc/rfc3489#section-5)
 - Two UDP relay modes: `native` (native UDP mechanisms) and `quic` (100% delivery rate)
 - Bidirectional user-space congestion control (BBR, New Reno and CUBIC)
@@ -51,43 +51,26 @@ You can find pre-compiled binaries in the latest [releases](https://github.com/E
 tuic-server
 
 Options:
-    -c, --config CONFIG_FILE
-                        Read configuration from a file. Note that command line
-                        arguments will override the configuration file
-        --port SERVER_PORT
-                        Set the server listening port
-        --token TOKEN   Set the token for TUIC authentication. This option can
-                        be used multiple times to set multiple tokens.
-        --certificate CERTIFICATE
-                        Set the X.509 certificate. This must be an end-entity
-                        certificate
-        --private-key PRIVATE_KEY
-                        Set the certificate private key
-        --ip IP         Set the server listening IP. Default: 0.0.0.0
-        --congestion-controller CONGESTION_CONTROLLER
-                        Set the congestion control algorithm. Available:
-                        "cubic", "new_reno", "bbr". Default: "cubic"
-        --max-idle-time MAX_IDLE_TIME
-                        Set the maximum idle time for QUIC connections, in
-                        milliseconds. Default: 15000
-        --authentication-timeout AUTHENTICATION_TIMEOUT
-                        Set the maximum time allowed between a QUIC connection
-                        established and the TUIC authentication packet
-                        received, in milliseconds. Default: 1000
-        --alpn ALPN_PROTOCOL
-                        Set ALPN protocols that the server accepts. This
-                        option can be used multiple times to set multiple ALPN
-                        protocols. If not set, the server will not check ALPN
-                        at all
-        --max-udp-relay-packet-size MAX_UDP_RELAY_PACKET_SIZE
-                        UDP relay mode QUIC can transmit UDP packets larger
-                        than the MTU. Set this to a higher value allows
-                        outbound to receive larger UDP packet. Default: 1500
-        --log-level LOG_LEVEL
-                        Set the log level. Available: "off", "error", "warn",
-                        "info", "debug", "trace". Default: "info"
-    -v, --version       Print the version
-    -h, --help          Print this help menu
+-c, --config CONFIG_FILE                                                                             Read configuration from a file. Note that command line                           arguments will override the configuration file                   --server SERVER Set the server address. This address must be included
+                        in the certificate                                               --server-port SERVER_PORT
+                        Set the server port                                              --token TOKEN   Set the token for TUIC authentication                            --server-ip SERVER_IP                                                                            Set the server IP, for overwriting the DNS lookup                                result of the server address set in option 'server'              --certificate CERTIFICATE                                                                        Set custom X.509 certificate alongside native CA roots                           for the QUIC handshake. This option can be used                                  multiple times to set multiple certificates                      --insecure      Skip certificate verification
+        --udp-relay-mode UDP_MODE                                                                        Set the UDP relay mode. Available: "native", "quic".
+                        Default: "native"                                                --congestion-controller CONGESTION_CONTROLLER
+                        Set the congestion control algorithm. Available:                                 "cubic", "new_reno", "bbr". Default: "cubic"
+        --heartbeat-interval HEARTBEAT_INTERVAL                                                          Set the heartbeat interval to ensures that the QUIC                              connection is not closed when there are relay tasks                              but no data transfer, in milliseconds. This value                                needs to be smaller than the maximum idle time set at                            the server side. Default: 10000                                  --alpn ALPN_PROTOCOL
+                        Set ALPN protocols included in the TLS client hello.                             This option can be used multiple times to set multiple                           ALPN protocols. If not set, no ALPN extension will be                            sent                                                             --disable-sni   Not sending the Server Name Indication (SNI) extension
+                        during the client TLS handshake
+        --reduce-rtt    Enable 0-RTT QUIC handshake
+        --fast-connect  Enable 0-RTT connect
+        --request-timeout REQUEST_TIMEOUT                                                                Set the timeout for negotiating tasks between client
+                        and the server, in milliseconds. Default: 8000                   --max-udp-relay-packet-size MAX_UDP_RELAY_PACKET_SIZE                                            UDP relay mode QUIC can transmit UDP packets larger                              than the MTU. Set this to a higher value allows                                  inbound to receive larger UDP packet. Default: 1500              --local-port LOCAL_PORT
+                        Set the listening port for the local socks5 server               --local-ip LOCAL_IP
+                        Set the listening IP for the local socks5 server. Note                           that the sock5 server socket will be a dual-stack                                socket if it is IPv6. Default: "127.0.0.1"
+        --local-username LOCAL_USERNAME                                                                  Set the username for the local socks5 server
+                        authentication                                                   --local-password LOCAL_PASSWORD                                                                  Set the password for the local socks5 server
+                        authentication                                                   --log-level LOG_LEVEL
+                        Set the log level. Available: "off", "error", "warn",                            "info", "debug", "trace". Default: "info"
+    -d, --daemon        Daemonize                                                    -v, --version       Print the version                                            -h, --help          Print this help menu
 ```
 
 The configuration file is in JSON format:
@@ -154,6 +137,7 @@ Options:
         --disable-sni   Not sending the Server Name Indication (SNI) extension
                         during the client TLS handshake
         --reduce-rtt    Enable 0-RTT QUIC handshake
+        --fast-connect  Enable 0-RTT connect
         --request-timeout REQUEST_TIMEOUT
                         Set the timeout for negotiating tasks between client
                         and the server, in milliseconds. Default: 8000
@@ -197,6 +181,7 @@ The configuration file is in JSON format:
         "alpn": ["h3"],
         "disable_sni": false,
         "reduce_rtt": false,
+        "fast_connect": false,
         "request_timeout": 8000,
         "max_udp_relay_packet_size": 1500
     },
