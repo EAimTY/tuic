@@ -22,6 +22,7 @@ pub async fn connect(
     mut send: SendStream,
     recv: RecvStream,
     addr: Address,
+    fast: bool,
 ) -> Result<(), TaskError> {
     let mut target = None;
 
@@ -40,13 +41,17 @@ pub async fn connect(
     }
 
     if let Some(mut target) = target {
-        let resp = Command::new_response(true);
-        resp.write_to(&mut send).await?;
+        if !fast {
+            let resp = Command::new_response(true);
+            resp.write_to(&mut send).await?;
+        }
         let mut tunnel = BiStream(send, recv);
         io::copy_bidirectional(&mut target, &mut tunnel).await?;
     } else {
-        let resp = Command::new_response(false);
-        resp.write_to(&mut send).await?;
+        if !fast {
+            let resp = Command::new_response(false);
+            resp.write_to(&mut send).await?;
+        }
         send.finish().await?;
     };
 
