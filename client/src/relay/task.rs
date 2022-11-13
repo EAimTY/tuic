@@ -5,18 +5,23 @@ use tokio::{io::AsyncWriteExt, sync::oneshot::Sender as OneshotSender};
 use tuic_protocol::{Address as TuicAddress, Command as TuicCommand};
 
 impl Connection {
-    pub async fn handle_connect(self, addr: Address, tx: OneshotSender<BiStream>) {
-        async fn negotiate_connect(conn: Connection, addr: Address) -> Result<Option<BiStream>> {
-            let cmd = TuicCommand::new_connect(TuicAddress::from(addr));
+    pub async fn handle_connect(self, addr: Address, tx: OneshotSender<BiStream>, fast: bool) {
+        async fn negotiate_connect(conn: Connection, addr: Address, fast: bool) -> Result<Option<BiStream>> {
+            let cmd = TuicCommand::new_connect(TuicAddress::from(addr), fast);
 
             let mut stream = conn.get_bi_stream().await?;
             cmd.write_to(&mut stream).await?;
 
-            let resp = match TuicCommand::read_from(&mut stream).await {
-                Ok(resp) => resp,
-                Err(err) => {
-                    stream.finish().await?;
-                    return Err(err);
+            if !fast {
+                let resp = match TuicCommand::read_from(&mut stream).await {
+                    Ok(resp) => resp,
+                    Err(err) => {
+                        stream.finish().await?;
+                        return Err(err);
+                    }
+
+                } else {
+                    Ok(Some(stream))
                 }
             };
 
@@ -29,14 +34,15 @@ impl Connection {
         }
 
         let display_addr = format!("{addr}");
+        let method = if fast {"connect2"} else {"connect"};
 
-        match negotiate_connect(self, addr).await {
+        match negotiate_connect(self, addr, fast).await {
             Ok(Some(stream)) => {
-                log::debug!("[relay] [task] [connect] [{display_addr}] [success]");
+                log::debug!("[relay] [task] [{method}] [{display_addr}] [success]");
                 let _ = tx.send(stream);
             }
-            Ok(None) => log::debug!("[relay] [task] [connect] [{display_addr}] [fail]"),
-            Err(err) => log::warn!("[relay] [task] [connect] [{display_addr}] {err}"),
+            Ok(None) => log::debug!("[relay] [task] [{method}] [{display_addr}] [fail]"),
+            Err(err) => log::warn!("[relay] [task] [{method}] [{display_addr}] {err}"),
         }
     }
 
