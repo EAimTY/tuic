@@ -17,6 +17,12 @@ jobs:
             target: x86_64-unknown-linux-gnu
             cross: false
             file-ext:
+          # mips64-openwrt-linux-musl
+          - arch-name: mips64-openwrt-linux-musl
+            os: ubuntu-latest
+            target: mips64-openwrt-linux-musl
+            cross: false
+            file-ext:
           # x86_64-linux-musl
           - arch-name: x86_64-linux-musl
             os: ubuntu-latest
