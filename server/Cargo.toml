@@ -30,3 +30,4 @@ serde_json = { version = "1.0.*", features = ["std"], default-features = false }
 socket2 = "0.4.*"
 thiserror = "1.0.*"
 tokio = { version = "1.20.*", features = ["io-util", "macros", "net", "parking_lot", "rt-multi-thread", "sync", "time"] }
+quinn-udp = "0.3.*"
