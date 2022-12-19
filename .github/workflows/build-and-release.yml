@@ -133,11 +133,10 @@ jobs:
         uses: "WyriHaximus/github-action-get-previous-tag@v1"
 
       - name: Install toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          target: ${{ matrix.target }}
-          override: true
+        run: |
+          rustup toolchain install stable
+          rustup override set stable
+          rustup target add --toolchain ${{ matrix.target }}
 
       - name: Build server
         uses: actions-rs/cargo@v1
