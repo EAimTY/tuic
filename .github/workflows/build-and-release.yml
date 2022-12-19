@@ -136,7 +136,7 @@ jobs:
         run: |
           rustup toolchain install stable
           rustup override set stable
-          rustup target add --toolchain ${{ matrix.target }}
+          rustup target add --toolchain stable ${{ matrix.target }}
 
       - name: Build server
         uses: actions-rs/cargo@v1
