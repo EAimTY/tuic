@@ -34,4 +34,5 @@ socks5-proto = "0.3.*"
 socks5-server = "0.8.*"
 thiserror = "1.0.*"
 tokio = { version = "1.20.*", features = ["io-util", "macros", "net", "parking_lot", "rt-multi-thread", "sync", "time"] }
+quinn-udp = "0.3.*"
 webpki = { version = "0.22.*", default-features = false }
