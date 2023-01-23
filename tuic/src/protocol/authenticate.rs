@@ -1,3 +1,5 @@
+use super::Command;
+
 // +--------+-----------+
 // | METHOD |    OPT    |
 // +--------+-----------+
@@ -15,23 +17,28 @@ impl<A> Authenticate<A>
 where
     A: Method,
 {
-    const CMD_TYPE: u8 = 0x00;
+    pub(super) const TYPE_CODE: u8 = 0x00;
 
     pub fn new(method: A) -> Self {
         Self { method }
     }
+}
 
-    pub const fn cmd_type() -> u8 {
-        Self::CMD_TYPE
+impl<A> Command for Authenticate<A>
+where
+    A: Method,
+{
+    fn type_code() -> u8 {
+        Self::TYPE_CODE
     }
 
-    pub fn len(&self) -> usize {
+    fn len(&self) -> usize {
         1 + self.method.len()
     }
 }
 
 pub trait Method {
-    fn auth_type(&self) -> u8;
+    fn type_code(&self) -> u8;
     fn len(&self) -> usize;
 }
 
@@ -39,7 +46,7 @@ pub trait Method {
 pub struct None;
 
 impl None {
-    const AUTH_TYPE: u8 = 0x00;
+    const TYPE_CODE: u8 = 0x00;
 
     pub fn new() -> Self {
         Self
@@ -47,8 +54,8 @@ impl None {
 }
 
 impl Method for None {
-    fn auth_type(&self) -> u8 {
-        Self::AUTH_TYPE
+    fn type_code(&self) -> u8 {
+        Self::TYPE_CODE
     }
 
     fn len(&self) -> usize {
@@ -62,7 +69,7 @@ pub struct Blake3 {
 }
 
 impl Blake3 {
-    const AUTH_TYPE: u8 = 0x01;
+    const TYPE_CODE: u8 = 0x01;
 
     pub fn new(token: [u8; 32]) -> Self {
         Self { token }
@@ -70,8 +77,8 @@ impl Blake3 {
 }
 
 impl Method for Blake3 {
-    fn auth_type(&self) -> u8 {
-        Self::AUTH_TYPE
+    fn type_code(&self) -> u8 {
+        Self::TYPE_CODE
     }
 
     fn len(&self) -> usize {

@@ -1,4 +1,4 @@
-use super::Address;
+use super::{Address, Command};
 
 // +----------+
 // |   ADDR   |
@@ -11,17 +11,19 @@ pub struct Connect {
 }
 
 impl Connect {
-    const CMD_TYPE: u8 = 0x01;
+    pub(super) const TYPE_CODE: u8 = 0x01;
 
     pub fn new(addr: Address) -> Self {
         Self { addr }
     }
+}
 
-    pub const fn cmd_type() -> u8 {
-        Self::CMD_TYPE
+impl Command for Connect {
+    fn type_code() -> u8 {
+        Self::TYPE_CODE
     }
 
-    pub fn len(&self) -> usize {
+    fn len(&self) -> usize {
         self.addr.len()
     }
 }

@@ -15,18 +15,18 @@ pub use self::{
 
 pub const VERSION: u8 = 0x05;
 
-/// Command
+/// Header
 ///
 /// ```plain
 /// +-----+----------+----------+
-/// | VER | CMD_TYPE |   OPT    |
+/// | VER |   TYPE   |   OPT    |
 /// +-----+----------+----------+
 /// |  1  |    1     | Variable |
 /// +-----+----------+----------+
 /// ```
 #[non_exhaustive]
 #[derive(Clone, Debug)]
-pub enum Command<A>
+pub enum Header<A>
 where
     A: AuthenticationMethod,
 {
@@ -37,17 +37,23 @@ where
     Heartbeat(Heartbeat),
 }
 
-impl<A> Command<A>
+impl<A> Header<A>
 where
     A: AuthenticationMethod,
 {
-    pub fn cmd_type(&self) -> u8 {
+    pub const TYPE_CODE_AUTHENTICATE: u8 = Authenticate::<A>::TYPE_CODE;
+    pub const TYPE_CODE_CONNECT: u8 = Connect::TYPE_CODE;
+    pub const TYPE_CODE_PACKET: u8 = Packet::TYPE_CODE;
+    pub const TYPE_CODE_DISSOCIATE: u8 = Dissociate::TYPE_CODE;
+    pub const TYPE_CODE_HEARTBEAT: u8 = Heartbeat::TYPE_CODE;
+
+    pub fn type_code(&self) -> u8 {
         match self {
-            Self::Authenticate(_) => Authenticate::<A>::cmd_type(),
-            Self::Connect(_) => Connect::cmd_type(),
-            Self::Packet(_) => Packet::cmd_type(),
-            Self::Dissociate(_) => Dissociate::cmd_type(),
-            Self::Heartbeat(_) => Heartbeat::cmd_type(),
+            Self::Authenticate(_) => Authenticate::<A>::type_code(),
+            Self::Connect(_) => Connect::type_code(),
+            Self::Packet(_) => Packet::type_code(),
+            Self::Dissociate(_) => Dissociate::type_code(),
+            Self::Heartbeat(_) => Heartbeat::type_code(),
         }
     }
 
@@ -60,4 +66,9 @@ where
             Self::Heartbeat(heartbeat) => heartbeat.len(),
         }
     }
+}
+
+pub trait Command {
+    fn type_code() -> u8;
+    fn len(&self) -> usize;
 }

@@ -24,9 +24,19 @@ pub enum Address {
 }
 
 impl Address {
-    pub const TYPE_DOMAIN: u8 = 0x00;
-    pub const TYPE_IPV4: u8 = 0x01;
-    pub const TYPE_IPV6: u8 = 0x02;
+    pub const TYPE_CODE_DOMAIN: u8 = 0x00;
+    pub const TYPE_CODE_IPV4: u8 = 0x01;
+    pub const TYPE_CODE_IPV6: u8 = 0x02;
+
+    pub fn type_code(&self) -> u8 {
+        match self {
+            Self::DomainAddress(_, _) => Self::TYPE_CODE_DOMAIN,
+            Self::SocketAddress(addr) => match addr {
+                SocketAddr::V4(_) => Self::TYPE_CODE_IPV4,
+                SocketAddr::V6(_) => Self::TYPE_CODE_IPV6,
+            },
+        }
+    }
 
     pub fn len(&self) -> usize {
         1 + match self {

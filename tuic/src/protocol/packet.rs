@@ -1,4 +1,4 @@
-use super::Address;
+use super::{Address, Command};
 
 // +----------+--------+------------+---------+-----+----------+
 // | ASSOC_ID | PKT_ID | FRAG_TOTAL | FRAG_ID | LEN |   ADDR   |
@@ -16,7 +16,7 @@ pub struct Packet {
 }
 
 impl Packet {
-    const CMD_TYPE: u8 = 0x02;
+    pub(super) const TYPE_CODE: u8 = 0x02;
 
     pub fn new(
         assoc_id: u16,
@@ -35,12 +35,14 @@ impl Packet {
             addr,
         }
     }
+}
 
-    pub const fn cmd_type() -> u8 {
-        Self::CMD_TYPE
+impl Command for Packet {
+    fn type_code() -> u8 {
+        Self::TYPE_CODE
     }
 
-    pub fn len(&self) -> usize {
+    fn len(&self) -> usize {
         2 + 2 + 1 + 1 + 2 + self.addr.as_ref().map_or(0, |addr| addr.len())
     }
 }
