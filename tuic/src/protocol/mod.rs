@@ -1,5 +1,3 @@
-use self::authenticate::Method as AuthenticationMethod;
-
 mod address;
 mod connect;
 mod dissociate;
@@ -26,22 +24,16 @@ pub const VERSION: u8 = 0x05;
 /// ```
 #[non_exhaustive]
 #[derive(Clone, Debug)]
-pub enum Header<A>
-where
-    A: AuthenticationMethod,
-{
-    Authenticate(Authenticate<A>),
+pub enum Header {
+    Authenticate(Authenticate),
     Connect(Connect),
     Packet(Packet),
     Dissociate(Dissociate),
     Heartbeat(Heartbeat),
 }
 
-impl<A> Header<A>
-where
-    A: AuthenticationMethod,
-{
-    pub const TYPE_CODE_AUTHENTICATE: u8 = Authenticate::<A>::TYPE_CODE;
+impl Header {
+    pub const TYPE_CODE_AUTHENTICATE: u8 = Authenticate::TYPE_CODE;
     pub const TYPE_CODE_CONNECT: u8 = Connect::TYPE_CODE;
     pub const TYPE_CODE_PACKET: u8 = Packet::TYPE_CODE;
     pub const TYPE_CODE_DISSOCIATE: u8 = Dissociate::TYPE_CODE;
@@ -49,7 +41,7 @@ where
 
     pub fn type_code(&self) -> u8 {
         match self {
-            Self::Authenticate(_) => Authenticate::<A>::type_code(),
+            Self::Authenticate(_) => Authenticate::type_code(),
             Self::Connect(_) => Connect::type_code(),
             Self::Packet(_) => Packet::type_code(),
             Self::Dissociate(_) => Dissociate::type_code(),
