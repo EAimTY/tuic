@@ -12,7 +12,7 @@ pub struct Packet {
     pub frag_total: u8,
     pub frag_id: u8,
     pub len: u16,
-    pub addr: Option<Address>,
+    pub addr: Address,
 }
 
 impl Packet {
@@ -24,7 +24,7 @@ impl Packet {
         frag_total: u8,
         frag_id: u8,
         len: u16,
-        addr: Option<Address>,
+        addr: Address,
     ) -> Self {
         Self {
             assoc_id,
@@ -43,6 +43,6 @@ impl Command for Packet {
     }
 
     fn len(&self) -> usize {
-        2 + 2 + 1 + 1 + 2 + self.addr.as_ref().map_or(0, |addr| addr.len())
+        2 + 2 + 1 + 1 + 2 + self.addr.len()
     }
 }
