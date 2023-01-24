@@ -1,10 +1,9 @@
 mod address;
+mod authenticate;
 mod connect;
 mod dissociate;
 mod heartbeat;
 mod packet;
-
-pub mod authenticate;
 
 pub use self::{
     address::Address, authenticate::Authenticate, connect::Connect, dissociate::Dissociate,

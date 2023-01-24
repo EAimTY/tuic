@@ -1,20 +1,32 @@
-use super::TaskRegister;
+use super::side::{self, Side, SideMarker};
 use crate::protocol::{Dissociate as DissociateHeader, Header};
 
-pub struct Dissociate {
-    header: Header,
-    _task_reg: TaskRegister,
+pub struct Dissociate<M>
+where
+    M: SideMarker,
+{
+    inner: Side<Tx, Rx>,
+    _marker: M,
 }
 
-impl Dissociate {
-    pub(super) fn new(task_reg: TaskRegister, assoc_id: u16) -> Self {
+pub struct Tx {
+    header: Header,
+}
+
+pub struct Rx;
+
+impl Dissociate<side::Tx> {
+    pub(super) fn new(assoc_id: u16) -> Self {
         Self {
-            header: Header::Dissociate(DissociateHeader::new(assoc_id)),
-            _task_reg: task_reg,
+            inner: Side::Tx(Tx {
+                header: Header::Dissociate(DissociateHeader::new(assoc_id)),
+            }),
+            _marker: side::Tx,
         }
     }
 
     pub fn header(&self) -> &Header {
-        &self.header
+        let Side::Tx(tx) = &self.inner else { unreachable!() };
+        &tx.header
     }
 }

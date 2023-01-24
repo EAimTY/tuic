@@ -1,17 +1,32 @@
+use super::side::{self, Side, SideMarker};
 use crate::protocol::{Header, Heartbeat as HeartbeatHeader};
 
-pub struct Heartbeat {
+pub struct Heartbeat<M>
+where
+    M: SideMarker,
+{
+    inner: Side<Tx, Rx>,
+    _marker: M,
+}
+
+pub struct Tx {
     header: Header,
 }
 
-impl Heartbeat {
+pub struct Rx;
+
+impl Heartbeat<side::Tx> {
     pub(super) fn new() -> Self {
         Self {
-            header: Header::Heartbeat(HeartbeatHeader::new()),
+            inner: Side::Tx(Tx {
+                header: Header::Heartbeat(HeartbeatHeader::new()),
+            }),
+            _marker: side::Tx,
         }
     }
 
     pub fn header(&self) -> &Header {
-        &self.header
+        let Side::Tx(tx) = &self.inner else { unreachable!() };
+        &tx.header
     }
 }

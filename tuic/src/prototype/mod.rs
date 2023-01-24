@@ -15,8 +15,11 @@ mod heartbeat;
 mod packet;
 
 pub use self::{
-    authenticate::Authenticate, connect::Connect, dissociate::Dissociate, heartbeat::Heartbeat,
-    packet::Packet,
+    authenticate::Authenticate,
+    connect::Connect,
+    dissociate::Dissociate,
+    heartbeat::Heartbeat,
+    packet::{Fragment, Packet},
 };
 
 pub struct Connection {
@@ -34,31 +37,28 @@ impl Connection {
         }
     }
 
-    pub fn authenticate(&self, token: [u8; 8]) -> Authenticate {
+    pub fn send_authenticate(&self, token: [u8; 8]) -> Authenticate<side::Tx> {
         Authenticate::new(self.local_active_task_count.reg(), token)
     }
 
-    pub fn connect(&self, addr: Address) -> Connect {
-        Connect::new(self.local_active_task_count.reg(), addr)
+    pub fn send_connect(&self, addr: Address) -> Connect<side::Tx> {
+        Connect::<side::Tx>::new(self.local_active_task_count.reg(), addr)
     }
 
-    pub fn packet<'a>(
+    pub fn send_packet(
         &self,
         assoc_id: u16,
         addr: Address,
-        payload: &'a [u8],
-        frag_len: usize,
-    ) -> Packet<'a> {
-        self.udp_sessions
-            .lock()
-            .send(assoc_id, addr, payload, frag_len)
+        max_pkt_size: usize,
+    ) -> Packet<side::Tx> {
+        self.udp_sessions.lock().send(assoc_id, addr, max_pkt_size)
     }
 
-    pub fn dissociate(&self, assoc_id: u16) -> Dissociate {
+    pub fn send_dissociate(&self, assoc_id: u16) -> Dissociate<side::Tx> {
         self.udp_sessions.lock().dissociate(assoc_id)
     }
 
-    pub fn heartbeat(&self) -> Heartbeat {
+    pub fn send_heartbeat(&self) -> Heartbeat<side::Tx> {
         Heartbeat::new()
     }
 
@@ -98,22 +98,16 @@ impl UdpSessions {
         }
     }
 
-    fn send<'a>(
-        &mut self,
-        assoc_id: u16,
-        addr: Address,
-        payload: &'a [u8],
-        frag_len: usize,
-    ) -> Packet<'a> {
+    fn send<'a>(&mut self, assoc_id: u16, addr: Address, max_pkt_size: usize) -> Packet<side::Tx> {
         self.sessions
             .entry(assoc_id)
             .or_insert_with(|| UdpSession::new(self.local_active_task_count.reg()))
-            .send(assoc_id, addr, payload, frag_len)
+            .send(assoc_id, addr, max_pkt_size)
     }
 
-    fn dissociate(&mut self, assoc_id: u16) -> Dissociate {
+    fn dissociate(&mut self, assoc_id: u16) -> Dissociate<side::Tx> {
         self.sessions.remove(&assoc_id);
-        Dissociate::new(self.local_active_task_count.reg(), assoc_id)
+        Dissociate::new(assoc_id)
     }
 }
 
@@ -130,19 +124,26 @@ impl UdpSession {
         }
     }
 
-    fn send<'a>(
-        &self,
-        assoc_id: u16,
-        addr: Address,
-        payload: &'a [u8],
-        frag_len: usize,
-    ) -> Packet<'a> {
+    fn send<'a>(&self, assoc_id: u16, addr: Address, max_pkt_size: usize) -> Packet<side::Tx> {
         Packet::new(
             assoc_id,
             self.next_pkt_id.fetch_add(1, Ordering::AcqRel),
             addr,
-            payload,
-            frag_len,
+            max_pkt_size,
         )
+    }
+}
+
+pub mod side {
+    pub struct Tx;
+    pub struct Rx;
+
+    pub trait SideMarker {}
+    impl SideMarker for Tx {}
+    impl SideMarker for Rx {}
+
+    pub(super) enum Side<T, R> {
+        Tx(T),
+        Rx(R),
     }
 }

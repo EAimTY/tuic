@@ -1,23 +1,60 @@
+use super::side::{self, Side, SideMarker};
 use crate::protocol::{Address, Header, Packet as PacketHeader};
 
-pub struct Packet<'a> {
+pub struct Packet<M>
+where
+    M: SideMarker,
+{
+    inner: Side<Tx, Rx>,
+    _marker: M,
+}
+
+pub struct Tx {
     assoc_id: u16,
     pkt_id: u16,
     addr: Address,
-    payload: &'a [u8],
+    max_pkt_size: usize,
+}
+
+pub struct Rx;
+
+impl Packet<side::Tx> {
+    pub(super) fn new(assoc_id: u16, pkt_id: u16, addr: Address, max_pkt_size: usize) -> Self {
+        Self {
+            inner: Side::Tx(Tx {
+                assoc_id,
+                pkt_id,
+                addr,
+                max_pkt_size,
+            }),
+            _marker: side::Tx,
+        }
+    }
+
+    pub fn into_fragments<'a>(self, payload: &'a [u8]) -> Fragment<'a> {
+        let Side::Tx(tx) = self.inner else { unreachable!() };
+        Fragment::new(tx.assoc_id, tx.pkt_id, tx.addr, tx.max_pkt_size, payload)
+    }
+}
+
+pub struct Fragment<'a> {
+    assoc_id: u16,
+    pkt_id: u16,
+    addr: Address,
     max_pkt_size: usize,
     frag_total: u8,
     next_frag_id: u8,
     next_frag_start: usize,
+    payload: &'a [u8],
 }
 
-impl<'a> Packet<'a> {
-    pub(super) fn new(
+impl<'a> Fragment<'a> {
+    fn new(
         assoc_id: u16,
         pkt_id: u16,
         addr: Address,
-        payload: &'a [u8],
         max_pkt_size: usize,
+        payload: &'a [u8],
     ) -> Self {
         let first_frag_size = max_pkt_size - PacketHeader::len_without_addr() - addr.len();
         let frag_size_addr_none =
@@ -33,16 +70,16 @@ impl<'a> Packet<'a> {
             assoc_id,
             pkt_id,
             addr,
-            payload,
             max_pkt_size,
             frag_total,
             next_frag_id: 0,
             next_frag_start: 0,
+            payload,
         }
     }
 }
 
-impl<'a> Iterator for Packet<'a> {
+impl<'a> Iterator for Fragment<'a> {
     type Item = (Header, &'a [u8]);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -72,7 +109,7 @@ impl<'a> Iterator for Packet<'a> {
     }
 }
 
-impl ExactSizeIterator for Packet<'_> {
+impl ExactSizeIterator for Fragment<'_> {
     fn len(&self) -> usize {
         self.frag_total as usize
     }
