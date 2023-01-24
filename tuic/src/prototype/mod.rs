@@ -1,8 +1,11 @@
 use crate::protocol::Address;
 use parking_lot::Mutex;
 use std::{
-    collections::{hash_map::Entry, HashMap},
-    sync::{Arc, Weak},
+    collections::HashMap,
+    sync::{
+        atomic::{AtomicU16, Ordering},
+        Arc, Weak,
+    },
 };
 
 mod authenticate;
@@ -102,14 +105,10 @@ impl UdpSessions {
         payload: &'a [u8],
         frag_len: usize,
     ) -> Packet<'a> {
-        match self.sessions.entry(assoc_id) {
-            Entry::Occupied(_) => {}
-            Entry::Vacant(entry) => {
-                entry.insert(UdpSession::new(self.local_active_task_count.reg()));
-            }
-        }
-
-        Packet::new(assoc_id, addr, payload, frag_len)
+        self.sessions
+            .entry(assoc_id)
+            .or_insert_with(|| UdpSession::new(self.local_active_task_count.reg()))
+            .send(assoc_id, addr, payload, frag_len)
     }
 
     fn dissociate(&mut self, assoc_id: u16) -> Dissociate {
@@ -119,13 +118,31 @@ impl UdpSessions {
 }
 
 struct UdpSession {
+    next_pkt_id: AtomicU16,
     _task_reg: TaskRegister,
 }
 
 impl UdpSession {
     fn new(task_reg: TaskRegister) -> Self {
         Self {
+            next_pkt_id: AtomicU16::new(0),
             _task_reg: task_reg,
         }
+    }
+
+    fn send<'a>(
+        &self,
+        assoc_id: u16,
+        addr: Address,
+        payload: &'a [u8],
+        frag_len: usize,
+    ) -> Packet<'a> {
+        Packet::new(
+            assoc_id,
+            self.next_pkt_id.fetch_add(1, Ordering::AcqRel),
+            addr,
+            payload,
+            frag_len,
+        )
     }
 }

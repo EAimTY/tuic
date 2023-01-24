@@ -35,6 +35,10 @@ impl Packet {
             addr,
         }
     }
+
+    pub const fn len_without_addr() -> usize {
+        2 + 2 + 1 + 1 + 2
+    }
 }
 
 impl Command for Packet {

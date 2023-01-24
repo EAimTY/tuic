@@ -1,5 +1,6 @@
 use std::{
     fmt::{Display, Formatter, Result as FmtResult},
+    mem,
     net::SocketAddr,
 };
 
@@ -56,6 +57,10 @@ impl Address {
         }
     }
 
+    pub fn take(&mut self) -> Self {
+        mem::take(self)
+    }
+
     pub fn is_none(&self) -> bool {
         matches!(self, Self::None)
     }
@@ -80,5 +85,11 @@ impl Display for Address {
             Self::DomainAddress(addr, port) => write!(f, "{addr}:{port}"),
             Self::SocketAddress(addr) => write!(f, "{addr}"),
         }
+    }
+}
+
+impl Default for Address {
+    fn default() -> Self {
+        Self::None
     }
 }

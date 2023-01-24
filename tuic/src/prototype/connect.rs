@@ -13,4 +13,8 @@ impl Connect {
             _task_reg: task_reg,
         }
     }
+
+    pub fn header(&self) -> &Header {
+        &self.header
+    }
 }

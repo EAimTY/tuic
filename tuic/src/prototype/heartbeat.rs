@@ -10,4 +10,8 @@ impl Heartbeat {
             header: Header::Heartbeat(HeartbeatHeader::new()),
         }
     }
+
+    pub fn header(&self) -> &Header {
+        &self.header
+    }
 }
