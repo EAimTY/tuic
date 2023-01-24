@@ -1,4 +1,4 @@
-use crate::protocol::Address;
+use crate::protocol::{Address, Connect as ConnectHeader};
 use parking_lot::Mutex;
 use std::{
     collections::HashMap,
@@ -43,6 +43,10 @@ impl Connection {
 
     pub fn send_connect(&self, addr: Address) -> Connect<side::Tx> {
         Connect::<side::Tx>::new(self.local_active_task_count.reg(), addr)
+    }
+
+    pub fn recv_connect(&self, header: ConnectHeader) -> Connect<side::Rx> {
+        Connect::<side::Rx>::new(header)
     }
 
     pub fn send_packet(

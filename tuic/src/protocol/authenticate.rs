@@ -31,3 +31,9 @@ impl Command for Authenticate {
         8
     }
 }
+
+impl From<Authenticate> for ([u8; 8],) {
+    fn from(auth: Authenticate) -> Self {
+        (auth.token,)
+    }
+}

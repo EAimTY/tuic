@@ -17,8 +17,8 @@ impl Dissociate {
         Self { assoc_id }
     }
 
-    pub fn assoc_id(&self) -> u16 {
-        self.assoc_id
+    pub fn assoc_id(&self) -> &u16 {
+        &self.assoc_id
     }
 }
 
@@ -29,5 +29,11 @@ impl Command for Dissociate {
 
     fn len(&self) -> usize {
         2
+    }
+}
+
+impl From<Dissociate> for (u16,) {
+    fn from(dissoc: Dissociate) -> Self {
+        (dissoc.assoc_id,)
     }
 }

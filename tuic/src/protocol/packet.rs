@@ -36,24 +36,24 @@ impl Packet {
         }
     }
 
-    pub fn assoc_id(&self) -> u16 {
-        self.assoc_id
+    pub fn assoc_id(&self) -> &u16 {
+        &self.assoc_id
     }
 
-    pub fn pkt_id(&self) -> u16 {
-        self.pkt_id
+    pub fn pkt_id(&self) -> &u16 {
+        &self.pkt_id
     }
 
-    pub fn frag_total(&self) -> u8 {
-        self.frag_total
+    pub fn frag_total(&self) -> &u8 {
+        &self.frag_total
     }
 
-    pub fn frag_id(&self) -> u8 {
-        self.frag_id
+    pub fn frag_id(&self) -> &u8 {
+        &self.frag_id
     }
 
-    pub fn size(&self) -> u16 {
-        self.size
+    pub fn size(&self) -> &u16 {
+        &self.size
     }
 
     pub fn addr(&self) -> &Address {
@@ -72,5 +72,18 @@ impl Command for Packet {
 
     fn len(&self) -> usize {
         2 + 2 + 1 + 1 + 2 + self.addr.len()
+    }
+}
+
+impl From<Packet> for (u16, u16, u8, u8, u16, Address) {
+    fn from(pkt: Packet) -> Self {
+        (
+            pkt.assoc_id,
+            pkt.pkt_id,
+            pkt.frag_total,
+            pkt.frag_id,
+            pkt.size,
+            pkt.addr,
+        )
     }
 }

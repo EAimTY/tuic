@@ -31,3 +31,9 @@ impl Command for Connect {
         self.addr.len()
     }
 }
+
+impl From<Connect> for (Address,) {
+    fn from(connect: Connect) -> Self {
+        (connect.addr,)
+    }
+}

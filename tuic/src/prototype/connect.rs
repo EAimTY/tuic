@@ -17,8 +17,6 @@ struct Tx {
     _task_reg: TaskRegister,
 }
 
-struct Rx;
-
 impl Connect<side::Tx> {
     pub(super) fn new(task_reg: TaskRegister, addr: Address) -> Self {
         Self {
@@ -33,5 +31,19 @@ impl Connect<side::Tx> {
     pub fn header(&self) -> &Header {
         let Side::Tx(tx) = &self.inner else { unreachable!() };
         &tx.header
+    }
+}
+
+struct Rx {
+    addr: Address,
+}
+
+impl Connect<side::Rx> {
+    pub(super) fn new(header: ConnectHeader) -> Self {
+        let (addr,) = header.into();
+        Self {
+            inner: Side::Rx(Rx { addr }),
+            _marker: side::Rx,
+        }
     }
 }
