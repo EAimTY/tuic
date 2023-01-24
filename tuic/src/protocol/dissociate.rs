@@ -11,9 +11,9 @@ pub struct Dissociate {
 }
 
 impl Dissociate {
-    pub const TYPE_CODE: u8 = 0x03;
+    pub(super) const TYPE_CODE: u8 = 0x03;
 
-    pub fn new(assoc_id: u16) -> Self {
+    pub const fn new(assoc_id: u16) -> Self {
         Self { assoc_id }
     }
 }

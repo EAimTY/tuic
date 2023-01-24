@@ -18,7 +18,7 @@ pub struct Packet {
 impl Packet {
     pub(super) const TYPE_CODE: u8 = 0x02;
 
-    pub fn new(
+    pub const fn new(
         assoc_id: u16,
         pkt_id: u16,
         frag_total: u8,

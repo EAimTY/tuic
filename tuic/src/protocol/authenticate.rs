@@ -13,7 +13,7 @@ pub struct Authenticate {
 impl Authenticate {
     pub(super) const TYPE_CODE: u8 = 0x00;
 
-    pub fn new(token: [u8; 8]) -> Self {
+    pub const fn new(token: [u8; 8]) -> Self {
         Self { token }
     }
 }

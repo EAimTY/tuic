@@ -13,7 +13,7 @@ pub struct Connect {
 impl Connect {
     pub(super) const TYPE_CODE: u8 = 0x01;
 
-    pub fn new(addr: Address) -> Self {
+    pub const fn new(addr: Address) -> Self {
         Self { addr }
     }
 }

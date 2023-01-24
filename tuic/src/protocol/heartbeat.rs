@@ -9,9 +9,9 @@ use super::Command;
 pub struct Heartbeat;
 
 impl Heartbeat {
-    pub const TYPE_CODE: u8 = 0x04;
+    pub(super) const TYPE_CODE: u8 = 0x04;
 
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self
     }
 }
