@@ -7,7 +7,7 @@ use super::{Address, Command};
 // +----------+
 #[derive(Clone, Debug)]
 pub struct Connect {
-    pub addr: Address,
+    addr: Address,
 }
 
 impl Connect {
@@ -15,6 +15,10 @@ impl Connect {
 
     pub const fn new(addr: Address) -> Self {
         Self { addr }
+    }
+
+    pub fn addr(&self) -> &Address {
+        &self.addr
     }
 }
 

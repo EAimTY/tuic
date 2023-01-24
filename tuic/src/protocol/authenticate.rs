@@ -7,7 +7,7 @@ use super::Command;
 // +-------+
 #[derive(Clone, Debug)]
 pub struct Authenticate {
-    pub token: [u8; 8],
+    token: [u8; 8],
 }
 
 impl Authenticate {
@@ -15,6 +15,10 @@ impl Authenticate {
 
     pub const fn new(token: [u8; 8]) -> Self {
         Self { token }
+    }
+
+    pub fn token(&self) -> &[u8; 8] {
+        &self.token
     }
 }
 

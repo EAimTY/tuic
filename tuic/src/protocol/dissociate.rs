@@ -7,7 +7,7 @@ use super::Command;
 // +----------+
 #[derive(Clone, Debug)]
 pub struct Dissociate {
-    pub assoc_id: u16,
+    assoc_id: u16,
 }
 
 impl Dissociate {
@@ -15,6 +15,10 @@ impl Dissociate {
 
     pub const fn new(assoc_id: u16) -> Self {
         Self { assoc_id }
+    }
+
+    pub fn assoc_id(&self) -> u16 {
+        self.assoc_id
     }
 }
 
