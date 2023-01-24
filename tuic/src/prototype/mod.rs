@@ -24,29 +24,31 @@ pub use self::{
 
 pub struct Connection {
     udp_sessions: Mutex<UdpSessions>,
-    local_active_task_count: ActiveTaskCount,
+    task_connect_count: TaskCount,
+    task_associate_count: TaskCount,
 }
 
 impl Connection {
     pub fn new() -> Self {
-        let local_active_task_count = ActiveTaskCount::new();
+        let task_associate_count = TaskCount::new();
 
         Self {
-            udp_sessions: Mutex::new(UdpSessions::new(local_active_task_count.clone())),
-            local_active_task_count,
+            udp_sessions: Mutex::new(UdpSessions::new(task_associate_count.clone())),
+            task_connect_count: TaskCount::new(),
+            task_associate_count,
         }
     }
 
     pub fn send_authenticate(&self, token: [u8; 8]) -> Authenticate<side::Tx> {
-        Authenticate::new(self.local_active_task_count.reg(), token)
+        Authenticate::new(token)
     }
 
     pub fn send_connect(&self, addr: Address) -> Connect<side::Tx> {
-        Connect::<side::Tx>::new(self.local_active_task_count.reg(), addr)
+        Connect::<side::Tx>::new(self.task_connect_count.reg(), addr)
     }
 
     pub fn recv_connect(&self, header: ConnectHeader) -> Connect<side::Rx> {
-        Connect::<side::Rx>::new(header)
+        Connect::<side::Rx>::new(self.task_connect_count.reg(), header)
     }
 
     pub fn send_packet(
@@ -66,16 +68,20 @@ impl Connection {
         Heartbeat::new()
     }
 
-    pub fn local_active_task_count(&self) -> usize {
-        self.local_active_task_count.get()
+    pub fn task_connect_count(&self) -> usize {
+        self.task_connect_count.get()
+    }
+
+    pub fn task_associate_count(&self) -> usize {
+        self.task_associate_count.get()
     }
 }
 
 #[derive(Clone)]
-struct ActiveTaskCount(Arc<()>);
+struct TaskCount(Arc<()>);
 struct TaskRegister(Weak<()>);
 
-impl ActiveTaskCount {
+impl TaskCount {
     fn new() -> Self {
         Self(Arc::new(()))
     }
@@ -91,21 +97,21 @@ impl ActiveTaskCount {
 
 struct UdpSessions {
     sessions: HashMap<u16, UdpSession>,
-    local_active_task_count: ActiveTaskCount,
+    task_associate_count: TaskCount,
 }
 
 impl UdpSessions {
-    fn new(local_active_task_count: ActiveTaskCount) -> Self {
+    fn new(task_associate_count: TaskCount) -> Self {
         Self {
             sessions: HashMap::new(),
-            local_active_task_count,
+            task_associate_count,
         }
     }
 
     fn send<'a>(&mut self, assoc_id: u16, addr: Address, max_pkt_size: usize) -> Packet<side::Tx> {
         self.sessions
             .entry(assoc_id)
-            .or_insert_with(|| UdpSession::new(self.local_active_task_count.reg()))
+            .or_insert_with(|| UdpSession::new(self.task_associate_count.reg()))
             .send(assoc_id, addr, max_pkt_size)
     }
 

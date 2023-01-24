@@ -36,13 +36,17 @@ impl Connect<side::Tx> {
 
 struct Rx {
     addr: Address,
+    _task_reg: TaskRegister,
 }
 
 impl Connect<side::Rx> {
-    pub(super) fn new(header: ConnectHeader) -> Self {
+    pub(super) fn new(task_reg: TaskRegister, header: ConnectHeader) -> Self {
         let (addr,) = header.into();
         Self {
-            inner: Side::Rx(Rx { addr }),
+            inner: Side::Rx(Rx {
+                addr,
+                _task_reg: task_reg,
+            }),
             _marker: side::Rx,
         }
     }
