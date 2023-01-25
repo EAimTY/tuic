@@ -31,12 +31,12 @@ impl<B> Packet<side::Tx, B> {
         }
     }
 
-    pub fn into_fragments<'a, P>(self, payload: P) -> Fragment<'a, P>
+    pub fn into_fragments<'a, P>(self, payload: P) -> Fragments<'a, P>
     where
         P: AsRef<[u8]>,
     {
         let Side::Tx(tx) = self.inner else { unreachable!() };
-        Fragment::new(tx.assoc_id, tx.pkt_id, tx.addr, tx.max_pkt_size, payload)
+        Fragments::new(tx.assoc_id, tx.pkt_id, tx.addr, tx.max_pkt_size, payload)
     }
 }
 
@@ -96,7 +96,7 @@ where
     }
 }
 
-pub struct Fragment<'a, P>
+pub struct Fragments<'a, P>
 where
     P: 'a,
 {
@@ -111,7 +111,7 @@ where
     _marker: PhantomData<&'a P>,
 }
 
-impl<'a, P> Fragment<'a, P>
+impl<'a, P> Fragments<'a, P>
 where
     P: AsRef<[u8]> + 'a,
 {
@@ -140,7 +140,7 @@ where
     }
 }
 
-impl<'a, P> Iterator for Fragment<'a, P>
+impl<'a, P> Iterator for Fragments<'a, P>
 where
     P: AsRef<[u8]> + 'a,
 {
@@ -176,7 +176,7 @@ where
     }
 }
 
-impl<P> ExactSizeIterator for Fragment<'_, P>
+impl<P> ExactSizeIterator for Fragments<'_, P>
 where
     P: AsRef<[u8]>,
 {

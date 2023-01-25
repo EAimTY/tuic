@@ -24,7 +24,7 @@ pub use self::{
     connect::Connect,
     dissociate::Dissociate,
     heartbeat::Heartbeat,
-    packet::{Fragment, Packet},
+    packet::{Fragments, Packet},
 };
 
 pub struct Connection<B> {
@@ -352,7 +352,7 @@ where
         }
 
         if self.buf[frag_id as usize].is_some() {
-            return Err(AssembleError::DuplicateFragment);
+            return Err(AssembleError::DuplicatedFragment);
         }
 
         self.buf[frag_id as usize] = Some(data);
@@ -387,6 +387,6 @@ pub enum AssembleError {
     InvalidFragmentId,
     #[error("invalid address")]
     InvalidAddress,
-    #[error("duplicate fragment")]
-    DuplicateFragment,
+    #[error("duplicated fragment")]
+    DuplicatedFragment,
 }

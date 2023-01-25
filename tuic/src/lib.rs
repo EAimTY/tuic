@@ -2,5 +2,5 @@
 
 pub mod protocol;
 
-#[cfg(feature = "prototype")]
+#[cfg(feature = "model")]
 pub mod model;
