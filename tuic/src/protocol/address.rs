@@ -16,10 +16,10 @@ use std::{
 ///
 /// The address type can be one of the following:
 ///
-/// 0xff: None
-/// 0x00: Fully-qualified domain name (the first byte indicates the length of the domain name)
-/// 0x01: IPv4 address
-/// 0x02: IPv6 address
+/// - 0xff: None
+/// - 0x00: Fully-qualified domain name (the first byte indicates the length of the domain name)
+/// - 0x01: IPv4 address
+/// - 0x02: IPv6 address
 ///
 /// The port number is encoded in 2 bytes after the Domain name / IP address.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]

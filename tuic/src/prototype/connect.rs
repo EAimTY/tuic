@@ -1,13 +1,10 @@
 use super::{
-    side::{self, Side, SideMarker},
+    side::{self, Side},
     TaskRegister,
 };
 use crate::protocol::{Address, Connect as ConnectHeader, Header};
 
-pub struct Connect<M>
-where
-    M: SideMarker,
-{
+pub struct Connect<M> {
     inner: Side<Tx, Rx>,
     _marker: M,
 }
@@ -40,8 +37,7 @@ struct Rx {
 }
 
 impl Connect<side::Rx> {
-    pub(super) fn new(task_reg: TaskRegister, header: ConnectHeader) -> Self {
-        let (addr,) = header.into();
+    pub(super) fn new(task_reg: TaskRegister, addr: Address) -> Self {
         Self {
             inner: Side::Rx(Rx {
                 addr,
@@ -49,5 +45,10 @@ impl Connect<side::Rx> {
             }),
             _marker: side::Rx,
         }
+    }
+
+    pub fn addr(&self) -> &Address {
+        let Side::Rx(rx) = &self.inner else { unreachable!() };
+        &rx.addr
     }
 }

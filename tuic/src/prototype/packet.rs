@@ -1,11 +1,13 @@
-use super::side::{self, Side, SideMarker};
+use super::{
+    side::{self, Side},
+    AssembleError, Assembled, UdpSessions,
+};
 use crate::protocol::{Address, Header, Packet as PacketHeader};
+use parking_lot::Mutex;
+use std::sync::Arc;
 
-pub struct Packet<M>
-where
-    M: SideMarker,
-{
-    inner: Side<Tx, Rx>,
+pub struct Packet<M, B> {
+    inner: Side<Tx, Rx<B>>,
     _marker: M,
 }
 
@@ -16,9 +18,10 @@ pub struct Tx {
     max_pkt_size: usize,
 }
 
-pub struct Rx;
-
-impl Packet<side::Tx> {
+impl<B> Packet<side::Tx, B>
+where
+    B: AsRef<[u8]>,
+{
     pub(super) fn new(assoc_id: u16, pkt_id: u16, addr: Address, max_pkt_size: usize) -> Self {
         Self {
             inner: Side::Tx(Tx {
@@ -34,6 +37,62 @@ impl Packet<side::Tx> {
     pub fn into_fragments<'a>(self, payload: &'a [u8]) -> Fragment<'a> {
         let Side::Tx(tx) = self.inner else { unreachable!() };
         Fragment::new(tx.assoc_id, tx.pkt_id, tx.addr, tx.max_pkt_size, payload)
+    }
+}
+
+pub struct Rx<B> {
+    sessions: Arc<Mutex<UdpSessions<B>>>,
+    assoc_id: u16,
+    pkt_id: u16,
+    frag_total: u8,
+    frag_id: u8,
+    size: u16,
+    addr: Address,
+}
+
+impl<B> Packet<side::Rx, B>
+where
+    B: AsRef<[u8]>,
+{
+    pub(super) fn new(
+        sessions: Arc<Mutex<UdpSessions<B>>>,
+        assoc_id: u16,
+        pkt_id: u16,
+        frag_total: u8,
+        frag_id: u8,
+        size: u16,
+        addr: Address,
+    ) -> Self {
+        Self {
+            inner: Side::Rx(Rx {
+                sessions,
+                assoc_id,
+                pkt_id,
+                frag_total,
+                frag_id,
+                size,
+                addr,
+            }),
+            _marker: side::Rx,
+        }
+    }
+
+    pub fn assemble<A>(self, data: B) -> Result<Option<(A, Address)>, AssembleError>
+    where
+        A: Assembled<B>,
+    {
+        let Side::Rx(rx) = self.inner else { unreachable!() };
+        let mut sessions = rx.sessions.lock();
+
+        sessions.insert(
+            rx.assoc_id,
+            rx.pkt_id,
+            rx.frag_total,
+            rx.frag_id,
+            rx.size,
+            rx.addr,
+            data,
+        )
     }
 }
 

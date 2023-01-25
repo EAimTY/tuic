@@ -1,10 +1,7 @@
-use super::side::{self, Side, SideMarker};
+use super::side::{self, Side};
 use crate::protocol::{Dissociate as DissociateHeader, Header};
 
-pub struct Dissociate<M>
-where
-    M: SideMarker,
-{
+pub struct Dissociate<M> {
     inner: Side<Tx, Rx>,
     _marker: M,
 }

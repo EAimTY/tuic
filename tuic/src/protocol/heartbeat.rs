@@ -27,7 +27,7 @@ impl Command for Heartbeat {
 }
 
 impl From<Heartbeat> for () {
-    fn from(hb: Heartbeat) -> Self {
+    fn from(_: Heartbeat) -> Self {
         ()
     }
 }

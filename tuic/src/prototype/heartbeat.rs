@@ -1,10 +1,7 @@
-use super::side::{self, Side, SideMarker};
+use super::side::{self, Side};
 use crate::protocol::{Header, Heartbeat as HeartbeatHeader};
 
-pub struct Heartbeat<M>
-where
-    M: SideMarker,
-{
+pub struct Heartbeat<M> {
     inner: Side<Tx, Rx>,
     _marker: M,
 }

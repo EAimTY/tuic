@@ -1,10 +1,7 @@
-use super::side::{self, Side, SideMarker};
+use super::side::{self, Side};
 use crate::protocol::{Authenticate as AuthenticateHeader, Header};
 
-pub struct Authenticate<M>
-where
-    M: SideMarker,
-{
+pub struct Authenticate<M> {
     inner: Side<Tx, Rx>,
     _marker: M,
 }
