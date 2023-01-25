@@ -1,6 +1,6 @@
 use super::{
     side::{self, Side},
-    AssembleError, Assembled, UdpSessions,
+    Assemblable, AssembleError, UdpSessions,
 };
 use crate::protocol::{Address, Header, Packet as PacketHeader};
 use parking_lot::Mutex;
@@ -77,10 +77,7 @@ where
         }
     }
 
-    pub fn assemble<A>(self, data: B) -> Result<Option<(A, Address)>, AssembleError>
-    where
-        A: Assembled<B>,
-    {
+    pub fn assemble(self, data: B) -> Result<Option<Assemblable<B>>, AssembleError> {
         let Side::Rx(rx) = self.inner else { unreachable!() };
         let mut sessions = rx.sessions.lock();
 

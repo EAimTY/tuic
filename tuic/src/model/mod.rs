@@ -5,6 +5,7 @@ use crate::protocol::{
 use parking_lot::Mutex;
 use std::{
     collections::HashMap,
+    mem,
     sync::{
         atomic::{AtomicU16, Ordering},
         Arc, Weak,
@@ -202,7 +203,7 @@ where
         Dissociate::<side::Rx>::new(assoc_id)
     }
 
-    fn insert<A>(
+    fn insert(
         &mut self,
         assoc_id: u16,
         pkt_id: u16,
@@ -211,10 +212,7 @@ where
         size: u16,
         addr: Address,
         data: B,
-    ) -> Result<Option<(A, Address)>, AssembleError>
-    where
-        A: Assembled<B>,
-    {
+    ) -> Result<Option<Assemblable<B>>, AssembleError> {
         self.sessions
             .entry(assoc_id)
             .or_insert_with(|| UdpSession::new(self.task_associate_count.register()))
@@ -273,7 +271,7 @@ where
         Packet::<side::Rx, B>::new(sessions, assoc_id, pkt_id, frag_total, frag_id, size, addr)
     }
 
-    fn insert<A>(
+    fn insert(
         &mut self,
         pkt_id: u16,
         frag_total: u8,
@@ -281,10 +279,7 @@ where
         size: u16,
         addr: Address,
         data: B,
-    ) -> Result<Option<(A, Address)>, AssembleError>
-    where
-        A: Assembled<B>,
-    {
+    ) -> Result<Option<Assemblable<B>>, AssembleError> {
         let res = self
             .pkt_buf
             .entry(pkt_id)
@@ -328,17 +323,14 @@ where
         }
     }
 
-    fn insert<A>(
+    fn insert(
         &mut self,
         frag_total: u8,
         frag_id: u8,
         size: u16,
         addr: Address,
         data: B,
-    ) -> Result<Option<(A, Address)>, AssembleError>
-    where
-        A: Assembled<B>,
-    {
+    ) -> Result<Option<Assemblable<B>>, AssembleError> {
         if data.as_ref().len() != size as usize {
             return Err(AssembleError::InvalidFragmentSize);
         }
@@ -363,20 +355,45 @@ where
         }
 
         if self.frag_received == self.frag_total {
-            let iter = self.buf.iter_mut().map(|x| x.take().unwrap());
-            Ok(Some((A::assemble(iter)?, self.addr.take())))
+            Ok(Some(Assemblable::new(
+                mem::take(&mut self.buf),
+                self.addr.take(),
+            )))
         } else {
             Ok(None)
         }
     }
 }
 
-pub trait Assembled<B>
+pub struct Assemblable<B> {
+    buf: Vec<Option<B>>,
+    addr: Address,
+}
+
+impl<B> Assemblable<B>
+where
+    B: AsRef<[u8]>,
+{
+    fn new(buf: Vec<Option<B>>, addr: Address) -> Self {
+        Self { buf, addr }
+    }
+
+    pub fn assemble<A>(self, buf: &mut A) -> Address
+    where
+        A: Assembler<B>,
+    {
+        let data = self.buf.into_iter().map(|b| b.unwrap());
+        buf.assemble(data);
+        self.addr
+    }
+}
+
+pub trait Assembler<B>
 where
     Self: Sized,
     B: AsRef<[u8]>,
 {
-    fn assemble(buf: impl IntoIterator<Item = B>) -> Result<Self, AssembleError>;
+    fn assemble(&mut self, data: impl IntoIterator<Item = B>);
 }
 
 #[derive(Debug, Error)]
