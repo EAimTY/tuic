@@ -3,4 +3,4 @@
 pub mod protocol;
 
 #[cfg(feature = "prototype")]
-pub mod prototype;
+pub mod model;

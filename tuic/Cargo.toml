@@ -4,11 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-prototype = ["parking_lot", "thiserror"]
+model = ["parking_lot", "thiserror"]
 
 [dependencies]
 parking_lot = { version = "0.12.1", default-features = false, optional = true }
 thiserror = { version = "1.0.38", default-features = false, optional = true }
 
 [dev-dependencies]
-tuic = { path = ".", features = ["prototype"] }
+tuic = { path = ".", features = ["model"] }
