@@ -4,7 +4,7 @@ use super::{
 };
 use crate::protocol::{Address, Header, Packet as PacketHeader};
 use parking_lot::Mutex;
-use std::sync::Arc;
+use std::{marker::PhantomData, slice, sync::Arc};
 
 pub struct Packet<M, B> {
     inner: Side<Tx, Rx<B>>,
@@ -34,7 +34,10 @@ where
         }
     }
 
-    pub fn into_fragments<'a>(self, payload: &'a [u8]) -> Fragment<'a> {
+    pub fn into_fragments<'a, P>(self, payload: P) -> Fragment<'a, P>
+    where
+        P: AsRef<[u8]>,
+    {
         let Side::Tx(tx) = self.inner else { unreachable!() };
         Fragment::new(tx.assoc_id, tx.pkt_id, tx.addr, tx.max_pkt_size, payload)
     }
@@ -96,7 +99,10 @@ where
     }
 }
 
-pub struct Fragment<'a> {
+pub struct Fragment<'a, P>
+where
+    P: 'a,
+{
     assoc_id: u16,
     pkt_id: u16,
     addr: Address,
@@ -104,23 +110,21 @@ pub struct Fragment<'a> {
     frag_total: u8,
     next_frag_id: u8,
     next_frag_start: usize,
-    payload: &'a [u8],
+    payload: P,
+    _marker: PhantomData<&'a P>,
 }
 
-impl<'a> Fragment<'a> {
-    fn new(
-        assoc_id: u16,
-        pkt_id: u16,
-        addr: Address,
-        max_pkt_size: usize,
-        payload: &'a [u8],
-    ) -> Self {
+impl<'a, P> Fragment<'a, P>
+where
+    P: AsRef<[u8]> + 'a,
+{
+    fn new(assoc_id: u16, pkt_id: u16, addr: Address, max_pkt_size: usize, payload: P) -> Self {
         let first_frag_size = max_pkt_size - PacketHeader::len_without_addr() - addr.len();
         let frag_size_addr_none =
             max_pkt_size - PacketHeader::len_without_addr() - Address::None.len();
 
-        let frag_total = if first_frag_size < payload.len() {
-            (1 + (payload.len() - first_frag_size) / frag_size_addr_none + 1) as u8
+        let frag_total = if first_frag_size < payload.as_ref().len() {
+            (1 + (payload.as_ref().len() - first_frag_size) / frag_size_addr_none + 1) as u8
         } else {
             1u8
         };
@@ -134,18 +138,23 @@ impl<'a> Fragment<'a> {
             next_frag_id: 0,
             next_frag_start: 0,
             payload,
+            _marker: PhantomData,
         }
     }
 }
 
-impl<'a> Iterator for Fragment<'a> {
+impl<'a, P> Iterator for Fragment<'a, P>
+where
+    P: AsRef<[u8]> + 'a,
+{
     type Item = (Header, &'a [u8]);
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.next_frag_id < self.frag_total {
             let payload_size =
                 self.max_pkt_size - PacketHeader::len_without_addr() - self.addr.len();
-            let next_frag_end = (self.next_frag_start + payload_size).min(self.payload.len());
+            let next_frag_end =
+                (self.next_frag_start + payload_size).min(self.payload.as_ref().len());
 
             let header = Header::Packet(PacketHeader::new(
                 self.assoc_id,
@@ -156,7 +165,9 @@ impl<'a> Iterator for Fragment<'a> {
                 self.addr.take(),
             ));
 
-            let payload = &self.payload[self.next_frag_start..next_frag_end];
+            let payload_ptr = &(self.payload.as_ref()[self.next_frag_start]) as *const u8;
+            let payload =
+                unsafe { slice::from_raw_parts(payload_ptr, next_frag_end - self.next_frag_start) };
 
             self.next_frag_id += 1;
             self.next_frag_start = next_frag_end;
@@ -168,7 +179,10 @@ impl<'a> Iterator for Fragment<'a> {
     }
 }
 
-impl ExactSizeIterator for Fragment<'_> {
+impl<P> ExactSizeIterator for Fragment<'_, P>
+where
+    P: AsRef<[u8]>,
+{
     fn len(&self) -> usize {
         self.frag_total as usize
     }
