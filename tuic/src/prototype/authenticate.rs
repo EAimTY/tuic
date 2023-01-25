@@ -10,8 +10,6 @@ pub struct Tx {
     header: Header,
 }
 
-pub struct Rx;
-
 impl Authenticate<side::Tx> {
     pub(super) fn new(token: [u8; 8]) -> Self {
         Self {
@@ -25,5 +23,23 @@ impl Authenticate<side::Tx> {
     pub fn header(&self) -> &Header {
         let Side::Tx(tx) = &self.inner else { unreachable!() };
         &tx.header
+    }
+}
+
+pub struct Rx {
+    token: [u8; 8],
+}
+
+impl Authenticate<side::Rx> {
+    pub(super) fn new(token: [u8; 8]) -> Self {
+        Self {
+            inner: Side::Rx(Rx { token }),
+            _marker: side::Rx,
+        }
+    }
+
+    pub fn token(&self) -> &[u8; 8] {
+        let Side::Rx(rx) = &self.inner else { unreachable!() };
+        &rx.token
     }
 }

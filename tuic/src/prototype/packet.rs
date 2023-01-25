@@ -18,10 +18,7 @@ pub struct Tx {
     max_pkt_size: usize,
 }
 
-impl<B> Packet<side::Tx, B>
-where
-    B: AsRef<[u8]>,
-{
+impl<B> Packet<side::Tx, B> {
     pub(super) fn new(assoc_id: u16, pkt_id: u16, addr: Address, max_pkt_size: usize) -> Self {
         Self {
             inner: Side::Tx(Tx {

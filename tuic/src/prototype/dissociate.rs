@@ -10,8 +10,6 @@ pub struct Tx {
     header: Header,
 }
 
-pub struct Rx;
-
 impl Dissociate<side::Tx> {
     pub(super) fn new(assoc_id: u16) -> Self {
         Self {
@@ -25,5 +23,23 @@ impl Dissociate<side::Tx> {
     pub fn header(&self) -> &Header {
         let Side::Tx(tx) = &self.inner else { unreachable!() };
         &tx.header
+    }
+}
+
+pub struct Rx {
+    assoc_id: u16,
+}
+
+impl Dissociate<side::Rx> {
+    pub(super) fn new(assoc_id: u16) -> Self {
+        Self {
+            inner: Side::Rx(Rx { assoc_id }),
+            _marker: side::Rx,
+        }
+    }
+
+    pub fn assoc_id(&self) -> &u16 {
+        let Side::Rx(rx) = &self.inner else { unreachable!() };
+        &rx.assoc_id
     }
 }

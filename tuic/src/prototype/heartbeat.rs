@@ -10,8 +10,6 @@ pub struct Tx {
     header: Header,
 }
 
-pub struct Rx;
-
 impl Heartbeat<side::Tx> {
     pub(super) fn new() -> Self {
         Self {
@@ -25,5 +23,16 @@ impl Heartbeat<side::Tx> {
     pub fn header(&self) -> &Header {
         let Side::Tx(tx) = &self.inner else { unreachable!() };
         &tx.header
+    }
+}
+
+pub struct Rx;
+
+impl Heartbeat<side::Rx> {
+    pub(super) fn new() -> Self {
+        Self {
+            inner: Side::Rx(Rx),
+            _marker: side::Rx,
+        }
     }
 }

@@ -1,4 +1,7 @@
-use crate::protocol::{Address, Connect as ConnectHeader, Packet as PacketHeader};
+use crate::protocol::{
+    Address, Authenticate as AuthenticateHeader, Connect as ConnectHeader,
+    Dissociate as DissociateHeader, Heartbeat as HeartbeatHeader, Packet as PacketHeader,
+};
 use parking_lot::Mutex;
 use std::{
     collections::HashMap,
@@ -45,7 +48,12 @@ where
     }
 
     pub fn send_authenticate(&self, token: [u8; 8]) -> Authenticate<side::Tx> {
-        Authenticate::new(token)
+        Authenticate::<side::Tx>::new(token)
+    }
+
+    pub fn recv_authenticate(&self, header: AuthenticateHeader) -> Authenticate<side::Rx> {
+        let (token,) = header.into();
+        Authenticate::<side::Rx>::new(token)
     }
 
     pub fn send_connect(&self, addr: Address) -> Connect<side::Tx> {
@@ -82,11 +90,21 @@ where
     }
 
     pub fn send_dissociate(&self, assoc_id: u16) -> Dissociate<side::Tx> {
-        self.udp_sessions.lock().dissociate(assoc_id)
+        self.udp_sessions.lock().send_dissociate(assoc_id)
+    }
+
+    pub fn recv_dissociate(&self, header: DissociateHeader) -> Dissociate<side::Rx> {
+        let (assoc_id,) = header.into();
+        self.udp_sessions.lock().recv_dissociate(assoc_id)
     }
 
     pub fn send_heartbeat(&self) -> Heartbeat<side::Tx> {
-        Heartbeat::new()
+        Heartbeat::<side::Tx>::new()
+    }
+
+    pub fn recv_heartbeat(&self, header: HeartbeatHeader) -> Heartbeat<side::Rx> {
+        let () = header.into();
+        Heartbeat::<side::Rx>::new()
     }
 
     pub fn task_connect_count(&self) -> usize {
@@ -174,9 +192,14 @@ where
             .recv_packet(sessions, assoc_id, pkt_id, frag_total, frag_id, size, addr)
     }
 
-    fn dissociate(&mut self, assoc_id: u16) -> Dissociate<side::Tx> {
+    fn send_dissociate(&mut self, assoc_id: u16) -> Dissociate<side::Tx> {
         self.sessions.remove(&assoc_id);
-        Dissociate::new(assoc_id)
+        Dissociate::<side::Tx>::new(assoc_id)
+    }
+
+    fn recv_dissociate(&mut self, assoc_id: u16) -> Dissociate<side::Rx> {
+        self.sessions.remove(&assoc_id);
+        Dissociate::<side::Rx>::new(assoc_id)
     }
 
     fn insert<A>(
