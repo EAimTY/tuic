@@ -78,27 +78,6 @@ impl<'conn, Side> Connection<'conn, Side> {
         Ok(())
     }
 
-    pub async fn accept_datagram(&self, dg: Bytes) -> Result<Task, Error> {
-        let mut dg = Cursor::new(dg);
-
-        match Header::unmarshal(&mut dg).await? {
-            Header::Authenticate(_) => Err(Error::BadCommand("authenticate")),
-            Header::Connect(_) => Err(Error::BadCommand("connect")),
-            Header::Packet(pkt) => {
-                let model = self.model.recv_packet(pkt);
-                let pos = dg.position() as usize;
-                let buf = dg.into_inner().slice(pos..pos + *model.size() as usize);
-                Ok(Task::Packet(self.accept_packet_native(model, buf).await?))
-            }
-            Header::Dissociate(_) => Err(Error::BadCommand("dissociate")),
-            Header::Heartbeat(hb) => {
-                let _ = self.model.recv_heartbeat(hb);
-                Ok(Task::Heartbeat)
-            }
-            _ => unreachable!(),
-        }
-    }
-
     pub fn collect_garbage(&self, timeout: Duration) {
         self.model.collect_garbage(timeout);
     }
@@ -156,6 +135,14 @@ impl<'conn> Connection<'conn, side::Client> {
         Ok(Connect::new(Side::Client(model), send, recv))
     }
 
+    pub async fn heartbeat(&self) -> Result<(), Error> {
+        let model = self.model.send_heartbeat();
+        let mut buf = Vec::with_capacity(model.header().len());
+        model.header().marshal(&mut buf).await.unwrap();
+        self.conn.send_datagram(Bytes::from(buf))?;
+        Ok(())
+    }
+
     pub async fn accept_uni_stream(&self, mut recv: RecvStream) -> Result<Task, Error> {
         match Header::unmarshal(&mut recv).await? {
             Header::Authenticate(_) => Err(Error::BadCommand("authenticate")),
@@ -187,12 +174,22 @@ impl<'conn> Connection<'conn, side::Client> {
         }
     }
 
-    pub async fn heartbeat(&self) -> Result<(), Error> {
-        let model = self.model.send_heartbeat();
-        let mut buf = Vec::with_capacity(model.header().len());
-        model.header().marshal(&mut buf).await.unwrap();
-        self.conn.send_datagram(Bytes::from(buf))?;
-        Ok(())
+    pub async fn accept_datagram(&self, dg: Bytes) -> Result<Task, Error> {
+        let mut dg = Cursor::new(dg);
+
+        match Header::unmarshal(&mut dg).await? {
+            Header::Authenticate(_) => Err(Error::BadCommand("authenticate")),
+            Header::Connect(_) => Err(Error::BadCommand("connect")),
+            Header::Packet(pkt) => {
+                let model = self.model.recv_packet(pkt);
+                let pos = dg.position() as usize;
+                let buf = dg.into_inner().slice(pos..pos + *model.size() as usize);
+                Ok(Task::Packet(self.accept_packet_native(model, buf).await?))
+            }
+            Header::Dissociate(_) => Err(Error::BadCommand("dissociate")),
+            Header::Heartbeat(_) => Err(Error::BadCommand("heartbeat")),
+            _ => unreachable!(),
+        }
     }
 }
 
@@ -241,6 +238,27 @@ impl<'conn> Connection<'conn, side::Server> {
             Header::Packet(_) => Err(Error::BadCommand("packet")),
             Header::Dissociate(_) => Err(Error::BadCommand("dissociate")),
             Header::Heartbeat(_) => Err(Error::BadCommand("heartbeat")),
+            _ => unreachable!(),
+        }
+    }
+
+    pub async fn accept_datagram(&self, dg: Bytes) -> Result<Task, Error> {
+        let mut dg = Cursor::new(dg);
+
+        match Header::unmarshal(&mut dg).await? {
+            Header::Authenticate(_) => Err(Error::BadCommand("authenticate")),
+            Header::Connect(_) => Err(Error::BadCommand("connect")),
+            Header::Packet(pkt) => {
+                let model = self.model.recv_packet(pkt);
+                let pos = dg.position() as usize;
+                let buf = dg.into_inner().slice(pos..pos + *model.size() as usize);
+                Ok(Task::Packet(self.accept_packet_native(model, buf).await?))
+            }
+            Header::Dissociate(_) => Err(Error::BadCommand("dissociate")),
+            Header::Heartbeat(hb) => {
+                let _ = self.model.recv_heartbeat(hb);
+                Ok(Task::Heartbeat)
+            }
             _ => unreachable!(),
         }
     }
