@@ -333,20 +333,26 @@ where
         addr: Address,
         data: B,
     ) -> Result<Option<Assemblable<B>>, AssembleError> {
-        if data.as_ref().len() != size as usize {
-            return Err(AssembleError::InvalidFragmentSize);
-        }
+        assert_eq!(data.as_ref().len(), size as usize);
 
         if frag_id >= frag_total {
-            return Err(AssembleError::InvalidFragmentId);
+            return Err(AssembleError::InvalidFragmentId(frag_total, frag_id));
         }
 
-        if (frag_id == 0 && addr.is_none()) || (frag_id != 0 && !addr.is_none()) {
-            return Err(AssembleError::InvalidAddress);
+        if frag_id == 0 && addr.is_none() {
+            return Err(AssembleError::InvalidAddress(
+                "no address in first fragment",
+            ));
+        }
+
+        if frag_id != 0 && !addr.is_none() {
+            return Err(AssembleError::InvalidAddress(
+                "address in non-first fragment",
+            ));
         }
 
         if self.buf[frag_id as usize].is_some() {
-            return Err(AssembleError::DuplicatedFragment);
+            return Err(AssembleError::DuplicatedFragment(frag_id));
         }
 
         self.buf[frag_id as usize] = Some(data);
@@ -417,12 +423,10 @@ where
 
 #[derive(Debug, Error)]
 pub enum AssembleError {
-    #[error("invalid fragment size")]
-    InvalidFragmentSize,
-    #[error("invalid fragment id")]
-    InvalidFragmentId,
-    #[error("invalid address")]
-    InvalidAddress,
-    #[error("duplicated fragment")]
-    DuplicatedFragment,
+    #[error("invalid fragment id {1} in total {0} fragments")]
+    InvalidFragmentId(u8, u8),
+    #[error("{0}")]
+    InvalidAddress(&'static str),
+    #[error("duplicated fragment: {0}")]
+    DuplicatedFragment(u8),
 }
