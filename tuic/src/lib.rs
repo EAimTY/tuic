@@ -2,21 +2,18 @@
 
 mod protocol;
 
-#[cfg(feature = "marshal")]
-mod marshal;
-
-#[cfg(feature = "marshal")]
-mod unmarshal;
-
 pub use self::protocol::{
     Address, Authenticate, Command, Connect, Dissociate, Header, Heartbeat, Packet, VERSION,
 };
 
-#[cfg(feature = "marshal")]
-pub use self::{
-    marshal::Marshal,
-    unmarshal::{Unmarshal, UnmarshalError},
-};
+#[cfg(feature = "async_marshal")]
+mod marshal;
+
+#[cfg(feature = "async_marshal")]
+mod unmarshal;
+
+#[cfg(feature = "async_marshal")]
+pub use self::unmarshal::UnmarshalError;
 
 #[cfg(feature = "model")]
 pub mod model;

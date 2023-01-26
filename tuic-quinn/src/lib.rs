@@ -17,7 +17,7 @@ use tuic::{
         AssembleError, Connect as ConnectModel, Connection as ConnectionModel,
         Packet as PacketModel,
     },
-    Address, Header, Marshal, Unmarshal, UnmarshalError,
+    Address, Header, UnmarshalError,
 };
 
 pub mod side {
@@ -51,7 +51,7 @@ impl<'conn, Side> Connection<'conn, Side> {
 
         for (header, frag) in model.into_fragments(pkt) {
             let mut buf = Cursor::new(vec![0; header.len() + frag.len()]);
-            header.marshal(&mut buf).await?;
+            header.async_marshal(&mut buf).await?;
             buf.write_all(frag).await.unwrap();
             self.conn.send_datagram(Bytes::from(buf.into_inner()))?;
         }
@@ -71,7 +71,7 @@ impl<'conn, Side> Connection<'conn, Side> {
         assert!(frags.next().is_none());
 
         let mut send = self.conn.open_uni().await?;
-        header.marshal(&mut send).await?;
+        header.async_marshal(&mut send).await?;
         AsyncWriteExt::write_all(&mut send, frag).await?;
         send.close().await?;
 
@@ -123,7 +123,7 @@ impl<'conn> Connection<'conn, side::Client> {
     pub async fn authenticate(&self, token: [u8; 8]) -> Result<(), Error> {
         let mut send = self.conn.open_uni().await?;
         let model = self.model.send_authenticate(token);
-        model.header().marshal(&mut send).await?;
+        model.header().async_marshal(&mut send).await?;
         send.close().await?;
         Ok(())
     }
@@ -131,20 +131,20 @@ impl<'conn> Connection<'conn, side::Client> {
     pub async fn connect(&self, addr: Address) -> Result<Connect, Error> {
         let (mut send, recv) = self.conn.open_bi().await?;
         let model = self.model.send_connect(addr);
-        model.header().marshal(&mut send).await?;
+        model.header().async_marshal(&mut send).await?;
         Ok(Connect::new(Side::Client(model), send, recv))
     }
 
     pub async fn heartbeat(&self) -> Result<(), Error> {
         let model = self.model.send_heartbeat();
         let mut buf = Vec::with_capacity(model.header().len());
-        model.header().marshal(&mut buf).await.unwrap();
+        model.header().async_marshal(&mut buf).await.unwrap();
         self.conn.send_datagram(Bytes::from(buf))?;
         Ok(())
     }
 
     pub async fn accept_uni_stream(&self, mut recv: RecvStream) -> Result<Task, Error> {
-        match Header::unmarshal(&mut recv).await? {
+        match Header::async_unmarshal(&mut recv).await? {
             Header::Authenticate(_) => Err(Error::BadCommand("authenticate")),
             Header::Connect(_) => Err(Error::BadCommand("connect")),
             Header::Packet(pkt) => {
@@ -164,7 +164,7 @@ impl<'conn> Connection<'conn, side::Client> {
         _send: SendStream,
         mut recv: RecvStream,
     ) -> Result<Task, Error> {
-        match Header::unmarshal(&mut recv).await? {
+        match Header::async_unmarshal(&mut recv).await? {
             Header::Authenticate(_) => Err(Error::BadCommand("authenticate")),
             Header::Connect(_) => Err(Error::BadCommand("connect")),
             Header::Packet(_) => Err(Error::BadCommand("packet")),
@@ -177,7 +177,7 @@ impl<'conn> Connection<'conn, side::Client> {
     pub async fn accept_datagram(&self, dg: Bytes) -> Result<Task, Error> {
         let mut dg = Cursor::new(dg);
 
-        match Header::unmarshal(&mut dg).await? {
+        match Header::async_unmarshal(&mut dg).await? {
             Header::Authenticate(_) => Err(Error::BadCommand("authenticate")),
             Header::Connect(_) => Err(Error::BadCommand("connect")),
             Header::Packet(pkt) => {
@@ -203,7 +203,7 @@ impl<'conn> Connection<'conn, side::Server> {
     }
 
     pub async fn accept_uni_stream(&self, mut recv: RecvStream) -> Result<Task, Error> {
-        match Header::unmarshal(&mut recv).await? {
+        match Header::async_unmarshal(&mut recv).await? {
             Header::Authenticate(auth) => {
                 let model = self.model.recv_authenticate(auth);
                 Ok(Task::Authenticate(*model.token()))
@@ -229,7 +229,7 @@ impl<'conn> Connection<'conn, side::Server> {
         send: SendStream,
         mut recv: RecvStream,
     ) -> Result<Task, Error> {
-        match Header::unmarshal(&mut recv).await? {
+        match Header::async_unmarshal(&mut recv).await? {
             Header::Authenticate(_) => Err(Error::BadCommand("authenticate")),
             Header::Connect(conn) => {
                 let model = self.model.recv_connect(conn);
@@ -245,7 +245,7 @@ impl<'conn> Connection<'conn, side::Server> {
     pub async fn accept_datagram(&self, dg: Bytes) -> Result<Task, Error> {
         let mut dg = Cursor::new(dg);
 
-        match Header::unmarshal(&mut dg).await? {
+        match Header::async_unmarshal(&mut dg).await? {
             Header::Authenticate(_) => Err(Error::BadCommand("authenticate")),
             Header::Connect(_) => Err(Error::BadCommand("connect")),
             Header::Packet(pkt) => {

@@ -4,14 +4,13 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-marshal = ["async-trait", "futures-io"]
+async_marshal = ["futures-io"]
 model = ["parking_lot", "thiserror"]
 
 [dependencies]
-async-trait = { version = "0.1.62", default-features = false, optional = true }
 futures-io = { version = "0.3.25", default-features = false, features = ["std"], optional = true }
 parking_lot = { version = "0.12.1", default-features = false, optional = true }
 thiserror = { version = "1.0.38", default-features = false, optional = true }
 
 [dev-dependencies]
-tuic = { path = ".", features = ["marshal", "model"] }
+tuic = { path = ".", features = ["async_marshal", "model"] }
