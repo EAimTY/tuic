@@ -1,10 +1,10 @@
+use crate::protocol::Header;
 use async_trait::async_trait;
-use futures_util::AsyncWrite;
+use futures_io::AsyncWrite;
 use std::io::Error as IoError;
-use tuic::protocol::Header;
 
 #[async_trait]
-pub(super) trait Marshal {
+pub trait Marshal {
     async fn marshal(&self, s: &mut impl AsyncWrite) -> Result<(), IoError>;
 }
 

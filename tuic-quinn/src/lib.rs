@@ -1,8 +1,4 @@
-use self::{
-    marshal::Marshal,
-    side::Side,
-    unmarshal::{Unmarshal, UnmarshalError},
-};
+use self::side::Side;
 use bytes::Bytes;
 use futures_util::{io::Cursor, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use quinn::{
@@ -20,11 +16,8 @@ use tuic::{
         AssembleError, Connect as ConnectModel, Connection as ConnectionModel,
         Packet as PacketModel,
     },
-    protocol::{Address, Header},
+    Address, Header, Marshal, Unmarshal, UnmarshalError,
 };
-
-mod marshal;
-mod unmarshal;
 
 pub mod side {
     pub struct Client;

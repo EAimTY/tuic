@@ -1,10 +1,10 @@
+use crate::protocol::Header;
 use async_trait::async_trait;
-use futures_util::AsyncRead;
+use futures_io::AsyncRead;
 use thiserror::Error;
-use tuic::protocol::Header;
 
 #[async_trait]
-pub(super) trait Unmarshal
+pub trait Unmarshal
 where
     Self: Sized,
 {
