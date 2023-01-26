@@ -8,6 +8,7 @@ use std::{
     io::Error as IoError,
     pin::Pin,
     task::{Context, Poll},
+    time::Duration,
 };
 use thiserror::Error;
 use tuic::{
@@ -96,6 +97,10 @@ impl<'conn, Side> Connection<'conn, Side> {
             }
             _ => unreachable!(),
         }
+    }
+
+    pub fn collect_garbage(&self, timeout: Duration) {
+        self.model.collect_garbage(timeout);
     }
 
     async fn accept_packet_quic(
