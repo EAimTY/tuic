@@ -51,7 +51,7 @@ impl Header {
     pub fn len(&self) -> usize {
         2 + match self {
             Self::Authenticate(auth) => auth.len(),
-            Self::Connect(connect) => connect.len(),
+            Self::Connect(conn) => conn.len(),
             Self::Packet(packet) => packet.len(),
             Self::Dissociate(dissociate) => dissociate.len(),
             Self::Heartbeat(heartbeat) => heartbeat.len(),

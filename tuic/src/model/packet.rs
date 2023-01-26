@@ -38,6 +38,16 @@ impl<B> Packet<side::Tx, B> {
         let Side::Tx(tx) = self.inner else { unreachable!() };
         Fragments::new(tx.assoc_id, tx.pkt_id, tx.addr, tx.max_pkt_size, payload)
     }
+
+    pub fn assoc_id(&self) -> &u16 {
+        let Side::Tx(tx) = &self.inner else { unreachable!() };
+        &tx.assoc_id
+    }
+
+    pub fn addr(&self) -> &Address {
+        let Side::Tx(tx) = &self.inner else { unreachable!() };
+        &tx.addr
+    }
 }
 
 pub struct Rx<B> {
@@ -90,6 +100,21 @@ where
             rx.addr,
             data,
         )
+    }
+
+    pub fn assoc_id(&self) -> &u16 {
+        let Side::Rx(rx) = &self.inner else { unreachable!() };
+        &rx.assoc_id
+    }
+
+    pub fn addr(&self) -> &Address {
+        let Side::Rx(rx) = &self.inner else { unreachable!() };
+        &rx.addr
+    }
+
+    pub fn size(&self) -> &u16 {
+        let Side::Rx(rx) = &self.inner else { unreachable!() };
+        &rx.size
     }
 }
 

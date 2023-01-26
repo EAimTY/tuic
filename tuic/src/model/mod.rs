@@ -216,7 +216,7 @@ where
         self.sessions
             .entry(assoc_id)
             .or_insert_with(|| UdpSession::new(self.task_associate_count.register()))
-            .insert(pkt_id, frag_total, frag_id, size, addr, data)
+            .insert(assoc_id, pkt_id, frag_total, frag_id, size, addr, data)
     }
 
     fn collect_garbage(&mut self, timeout: Duration) {
@@ -273,6 +273,7 @@ where
 
     fn insert(
         &mut self,
+        assoc_id: u16,
         pkt_id: u16,
         frag_total: u8,
         frag_id: u8,
@@ -284,7 +285,7 @@ where
             .pkt_buf
             .entry(pkt_id)
             .or_insert_with(|| PacketBuffer::new(frag_total))
-            .insert(frag_total, frag_id, size, addr, data)?;
+            .insert(assoc_id, frag_total, frag_id, size, addr, data)?;
 
         if res.is_some() {
             self.pkt_buf.remove(&pkt_id);
@@ -325,6 +326,7 @@ where
 
     fn insert(
         &mut self,
+        assoc_id: u16,
         frag_total: u8,
         frag_id: u8,
         size: u16,
@@ -358,6 +360,7 @@ where
             Ok(Some(Assemblable::new(
                 mem::take(&mut self.buf),
                 self.addr.take(),
+                assoc_id,
             )))
         } else {
             Ok(None)
@@ -368,23 +371,28 @@ where
 pub struct Assemblable<B> {
     buf: Vec<Option<B>>,
     addr: Address,
+    assoc_id: u16,
 }
 
 impl<B> Assemblable<B>
 where
     B: AsRef<[u8]>,
 {
-    fn new(buf: Vec<Option<B>>, addr: Address) -> Self {
-        Self { buf, addr }
+    fn new(buf: Vec<Option<B>>, addr: Address, assoc_id: u16) -> Self {
+        Self {
+            buf,
+            addr,
+            assoc_id,
+        }
     }
 
-    pub fn assemble<A>(self, buf: &mut A) -> Address
+    pub fn assemble<A>(self, buf: &mut A) -> (Address, u16)
     where
         A: Assembler<B>,
     {
         let data = self.buf.into_iter().map(|b| b.unwrap());
         buf.assemble(data);
-        self.addr
+        (self.addr, self.assoc_id)
     }
 }
 
@@ -394,6 +402,17 @@ where
     B: AsRef<[u8]>,
 {
     fn assemble(&mut self, data: impl IntoIterator<Item = B>);
+}
+
+impl<B> Assembler<B> for Vec<u8>
+where
+    B: AsRef<[u8]>,
+{
+    fn assemble(&mut self, data: impl IntoIterator<Item = B>) {
+        for d in data {
+            self.extend_from_slice(d.as_ref());
+        }
+    }
 }
 
 #[derive(Debug, Error)]

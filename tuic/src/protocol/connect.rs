@@ -33,7 +33,7 @@ impl Command for Connect {
 }
 
 impl From<Connect> for (Address,) {
-    fn from(connect: Connect) -> Self {
-        (connect.addr,)
+    fn from(conn: Connect) -> Self {
+        (conn.addr,)
     }
 }
