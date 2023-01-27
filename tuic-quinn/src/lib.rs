@@ -66,14 +66,13 @@ impl<'conn, Side> Connection<'conn, Side> {
         assoc_id: u16,
     ) -> Result<(), Error> {
         let model = self.model.send_packet(assoc_id, addr, u16::MAX as usize);
-        let mut frags = model.into_fragments(pkt);
-        let (header, frag) = frags.next().unwrap();
-        assert!(frags.next().is_none());
 
-        let mut send = self.conn.open_uni().await?;
-        header.async_marshal(&mut send).await?;
-        AsyncWriteExt::write_all(&mut send, frag).await?;
-        send.close().await?;
+        for (header, frag) in model.into_fragments(pkt) {
+            let mut send = self.conn.open_uni().await?;
+            header.async_marshal(&mut send).await?;
+            AsyncWriteExt::write_all(&mut send, frag).await?;
+            send.close().await?;
+        }
 
         Ok(())
     }
