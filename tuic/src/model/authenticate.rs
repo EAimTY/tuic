@@ -38,8 +38,8 @@ impl Authenticate<side::Rx> {
         }
     }
 
-    pub fn token(&self) -> &[u8; 8] {
+    pub fn token(&self) -> [u8; 8] {
         let Side::Rx(rx) = &self.inner else { unreachable!() };
-        &rx.token
+        rx.token
     }
 }

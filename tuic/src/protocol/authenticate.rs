@@ -1,5 +1,3 @@
-use super::Command;
-
 // +-------+
 // | TOKEN |
 // +-------+
@@ -11,23 +9,21 @@ pub struct Authenticate {
 }
 
 impl Authenticate {
-    pub(super) const TYPE_CODE: u8 = 0x00;
+    const TYPE_CODE: u8 = 0x00;
 
     pub const fn new(token: [u8; 8]) -> Self {
         Self { token }
     }
 
-    pub fn token(&self) -> &[u8; 8] {
-        &self.token
+    pub fn token(&self) -> [u8; 8] {
+        self.token
     }
-}
 
-impl Command for Authenticate {
-    fn type_code() -> u8 {
+    pub const fn type_code() -> u8 {
         Self::TYPE_CODE
     }
 
-    fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         8
     }
 }

@@ -38,8 +38,8 @@ impl Dissociate<side::Rx> {
         }
     }
 
-    pub fn assoc_id(&self) -> &u16 {
+    pub fn assoc_id(&self) -> u16 {
         let Side::Rx(rx) = &self.inner else { unreachable!() };
-        &rx.assoc_id
+        rx.assoc_id
     }
 }

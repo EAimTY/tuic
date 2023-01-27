@@ -1,4 +1,4 @@
-use super::{Address, Command};
+use super::Address;
 
 // +----------+
 // |   ADDR   |
@@ -11,7 +11,7 @@ pub struct Connect {
 }
 
 impl Connect {
-    pub(super) const TYPE_CODE: u8 = 0x01;
+    const TYPE_CODE: u8 = 0x01;
 
     pub const fn new(addr: Address) -> Self {
         Self { addr }
@@ -20,14 +20,12 @@ impl Connect {
     pub fn addr(&self) -> &Address {
         &self.addr
     }
-}
 
-impl Command for Connect {
-    fn type_code() -> u8 {
+    pub const fn type_code() -> u8 {
         Self::TYPE_CODE
     }
 
-    fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.addr.len()
     }
 }

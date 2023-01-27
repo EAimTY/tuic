@@ -39,9 +39,9 @@ impl<B> Packet<side::Tx, B> {
         Fragments::new(tx.assoc_id, tx.pkt_id, tx.addr, tx.max_pkt_size, payload)
     }
 
-    pub fn assoc_id(&self) -> &u16 {
+    pub fn assoc_id(&self) -> u16 {
         let Side::Tx(tx) = &self.inner else { unreachable!() };
-        &tx.assoc_id
+        tx.assoc_id
     }
 
     pub fn addr(&self) -> &Address {
@@ -102,9 +102,9 @@ where
         )
     }
 
-    pub fn assoc_id(&self) -> &u16 {
+    pub fn assoc_id(&self) -> u16 {
         let Side::Rx(rx) = &self.inner else { unreachable!() };
-        &rx.assoc_id
+        rx.assoc_id
     }
 
     pub fn addr(&self) -> &Address {
@@ -112,9 +112,9 @@ where
         &rx.addr
     }
 
-    pub fn size(&self) -> &u16 {
+    pub fn size(&self) -> u16 {
         let Side::Rx(rx) = &self.inner else { unreachable!() };
-        &rx.size
+        rx.size
     }
 }
 

@@ -87,7 +87,7 @@ impl<'conn, Side> Connection<'conn, Side> {
         model: PacketModel<Rx, Bytes>,
         mut recv: &mut RecvStream,
     ) -> Result<Option<(Bytes, Address, u16)>, Error> {
-        let mut buf = vec![0; *model.size() as usize];
+        let mut buf = vec![0; model.size() as usize];
         AsyncReadExt::read_exact(&mut recv, &mut buf).await?;
         let mut asm = Vec::new();
 
@@ -183,7 +183,7 @@ impl<'conn> Connection<'conn, side::Client> {
             Header::Packet(pkt) => {
                 let model = self.model.recv_packet(pkt);
                 let pos = dg.position() as usize;
-                let buf = dg.into_inner().slice(pos..pos + *model.size() as usize);
+                let buf = dg.into_inner().slice(pos..pos + model.size() as usize);
                 Ok(Task::Packet(self.accept_packet_native(model, buf).await?))
             }
             Header::Dissociate(_) => Err(Error::BadCommand("dissociate")),
@@ -206,7 +206,7 @@ impl<'conn> Connection<'conn, side::Server> {
         match Header::async_unmarshal(&mut recv).await? {
             Header::Authenticate(auth) => {
                 let model = self.model.recv_authenticate(auth);
-                Ok(Task::Authenticate(*model.token()))
+                Ok(Task::Authenticate(model.token()))
             }
             Header::Connect(_) => Err(Error::BadCommand("connect")),
             Header::Packet(pkt) => {
@@ -251,7 +251,7 @@ impl<'conn> Connection<'conn, side::Server> {
             Header::Packet(pkt) => {
                 let model = self.model.recv_packet(pkt);
                 let pos = dg.position() as usize;
-                let buf = dg.into_inner().slice(pos..pos + *model.size() as usize);
+                let buf = dg.into_inner().slice(pos..pos + model.size() as usize);
                 Ok(Task::Packet(self.accept_packet_native(model, buf).await?))
             }
             Header::Dissociate(_) => Err(Error::BadCommand("dissociate")),
