@@ -238,8 +238,8 @@ impl<'conn> Connection<'conn, side::Server> {
                 ))
             }
             Header::Dissociate(dissoc) => {
-                let _ = self.model.recv_dissociate(dissoc);
-                Ok(Task::Dissociate)
+                let model = self.model.recv_dissociate(dissoc);
+                Ok(Task::Dissociate(model.assoc_id()))
             }
             Header::Heartbeat(_) => Err(Error::BadCommandUniStream("heartbeat", recv)),
             _ => unreachable!(),
@@ -357,7 +357,7 @@ pub enum Task {
     Authenticate([u8; 8]),
     Connect(Connect),
     Packet(Option<(Bytes, Address, u16)>),
-    Dissociate,
+    Dissociate(u16),
     Heartbeat,
 }
 
