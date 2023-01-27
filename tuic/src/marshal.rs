@@ -3,13 +3,24 @@ use crate::protocol::{
 };
 use bytes::BufMut;
 use futures_util::{AsyncWrite, AsyncWriteExt};
-use std::{io::Error as IoError, net::SocketAddr};
+use std::{
+    io::{Error as IoError, Write},
+    net::SocketAddr,
+};
 
 impl Header {
+    #[cfg(feature = "async_marshal")]
     pub async fn async_marshal(&self, s: &mut (impl AsyncWrite + Unpin)) -> Result<(), IoError> {
         let mut buf = vec![0; self.len()];
         self.write(&mut buf);
         s.write_all(&buf).await
+    }
+
+    #[cfg(feature = "marshal")]
+    pub fn marshal(&self, s: &mut impl Write) -> Result<(), IoError> {
+        let mut buf = vec![0; self.len()];
+        self.write(&mut buf);
+        s.write_all(&buf)
     }
 
     pub fn write(&self, buf: &mut impl BufMut) {

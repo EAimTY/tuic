@@ -6,13 +6,13 @@ pub use self::protocol::{
     Address, Authenticate, Connect, Dissociate, Header, Heartbeat, Packet, VERSION,
 };
 
-#[cfg(feature = "async_marshal")]
+#[cfg(any(feature = "async_marshal", feature = "marshal"))]
 mod marshal;
 
-#[cfg(feature = "async_marshal")]
+#[cfg(any(feature = "async_marshal", feature = "marshal"))]
 mod unmarshal;
 
-#[cfg(feature = "async_marshal")]
+#[cfg(any(feature = "async_marshal", feature = "marshal"))]
 pub use self::unmarshal::UnmarshalError;
 
 #[cfg(feature = "model")]

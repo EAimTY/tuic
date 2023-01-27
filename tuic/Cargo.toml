@@ -5,6 +5,7 @@ edition = "2021"
 
 [features]
 async_marshal = ["bytes", "futures-util"]
+marshal = ["bytes"]
 model = ["parking_lot", "thiserror"]
 
 [dependencies]
@@ -14,4 +15,4 @@ parking_lot = { version = "0.12.1", default-features = false, optional = true }
 thiserror = { version = "1.0.38", default-features = false, optional = true }
 
 [dev-dependencies]
-tuic = { path = ".", features = ["async_marshal", "model"] }
+tuic = { path = ".", features = ["async_marshal", "marshal", "model"] }
