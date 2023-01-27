@@ -144,32 +144,42 @@ impl<'conn> Connection<'conn, side::Client> {
     }
 
     pub async fn accept_uni_stream(&self, mut recv: RecvStream) -> Result<Task, Error> {
-        match Header::async_unmarshal(&mut recv).await? {
-            Header::Authenticate(_) => Err(Error::BadCommand("authenticate")),
-            Header::Connect(_) => Err(Error::BadCommand("connect")),
+        let header = match Header::async_unmarshal(&mut recv).await {
+            Ok(header) => header,
+            Err(err) => return Err(Error::UnmarshalUniStream(err, recv)),
+        };
+
+        match header {
+            Header::Authenticate(_) => Err(Error::BadCommandUniStream("authenticate", recv)),
+            Header::Connect(_) => Err(Error::BadCommandUniStream("connect", recv)),
             Header::Packet(pkt) => {
                 let model = self.model.recv_packet(pkt);
                 Ok(Task::Packet(
                     self.accept_packet_quic(model, &mut recv).await?,
                 ))
             }
-            Header::Dissociate(_) => Err(Error::BadCommand("dissociate")),
-            Header::Heartbeat(_) => Err(Error::BadCommand("heartbeat")),
+            Header::Dissociate(_) => Err(Error::BadCommandUniStream("dissociate", recv)),
+            Header::Heartbeat(_) => Err(Error::BadCommandUniStream("heartbeat", recv)),
             _ => unreachable!(),
         }
     }
 
     pub async fn accept_bi_stream(
         &self,
-        _send: SendStream,
+        send: SendStream,
         mut recv: RecvStream,
     ) -> Result<Task, Error> {
-        match Header::async_unmarshal(&mut recv).await? {
-            Header::Authenticate(_) => Err(Error::BadCommand("authenticate")),
-            Header::Connect(_) => Err(Error::BadCommand("connect")),
-            Header::Packet(_) => Err(Error::BadCommand("packet")),
-            Header::Dissociate(_) => Err(Error::BadCommand("dissociate")),
-            Header::Heartbeat(_) => Err(Error::BadCommand("heartbeat")),
+        let header = match Header::async_unmarshal(&mut recv).await {
+            Ok(header) => header,
+            Err(err) => return Err(Error::UnmarshalBiStream(err, send, recv)),
+        };
+
+        match header {
+            Header::Authenticate(_) => Err(Error::BadCommandBiStream("authenticate", send, recv)),
+            Header::Connect(_) => Err(Error::BadCommandBiStream("connect", send, recv)),
+            Header::Packet(_) => Err(Error::BadCommandBiStream("packet", send, recv)),
+            Header::Dissociate(_) => Err(Error::BadCommandBiStream("dissociate", send, recv)),
+            Header::Heartbeat(_) => Err(Error::BadCommandBiStream("heartbeat", send, recv)),
             _ => unreachable!(),
         }
     }
@@ -177,17 +187,24 @@ impl<'conn> Connection<'conn, side::Client> {
     pub fn accept_datagram(&self, dg: Bytes) -> Result<Task, Error> {
         let mut dg = Cursor::new(dg);
 
-        match Header::unmarshal(&mut dg)? {
-            Header::Authenticate(_) => Err(Error::BadCommand("authenticate")),
-            Header::Connect(_) => Err(Error::BadCommand("connect")),
+        let header = match Header::unmarshal(&mut dg) {
+            Ok(header) => header,
+            Err(err) => return Err(Error::UnmarshalDatagram(err, dg.into_inner())),
+        };
+
+        match header {
+            Header::Authenticate(_) => {
+                Err(Error::BadCommandDatagram("authenticate", dg.into_inner()))
+            }
+            Header::Connect(_) => Err(Error::BadCommandDatagram("connect", dg.into_inner())),
             Header::Packet(pkt) => {
                 let model = self.model.recv_packet(pkt);
                 let pos = dg.position() as usize;
                 let buf = dg.into_inner().slice(pos..pos + model.size() as usize);
                 Ok(Task::Packet(self.accept_packet_native(model, buf)?))
             }
-            Header::Dissociate(_) => Err(Error::BadCommand("dissociate")),
-            Header::Heartbeat(_) => Err(Error::BadCommand("heartbeat")),
+            Header::Dissociate(_) => Err(Error::BadCommandDatagram("dissociate", dg.into_inner())),
+            Header::Heartbeat(_) => Err(Error::BadCommandDatagram("heartbeat", dg.into_inner())),
             _ => unreachable!(),
         }
     }
@@ -203,12 +220,17 @@ impl<'conn> Connection<'conn, side::Server> {
     }
 
     pub async fn accept_uni_stream(&self, mut recv: RecvStream) -> Result<Task, Error> {
-        match Header::async_unmarshal(&mut recv).await? {
+        let header = match Header::async_unmarshal(&mut recv).await {
+            Ok(header) => header,
+            Err(err) => return Err(Error::UnmarshalUniStream(err, recv)),
+        };
+
+        match header {
             Header::Authenticate(auth) => {
                 let model = self.model.recv_authenticate(auth);
                 Ok(Task::Authenticate(model.token()))
             }
-            Header::Connect(_) => Err(Error::BadCommand("connect")),
+            Header::Connect(_) => Err(Error::BadCommandUniStream("connect", recv)),
             Header::Packet(pkt) => {
                 let model = self.model.recv_packet(pkt);
                 Ok(Task::Packet(
@@ -219,7 +241,7 @@ impl<'conn> Connection<'conn, side::Server> {
                 let _ = self.model.recv_dissociate(dissoc);
                 Ok(Task::Dissociate)
             }
-            Header::Heartbeat(_) => Err(Error::BadCommand("heartbeat")),
+            Header::Heartbeat(_) => Err(Error::BadCommandUniStream("heartbeat", recv)),
             _ => unreachable!(),
         }
     }
@@ -229,15 +251,20 @@ impl<'conn> Connection<'conn, side::Server> {
         send: SendStream,
         mut recv: RecvStream,
     ) -> Result<Task, Error> {
-        match Header::async_unmarshal(&mut recv).await? {
-            Header::Authenticate(_) => Err(Error::BadCommand("authenticate")),
+        let header = match Header::async_unmarshal(&mut recv).await {
+            Ok(header) => header,
+            Err(err) => return Err(Error::UnmarshalBiStream(err, send, recv)),
+        };
+
+        match header {
+            Header::Authenticate(_) => Err(Error::BadCommandBiStream("authenticate", send, recv)),
             Header::Connect(conn) => {
                 let model = self.model.recv_connect(conn);
                 Ok(Task::Connect(Connect::new(Side::Server(model), send, recv)))
             }
-            Header::Packet(_) => Err(Error::BadCommand("packet")),
-            Header::Dissociate(_) => Err(Error::BadCommand("dissociate")),
-            Header::Heartbeat(_) => Err(Error::BadCommand("heartbeat")),
+            Header::Packet(_) => Err(Error::BadCommandBiStream("packet", send, recv)),
+            Header::Dissociate(_) => Err(Error::BadCommandBiStream("dissociate", send, recv)),
+            Header::Heartbeat(_) => Err(Error::BadCommandBiStream("heartbeat", send, recv)),
             _ => unreachable!(),
         }
     }
@@ -245,16 +272,23 @@ impl<'conn> Connection<'conn, side::Server> {
     pub fn accept_datagram(&self, dg: Bytes) -> Result<Task, Error> {
         let mut dg = Cursor::new(dg);
 
-        match Header::unmarshal(&mut dg)? {
-            Header::Authenticate(_) => Err(Error::BadCommand("authenticate")),
-            Header::Connect(_) => Err(Error::BadCommand("connect")),
+        let header = match Header::unmarshal(&mut dg) {
+            Ok(header) => header,
+            Err(err) => return Err(Error::UnmarshalDatagram(err, dg.into_inner())),
+        };
+
+        match header {
+            Header::Authenticate(_) => {
+                Err(Error::BadCommandDatagram("authenticate", dg.into_inner()))
+            }
+            Header::Connect(_) => Err(Error::BadCommandDatagram("connect", dg.into_inner())),
             Header::Packet(pkt) => {
                 let model = self.model.recv_packet(pkt);
                 let pos = dg.position() as usize;
                 let buf = dg.into_inner().slice(pos..pos + model.size() as usize);
                 Ok(Task::Packet(self.accept_packet_native(model, buf)?))
             }
-            Header::Dissociate(_) => Err(Error::BadCommand("dissociate")),
+            Header::Dissociate(_) => Err(Error::BadCommandDatagram("dissociate", dg.into_inner())),
             Header::Heartbeat(hb) => {
                 let _ = self.model.recv_heartbeat(hb);
                 Ok(Task::Heartbeat)
@@ -336,18 +370,17 @@ pub enum Error {
     #[error(transparent)]
     SendDatagram(#[from] SendDatagramError),
     #[error(transparent)]
-    Unmarshal(UnmarshalError),
-    #[error(transparent)]
     Assemble(#[from] AssembleError),
-    #[error("{0}")]
-    BadCommand(&'static str),
-}
-
-impl From<UnmarshalError> for Error {
-    fn from(err: UnmarshalError) -> Self {
-        match err {
-            UnmarshalError::Io(err) => Self::Io(err),
-            err => Self::Unmarshal(err),
-        }
-    }
+    #[error("error unmarshaling uni_stream: {0}")]
+    UnmarshalUniStream(UnmarshalError, RecvStream),
+    #[error("error unmarshaling bi_stream: {0}")]
+    UnmarshalBiStream(UnmarshalError, SendStream, RecvStream),
+    #[error("error unmarshaling datagram: {0}")]
+    UnmarshalDatagram(UnmarshalError, Bytes),
+    #[error("bad command `{0}` from uni_stream")]
+    BadCommandUniStream(&'static str, RecvStream),
+    #[error("bad command `{0}` from bi_stream")]
+    BadCommandBiStream(&'static str, SendStream, RecvStream),
+    #[error("bad command `{0}` from datagram")]
+    BadCommandDatagram(&'static str, Bytes),
 }
