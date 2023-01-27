@@ -1,11 +1,11 @@
 use self::side::Side;
-use bytes::Bytes;
-use futures_util::{io::Cursor, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use bytes::{BufMut, Bytes};
+use futures_util::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use quinn::{
     Connection as QuinnConnection, ConnectionError, RecvStream, SendDatagramError, SendStream,
 };
 use std::{
-    io::Error as IoError,
+    io::{Cursor, Error as IoError},
     pin::Pin,
     task::{Context, Poll},
     time::Duration,
@@ -37,7 +37,7 @@ pub struct Connection<'conn, Side> {
 }
 
 impl<'conn, Side> Connection<'conn, Side> {
-    pub async fn packet_native(
+    pub fn packet_native(
         &self,
         pkt: impl AsRef<[u8]>,
         addr: Address,
@@ -50,10 +50,10 @@ impl<'conn, Side> Connection<'conn, Side> {
         let model = self.model.send_packet(assoc_id, addr, max_pkt_size);
 
         for (header, frag) in model.into_fragments(pkt) {
-            let mut buf = Cursor::new(vec![0; header.len() + frag.len()]);
-            header.async_marshal(&mut buf).await?;
-            buf.write_all(frag).await.unwrap();
-            self.conn.send_datagram(Bytes::from(buf.into_inner()))?;
+            let mut buf = vec![0; header.len() + frag.len()];
+            header.write(&mut buf);
+            buf.put_slice(frag);
+            self.conn.send_datagram(Bytes::from(buf))?;
         }
 
         Ok(())
@@ -97,7 +97,7 @@ impl<'conn, Side> Connection<'conn, Side> {
             .map(|(addr, assoc_id)| (Bytes::from(asm), addr, assoc_id)))
     }
 
-    async fn accept_packet_native(
+    fn accept_packet_native(
         &self,
         model: PacketModel<Rx, Bytes>,
         data: Bytes,
@@ -174,17 +174,17 @@ impl<'conn> Connection<'conn, side::Client> {
         }
     }
 
-    pub async fn accept_datagram(&self, dg: Bytes) -> Result<Task, Error> {
+    pub fn accept_datagram(&self, dg: Bytes) -> Result<Task, Error> {
         let mut dg = Cursor::new(dg);
 
-        match Header::async_unmarshal(&mut dg).await? {
+        match Header::unmarshal(&mut dg)? {
             Header::Authenticate(_) => Err(Error::BadCommand("authenticate")),
             Header::Connect(_) => Err(Error::BadCommand("connect")),
             Header::Packet(pkt) => {
                 let model = self.model.recv_packet(pkt);
                 let pos = dg.position() as usize;
                 let buf = dg.into_inner().slice(pos..pos + model.size() as usize);
-                Ok(Task::Packet(self.accept_packet_native(model, buf).await?))
+                Ok(Task::Packet(self.accept_packet_native(model, buf)?))
             }
             Header::Dissociate(_) => Err(Error::BadCommand("dissociate")),
             Header::Heartbeat(_) => Err(Error::BadCommand("heartbeat")),
@@ -242,17 +242,17 @@ impl<'conn> Connection<'conn, side::Server> {
         }
     }
 
-    pub async fn accept_datagram(&self, dg: Bytes) -> Result<Task, Error> {
+    pub fn accept_datagram(&self, dg: Bytes) -> Result<Task, Error> {
         let mut dg = Cursor::new(dg);
 
-        match Header::async_unmarshal(&mut dg).await? {
+        match Header::unmarshal(&mut dg)? {
             Header::Authenticate(_) => Err(Error::BadCommand("authenticate")),
             Header::Connect(_) => Err(Error::BadCommand("connect")),
             Header::Packet(pkt) => {
                 let model = self.model.recv_packet(pkt);
                 let pos = dg.position() as usize;
                 let buf = dg.into_inner().slice(pos..pos + model.size() as usize);
-                Ok(Task::Packet(self.accept_packet_native(model, buf).await?))
+                Ok(Task::Packet(self.accept_packet_native(model, buf)?))
             }
             Header::Dissociate(_) => Err(Error::BadCommand("dissociate")),
             Header::Heartbeat(hb) => {
@@ -336,9 +336,18 @@ pub enum Error {
     #[error(transparent)]
     SendDatagram(#[from] SendDatagramError),
     #[error(transparent)]
-    Unmarshal(#[from] UnmarshalError),
+    Unmarshal(UnmarshalError),
     #[error(transparent)]
     Assemble(#[from] AssembleError),
     #[error("{0}")]
     BadCommand(&'static str),
+}
+
+impl From<UnmarshalError> for Error {
+    fn from(err: UnmarshalError) -> Self {
+        match err {
+            UnmarshalError::Io(err) => Self::Io(err),
+            err => Self::Unmarshal(err),
+        }
+    }
 }
