@@ -30,13 +30,13 @@ pub mod side {
     }
 }
 
-pub struct Connection<'conn, Side> {
-    conn: &'conn QuinnConnection,
+pub struct Connection<Side> {
+    conn: QuinnConnection,
     model: ConnectionModel<Bytes>,
     _marker: Side,
 }
 
-impl<'conn, Side> Connection<'conn, Side> {
+impl<Side> Connection<Side> {
     pub fn packet_native(
         &self,
         pkt: impl AsRef<[u8]>,
@@ -77,6 +77,14 @@ impl<'conn, Side> Connection<'conn, Side> {
         Ok(())
     }
 
+    pub fn task_connect_count(&self) -> usize {
+        self.model.task_connect_count()
+    }
+
+    pub fn task_associate_count(&self) -> usize {
+        self.model.task_associate_count()
+    }
+
     pub fn collect_garbage(&self, timeout: Duration) {
         self.model.collect_garbage(timeout);
     }
@@ -110,8 +118,8 @@ impl<'conn, Side> Connection<'conn, Side> {
     }
 }
 
-impl<'conn> Connection<'conn, side::Client> {
-    pub fn new(conn: &'conn QuinnConnection) -> Self {
+impl Connection<side::Client> {
+    pub fn new(conn: QuinnConnection) -> Self {
         Self {
             conn,
             model: ConnectionModel::new(),
@@ -209,8 +217,8 @@ impl<'conn> Connection<'conn, side::Client> {
     }
 }
 
-impl<'conn> Connection<'conn, side::Server> {
-    pub fn new(conn: &'conn QuinnConnection) -> Self {
+impl Connection<side::Server> {
+    pub fn new(conn: QuinnConnection) -> Self {
         Self {
             conn,
             model: ConnectionModel::new(),
