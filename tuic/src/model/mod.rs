@@ -28,6 +28,7 @@ pub use self::{
     packet::{Fragments, Packet},
 };
 
+#[derive(Clone)]
 pub struct Connection<B> {
     udp_sessions: Arc<Mutex<UdpSessions<B>>>,
     task_connect_count: TaskCount,

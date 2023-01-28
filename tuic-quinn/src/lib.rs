@@ -21,7 +21,9 @@ use tuic::{
 };
 
 pub mod side {
+    #[derive(Clone)]
     pub struct Client;
+    #[derive(Clone)]
     pub struct Server;
 
     pub(super) enum Side<C, S> {
@@ -30,6 +32,7 @@ pub mod side {
     }
 }
 
+#[derive(Clone)]
 pub struct Connection<Side> {
     conn: QuinnConnection,
     model: ConnectionModel<Bytes>,
