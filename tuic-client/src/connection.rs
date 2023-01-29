@@ -17,7 +17,8 @@ use tokio::{
     sync::{Mutex as AsyncMutex, OnceCell as AsyncOnceCell},
     time,
 };
-use tuic_quinn::{side, Connection as Model, Task};
+use tuic::Address;
+use tuic_quinn::{side, Connect, Connection as Model, Task};
 
 static ENDPOINT: OnceCell<Mutex<Endpoint>> = OnceCell::new();
 static CONNECTION: AsyncOnceCell<AsyncMutex<Connection>> = AsyncOnceCell::const_new();
@@ -80,25 +81,29 @@ impl Connection {
         };
 
         let try_get_conn = async {
-            let conn = CONNECTION
+            let mut conn = CONNECTION
                 .get_or_try_init(|| try_init_conn)
                 .await?
                 .lock()
                 .await;
 
-            Ok::<_, Error>(conn)
+            if conn.is_closed() {
+                let new_conn = ENDPOINT.get().unwrap().lock().connect().await?;
+                *conn = new_conn;
+            }
+
+            Ok::<_, Error>(conn.clone())
         };
 
-        let mut conn = time::timeout(Duration::from_secs(5), try_get_conn)
+        let conn = time::timeout(Duration::from_secs(5), try_get_conn)
             .await
             .map_err(|_| Error::Timeout)??;
 
-        if conn.is_closed() {
-            let new_conn = ENDPOINT.get().unwrap().lock().connect().await?;
-            *conn = new_conn;
-        }
+        Ok(conn)
+    }
 
-        Ok(conn.clone())
+    pub async fn connect(&self, addr: Address) -> Result<Connect, Error> {
+        Ok(self.model.connect(addr).await?)
     }
 
     fn is_closed(&self) -> bool {
@@ -144,9 +149,11 @@ impl Connection {
     async fn handle_uni_stream(self, recv: RecvStream, _reg: StreamRegister) {
         let res = match self.model.accept_uni_stream(recv).await {
             Err(err) => Err(Error::from(err)),
-            Ok(Task::Packet(Some((pkt, addr, assoc_id)))) => {
-                socks5::recv_pkt(pkt, addr, assoc_id).await
-            }
+            Ok(Task::Packet(pkt)) => match pkt.accept().await {
+                Ok(Some((pkt, addr, assoc_id))) => socks5::recv_pkt(pkt, addr, assoc_id).await,
+                Ok(None) => Ok(()),
+                Err(err) => Err(Error::from(err)),
+            },
             _ => unreachable!(),
         };
 
@@ -171,9 +178,11 @@ impl Connection {
     async fn handle_datagram(self, dg: Bytes) {
         let res = match self.model.accept_datagram(dg) {
             Err(err) => Err(Error::from(err)),
-            Ok(Task::Packet(Some((pkt, addr, assoc_id)))) => {
-                socks5::recv_pkt(pkt, addr, assoc_id).await
-            }
+            Ok(Task::Packet(pkt)) => match pkt.accept().await {
+                Ok(Some((pkt, addr, assoc_id))) => socks5::recv_pkt(pkt, addr, assoc_id).await,
+                Ok(None) => Ok(()),
+                Err(err) => Err(Error::from(err)),
+            },
             _ => unreachable!(),
         };
 
