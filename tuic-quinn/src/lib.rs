@@ -91,34 +91,6 @@ impl<Side> Connection<Side> {
     pub fn collect_garbage(&self, timeout: Duration) {
         self.model.collect_garbage(timeout);
     }
-
-    async fn accept_packet_quic(
-        &self,
-        model: PacketModel<Rx, Bytes>,
-        mut recv: &mut RecvStream,
-    ) -> Result<Option<(Bytes, Address, u16)>, Error> {
-        let mut buf = vec![0; model.size() as usize];
-        AsyncReadExt::read_exact(&mut recv, &mut buf).await?;
-        let mut asm = Vec::new();
-
-        Ok(model
-            .assemble(Bytes::from(buf))?
-            .map(|pkt| pkt.assemble(&mut asm))
-            .map(|(addr, assoc_id)| (Bytes::from(asm), addr, assoc_id)))
-    }
-
-    fn accept_packet_native(
-        &self,
-        model: PacketModel<Rx, Bytes>,
-        data: Bytes,
-    ) -> Result<Option<(Bytes, Address, u16)>, Error> {
-        let mut asm = Vec::new();
-
-        Ok(model
-            .assemble(data)?
-            .map(|pkt| pkt.assemble(&mut asm))
-            .map(|(addr, assoc_id)| (Bytes::from(asm), addr, assoc_id)))
-    }
 }
 
 impl Connection<side::Client> {
@@ -164,9 +136,7 @@ impl Connection<side::Client> {
             Header::Connect(_) => Err(Error::BadCommandUniStream("connect", recv)),
             Header::Packet(pkt) => {
                 let model = self.model.recv_packet(pkt);
-                Ok(Task::Packet(
-                    self.accept_packet_quic(model, &mut recv).await?,
-                ))
+                Ok(Task::Packet(Packet::new(model, PacketSource::Quic(recv))))
             }
             Header::Dissociate(_) => Err(Error::BadCommandUniStream("dissociate", recv)),
             Header::Heartbeat(_) => Err(Error::BadCommandUniStream("heartbeat", recv)),
@@ -210,8 +180,13 @@ impl Connection<side::Client> {
             Header::Packet(pkt) => {
                 let model = self.model.recv_packet(pkt);
                 let pos = dg.position() as usize;
-                let buf = dg.into_inner().slice(pos..pos + model.size() as usize);
-                Ok(Task::Packet(self.accept_packet_native(model, buf)?))
+                let mut buf = dg.into_inner();
+                if (pos + model.size() as usize) < buf.len() {
+                    buf = buf.slice(pos..pos + model.size() as usize);
+                    Ok(Task::Packet(Packet::new(model, PacketSource::Native(buf))))
+                } else {
+                    Err(Error::PayloadLength(model.size() as usize, buf.len() - pos))
+                }
             }
             Header::Dissociate(_) => Err(Error::BadCommandDatagram("dissociate", dg.into_inner())),
             Header::Heartbeat(_) => Err(Error::BadCommandDatagram("heartbeat", dg.into_inner())),
@@ -243,9 +218,7 @@ impl Connection<side::Server> {
             Header::Connect(_) => Err(Error::BadCommandUniStream("connect", recv)),
             Header::Packet(pkt) => {
                 let model = self.model.recv_packet(pkt);
-                Ok(Task::Packet(
-                    self.accept_packet_quic(model, &mut recv).await?,
-                ))
+                Ok(Task::Packet(Packet::new(model, PacketSource::Quic(recv))))
             }
             Header::Dissociate(dissoc) => {
                 let model = self.model.recv_dissociate(dissoc);
@@ -296,7 +269,7 @@ impl Connection<side::Server> {
                 let model = self.model.recv_packet(pkt);
                 let pos = dg.position() as usize;
                 let buf = dg.into_inner().slice(pos..pos + model.size() as usize);
-                Ok(Task::Packet(self.accept_packet_native(model, buf)?))
+                Ok(Task::Packet(Packet::new(model, PacketSource::Native(buf))))
             }
             Header::Dissociate(_) => Err(Error::BadCommandDatagram("dissociate", dg.into_inner())),
             Header::Heartbeat(hb) => {
@@ -362,11 +335,46 @@ impl AsyncWrite for Connect {
     }
 }
 
+pub struct Packet {
+    model: PacketModel<Rx, Bytes>,
+    src: PacketSource,
+}
+
+enum PacketSource {
+    Quic(RecvStream),
+    Native(Bytes),
+}
+
+impl Packet {
+    fn new(model: PacketModel<Rx, Bytes>, src: PacketSource) -> Self {
+        Self { src, model }
+    }
+
+    pub async fn accept(self) -> Result<Option<(Bytes, Address, u16)>, Error> {
+        let pkt = match self.src {
+            PacketSource::Quic(mut recv) => {
+                let mut buf = vec![0; self.model.size() as usize];
+                AsyncReadExt::read_exact(&mut recv, &mut buf).await?;
+                Bytes::from(buf)
+            }
+            PacketSource::Native(pkt) => pkt,
+        };
+
+        let mut asm = Vec::new();
+
+        Ok(self
+            .model
+            .assemble(pkt)?
+            .map(|pkt| pkt.assemble(&mut asm))
+            .map(|(addr, assoc_id)| (Bytes::from(asm), addr, assoc_id)))
+    }
+}
+
 #[non_exhaustive]
 pub enum Task {
     Authenticate([u8; 8]),
     Connect(Connect),
-    Packet(Option<(Bytes, Address, u16)>),
+    Packet(Packet),
     Dissociate(u16),
     Heartbeat,
 }
@@ -379,6 +387,8 @@ pub enum Error {
     Connection(#[from] ConnectionError),
     #[error(transparent)]
     SendDatagram(#[from] SendDatagramError),
+    #[error("expecting payload length {0} but got {1}")]
+    PayloadLength(usize, usize),
     #[error(transparent)]
     Assemble(#[from] AssembleError),
     #[error("error unmarshaling uni_stream: {0}")]
