@@ -117,6 +117,14 @@ impl Connection<side::Client> {
         Ok(Connect::new(Side::Client(model), send, recv))
     }
 
+    pub async fn dissociate(&self, assoc_id: u16) -> Result<(), Error> {
+        let mut send = self.conn.open_uni().await?;
+        let model = self.model.send_dissociate(assoc_id);
+        model.header().async_marshal(&mut send).await?;
+        send.close().await?;
+        Ok(())
+    }
+
     pub async fn heartbeat(&self) -> Result<(), Error> {
         let model = self.model.send_heartbeat();
         let mut buf = Vec::with_capacity(model.header().len());
