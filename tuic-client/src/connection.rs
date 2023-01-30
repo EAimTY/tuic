@@ -106,6 +106,16 @@ impl Connection {
         Ok(self.model.connect(addr).await?)
     }
 
+    pub async fn packet(&self, pkt: Bytes, addr: Address, assoc_id: u16) -> Result<(), Error> {
+        self.model.packet_quic(pkt, addr, assoc_id).await?; // TODO
+        Ok(())
+    }
+
+    pub async fn dissociate(&self, assoc_id: u16) -> Result<(), Error> {
+        self.model.dissociate(assoc_id).await?;
+        Ok(())
+    }
+
     fn is_closed(&self) -> bool {
         self.conn.close_reason().is_some()
     }
