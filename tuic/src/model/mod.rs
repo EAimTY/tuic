@@ -78,9 +78,22 @@ where
             .send_packet(assoc_id, addr, max_pkt_size)
     }
 
-    pub fn recv_packet(&self, header: PacketHeader) -> Packet<side::Rx, B> {
+    pub fn recv_packet(&self, header: PacketHeader) -> Option<Packet<side::Rx, B>> {
         let (assoc_id, pkt_id, frag_total, frag_id, size, addr) = header.into();
         self.udp_sessions.lock().recv_packet(
+            self.udp_sessions.clone(),
+            assoc_id,
+            pkt_id,
+            frag_total,
+            frag_id,
+            size,
+            addr,
+        )
+    }
+
+    pub fn recv_packet_unrestricted(&self, header: PacketHeader) -> Packet<side::Rx, B> {
+        let (assoc_id, pkt_id, frag_total, frag_id, size, addr) = header.into();
+        self.udp_sessions.lock().recv_packet_unrestricted(
             self.udp_sessions.clone(),
             assoc_id,
             pkt_id,
@@ -166,7 +179,7 @@ where
         }
     }
 
-    fn send_packet<'a>(
+    fn send_packet(
         &mut self,
         assoc_id: u16,
         addr: Address,
@@ -178,7 +191,22 @@ where
             .send_packet(assoc_id, addr, max_pkt_size)
     }
 
-    fn recv_packet<'a>(
+    fn recv_packet(
+        &mut self,
+        sessions: Arc<Mutex<Self>>,
+        assoc_id: u16,
+        pkt_id: u16,
+        frag_total: u8,
+        frag_id: u8,
+        size: u16,
+        addr: Address,
+    ) -> Option<Packet<side::Rx, B>> {
+        self.sessions.get_mut(&assoc_id).map(|session| {
+            session.recv_packet(sessions, assoc_id, pkt_id, frag_total, frag_id, size, addr)
+        })
+    }
+
+    fn recv_packet_unrestricted(
         &mut self,
         sessions: Arc<Mutex<Self>>,
         assoc_id: u16,
