@@ -198,6 +198,9 @@ async fn send_pkt(
     Ok(res?)
 }
 
-pub async fn recv_pkt(pkt: Bytes, addr: TuicAddress, assoc_id: u16) -> Result<(), Error> {
-    todo!()
+pub async fn recv_pkt(pkt: Bytes, addr: Address, assoc_id: u16) -> Result<(), Error> {
+    let sessions = UDP_SESSIONS.lock();
+    let Some(assoc_socket) = sessions.get(&assoc_id) else { unreachable!() };
+    assoc_socket.send(pkt, 0, addr).await?;
+    Ok(())
 }

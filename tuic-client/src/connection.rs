@@ -5,6 +5,7 @@ use parking_lot::Mutex;
 use quinn::{
     Connection as QuinnConnection, Endpoint as QuinnEndpoint, RecvStream, SendStream, VarInt,
 };
+use socks5_proto::Address as Socks5Address;
 use std::{
     net::SocketAddr,
     sync::{
@@ -160,7 +161,16 @@ impl Connection {
         let res = match self.model.accept_uni_stream(recv).await {
             Err(err) => Err(Error::from(err)),
             Ok(Task::Packet(pkt)) => match pkt.accept().await {
-                Ok(Some((pkt, addr, assoc_id))) => socks5::recv_pkt(pkt, addr, assoc_id).await,
+                Ok(Some((pkt, addr, assoc_id))) => {
+                    let addr = match addr {
+                        Address::None => unreachable!(),
+                        Address::DomainAddress(domain, port) => {
+                            Socks5Address::DomainAddress(domain, port)
+                        }
+                        Address::SocketAddress(addr) => Socks5Address::SocketAddress(addr),
+                    };
+                    socks5::recv_pkt(pkt, addr, assoc_id).await
+                }
                 Ok(None) => Ok(()),
                 Err(err) => Err(Error::from(err)),
             },
@@ -189,7 +199,16 @@ impl Connection {
         let res = match self.model.accept_datagram(dg) {
             Err(err) => Err(Error::from(err)),
             Ok(Task::Packet(pkt)) => match pkt.accept().await {
-                Ok(Some((pkt, addr, assoc_id))) => socks5::recv_pkt(pkt, addr, assoc_id).await,
+                Ok(Some((pkt, addr, assoc_id))) => {
+                    let addr = match addr {
+                        Address::None => unreachable!(),
+                        Address::DomainAddress(domain, port) => {
+                            Socks5Address::DomainAddress(domain, port)
+                        }
+                        Address::SocketAddress(addr) => Socks5Address::SocketAddress(addr),
+                    };
+                    socks5::recv_pkt(pkt, addr, assoc_id).await
+                }
                 Ok(None) => Ok(()),
                 Err(err) => Err(Error::from(err)),
             },
