@@ -43,7 +43,7 @@ impl Endpoint {
             .await
             .map(Connection::new)?;
 
-        tokio::spawn(conn.clone().accept());
+        tokio::spawn(conn.clone().init());
 
         Ok(conn)
     }
@@ -221,7 +221,32 @@ impl Connection {
         }
     }
 
-    async fn accept(self) {
+    async fn authenticate(self) {
+        match self.model.authenticate([0; 8]).await {
+            Ok(()) => {}
+            Err(err) => eprintln!("{err}"),
+        }
+    }
+
+    async fn heartbeat(self) {
+        loop {
+            time::sleep(Duration::from_secs(5)).await;
+
+            if self.is_closed() {
+                break;
+            }
+
+            match self.model.heartbeat().await {
+                Ok(()) => {}
+                Err(err) => eprintln!("{err}"),
+            }
+        }
+    }
+
+    async fn init(self) {
+        tokio::spawn(self.clone().authenticate());
+        tokio::spawn(self.clone().heartbeat());
+
         let err = loop {
             tokio::select! {
                 res = self.accept_uni_stream() => match res {
