@@ -3,12 +3,13 @@ use crate::protocol::{
     Dissociate as DissociateHeader, Heartbeat as HeartbeatHeader, Packet as PacketHeader,
 };
 use parking_lot::Mutex;
+use register_count::{Counter, Register};
 use std::{
     collections::HashMap,
     mem,
     sync::{
         atomic::{AtomicU16, Ordering},
-        Arc, Weak,
+        Arc,
     },
     time::{Duration, Instant},
 };
@@ -31,8 +32,8 @@ pub use self::{
 #[derive(Clone)]
 pub struct Connection<B> {
     udp_sessions: Arc<Mutex<UdpSessions<B>>>,
-    task_connect_count: TaskCount,
-    task_associate_count: TaskCount,
+    task_connect_count: Counter,
+    task_associate_count: Counter,
 }
 
 impl<B> Connection<B>
@@ -40,11 +41,11 @@ where
     B: AsRef<[u8]>,
 {
     pub fn new() -> Self {
-        let task_associate_count = TaskCount::new();
+        let task_associate_count = Counter::new();
 
         Self {
             udp_sessions: Arc::new(Mutex::new(UdpSessions::new(task_associate_count.clone()))),
-            task_connect_count: TaskCount::new(),
+            task_connect_count: Counter::new(),
             task_associate_count,
         }
     }
@@ -59,12 +60,12 @@ where
     }
 
     pub fn send_connect(&self, addr: Address) -> Connect<side::Tx> {
-        Connect::<side::Tx>::new(self.task_connect_count.register(), addr)
+        Connect::<side::Tx>::new(self.task_connect_count.reg(), addr)
     }
 
     pub fn recv_connect(&self, header: ConnectHeader) -> Connect<side::Rx> {
         let (addr,) = header.into();
-        Connect::<side::Rx>::new(self.task_connect_count.register(), addr)
+        Connect::<side::Rx>::new(self.task_connect_count.reg(), addr)
     }
 
     pub fn send_packet(
@@ -123,33 +124,15 @@ where
     }
 
     pub fn task_connect_count(&self) -> usize {
-        self.task_connect_count.get()
+        self.task_connect_count.count()
     }
 
     pub fn task_associate_count(&self) -> usize {
-        self.task_associate_count.get()
+        self.task_associate_count.count()
     }
 
     pub fn collect_garbage(&self, timeout: Duration) {
         self.udp_sessions.lock().collect_garbage(timeout);
-    }
-}
-
-#[derive(Clone)]
-struct TaskCount(Arc<()>);
-struct TaskRegister(Weak<()>);
-
-impl TaskCount {
-    fn new() -> Self {
-        Self(Arc::new(()))
-    }
-
-    fn register(&self) -> TaskRegister {
-        TaskRegister(Arc::downgrade(&self.0))
-    }
-
-    fn get(&self) -> usize {
-        Arc::weak_count(&self.0)
     }
 }
 
@@ -165,14 +148,14 @@ pub mod side {
 
 struct UdpSessions<B> {
     sessions: HashMap<u16, UdpSession<B>>,
-    task_associate_count: TaskCount,
+    task_associate_count: Counter,
 }
 
 impl<B> UdpSessions<B>
 where
     B: AsRef<[u8]>,
 {
-    fn new(task_associate_count: TaskCount) -> Self {
+    fn new(task_associate_count: Counter) -> Self {
         Self {
             sessions: HashMap::new(),
             task_associate_count,
@@ -187,7 +170,7 @@ where
     ) -> Packet<side::Tx, B> {
         self.sessions
             .entry(assoc_id)
-            .or_insert_with(|| UdpSession::new(self.task_associate_count.register()))
+            .or_insert_with(|| UdpSession::new(self.task_associate_count.reg()))
             .send_packet(assoc_id, addr, max_pkt_size)
     }
 
@@ -218,7 +201,7 @@ where
     ) -> Packet<side::Rx, B> {
         self.sessions
             .entry(assoc_id)
-            .or_insert_with(|| UdpSession::new(self.task_associate_count.register()))
+            .or_insert_with(|| UdpSession::new(self.task_associate_count.reg()))
             .recv_packet(sessions, assoc_id, pkt_id, frag_total, frag_id, size, addr)
     }
 
@@ -244,7 +227,7 @@ where
     ) -> Result<Option<Assemblable<B>>, AssembleError> {
         self.sessions
             .entry(assoc_id)
-            .or_insert_with(|| UdpSession::new(self.task_associate_count.register()))
+            .or_insert_with(|| UdpSession::new(self.task_associate_count.reg()))
             .insert(assoc_id, pkt_id, frag_total, frag_id, size, addr, data)
     }
 
@@ -258,14 +241,14 @@ where
 struct UdpSession<B> {
     pkt_buf: HashMap<u16, PacketBuffer<B>>,
     next_pkt_id: AtomicU16,
-    _task_reg: TaskRegister,
+    _task_reg: Register,
 }
 
 impl<B> UdpSession<B>
 where
     B: AsRef<[u8]>,
 {
-    fn new(task_reg: TaskRegister) -> Self {
+    fn new(task_reg: Register) -> Self {
         Self {
             pkt_buf: HashMap::new(),
             next_pkt_id: AtomicU16::new(0),

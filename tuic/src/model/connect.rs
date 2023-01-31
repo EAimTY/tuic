@@ -1,8 +1,6 @@
-use super::{
-    side::{self, Side},
-    TaskRegister,
-};
+use super::side::{self, Side};
 use crate::protocol::{Address, Connect as ConnectHeader, Header};
+use register_count::Register;
 
 pub struct Connect<M> {
     inner: Side<Tx, Rx>,
@@ -11,11 +9,11 @@ pub struct Connect<M> {
 
 struct Tx {
     header: Header,
-    _task_reg: TaskRegister,
+    _task_reg: Register,
 }
 
 impl Connect<side::Tx> {
-    pub(super) fn new(task_reg: TaskRegister, addr: Address) -> Self {
+    pub(super) fn new(task_reg: Register, addr: Address) -> Self {
         Self {
             inner: Side::Tx(Tx {
                 header: Header::Connect(ConnectHeader::new(addr)),
@@ -33,11 +31,11 @@ impl Connect<side::Tx> {
 
 struct Rx {
     addr: Address,
-    _task_reg: TaskRegister,
+    _task_reg: Register,
 }
 
 impl Connect<side::Rx> {
-    pub(super) fn new(task_reg: TaskRegister, addr: Address) -> Self {
+    pub(super) fn new(task_reg: Register, addr: Address) -> Self {
         Self {
             inner: Side::Rx(Rx {
                 addr,

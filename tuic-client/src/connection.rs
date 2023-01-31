@@ -5,12 +5,13 @@ use parking_lot::Mutex;
 use quinn::{
     Connection as QuinnConnection, Endpoint as QuinnEndpoint, RecvStream, SendStream, VarInt,
 };
+use register_count::{Counter, Register};
 use socks5_proto::Address as Socks5Address;
 use std::{
     net::SocketAddr,
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc, Weak,
+        Arc,
     },
     time::Duration,
 };
@@ -53,8 +54,8 @@ impl Endpoint {
 pub struct Connection {
     conn: QuinnConnection,
     model: Model<side::Client>,
-    remote_uni_stream_cnt: StreamCount,
-    remote_bi_stream_cnt: StreamCount,
+    remote_uni_stream_cnt: Counter,
+    remote_bi_stream_cnt: Counter,
     max_concurrent_uni_streams: Arc<AtomicUsize>,
     max_concurrent_bi_streams: Arc<AtomicUsize>,
 }
@@ -64,8 +65,8 @@ impl Connection {
         Self {
             conn: conn.clone(),
             model: Model::<side::Client>::new(conn),
-            remote_uni_stream_cnt: StreamCount::new(),
-            remote_bi_stream_cnt: StreamCount::new(),
+            remote_uni_stream_cnt: Counter::new(),
+            remote_bi_stream_cnt: Counter::new(),
             max_concurrent_uni_streams: Arc::new(AtomicUsize::new(DEFAULT_CONCURRENT_STREAMS)),
             max_concurrent_bi_streams: Arc::new(AtomicUsize::new(DEFAULT_CONCURRENT_STREAMS)),
         }
@@ -121,10 +122,10 @@ impl Connection {
         self.conn.close_reason().is_some()
     }
 
-    async fn accept_uni_stream(&self) -> Result<(RecvStream, StreamRegister), Error> {
+    async fn accept_uni_stream(&self) -> Result<(RecvStream, Register), Error> {
         let max = self.max_concurrent_uni_streams.load(Ordering::Relaxed);
 
-        if self.remote_uni_stream_cnt.get() == max {
+        if self.remote_uni_stream_cnt.count() == max {
             self.max_concurrent_uni_streams
                 .store(max * 2, Ordering::Relaxed);
 
@@ -133,14 +134,14 @@ impl Connection {
         }
 
         let recv = self.conn.accept_uni().await?;
-        let reg = self.remote_uni_stream_cnt.register();
+        let reg = self.remote_uni_stream_cnt.reg();
         Ok((recv, reg))
     }
 
-    async fn accept_bi_stream(&self) -> Result<(SendStream, RecvStream, StreamRegister), Error> {
+    async fn accept_bi_stream(&self) -> Result<(SendStream, RecvStream, Register), Error> {
         let max = self.max_concurrent_bi_streams.load(Ordering::Relaxed);
 
-        if self.remote_bi_stream_cnt.get() == max {
+        if self.remote_bi_stream_cnt.count() == max {
             self.max_concurrent_bi_streams
                 .store(max * 2, Ordering::Relaxed);
 
@@ -149,7 +150,7 @@ impl Connection {
         }
 
         let (send, recv) = self.conn.accept_bi().await?;
-        let reg = self.remote_bi_stream_cnt.register();
+        let reg = self.remote_bi_stream_cnt.reg();
         Ok((send, recv, reg))
     }
 
@@ -157,7 +158,7 @@ impl Connection {
         Ok(self.conn.read_datagram().await?)
     }
 
-    async fn handle_uni_stream(self, recv: RecvStream, _reg: StreamRegister) {
+    async fn handle_uni_stream(self, recv: RecvStream, _reg: Register) {
         let res = match self.model.accept_uni_stream(recv).await {
             Err(err) => Err(Error::from(err)),
             Ok(Task::Packet(pkt)) => match pkt.accept().await {
@@ -183,7 +184,7 @@ impl Connection {
         }
     }
 
-    async fn handle_bi_stream(self, send: SendStream, recv: RecvStream, _reg: StreamRegister) {
+    async fn handle_bi_stream(self, send: SendStream, recv: RecvStream, _reg: Register) {
         let res = match self.model.accept_bi_stream(send, recv).await {
             Err(err) => Err(Error::from(err)),
             _ => unreachable!(),
@@ -265,23 +266,5 @@ impl Connection {
         };
 
         eprintln!("{err}");
-    }
-}
-
-#[derive(Clone)]
-struct StreamCount(Arc<()>);
-struct StreamRegister(Weak<()>);
-
-impl StreamCount {
-    fn new() -> Self {
-        Self(Arc::new(()))
-    }
-
-    fn register(&self) -> StreamRegister {
-        StreamRegister(Arc::downgrade(&self.0))
-    }
-
-    fn get(&self) -> usize {
-        Arc::weak_count(&self.0)
     }
 }

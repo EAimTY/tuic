@@ -9,6 +9,7 @@ lexopt = { version = "0.3.0", default-features = false }
 once_cell = { version = "1.17.0", default-features = false, features = ["parking_lot", "std"] }
 parking_lot = { version = "0.12.1", default-features = false, features = ["send_guard"] }
 quinn = { version = "0.9.3", default-features = false, features = ["futures-io", "runtime-tokio", "tls-rustls"] }
+register-count = { version = "0.1.0", default-features = false, features = ["std"] }
 serde = { version = "1.0.152", default-features = false, features = ["derive", "std"] }
 serde_json = { version = "1.0.91", default-features = false, features = ["std"] }
 socks5-proto = { version = "0.3.3", default-features = false }
