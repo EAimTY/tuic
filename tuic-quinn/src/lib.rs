@@ -103,23 +103,23 @@ impl Connection<side::Client> {
     }
 
     pub async fn authenticate(&self, token: [u8; 8]) -> Result<(), Error> {
-        let mut send = self.conn.open_uni().await?;
         let model = self.model.send_authenticate(token);
+        let mut send = self.conn.open_uni().await?;
         model.header().async_marshal(&mut send).await?;
         send.close().await?;
         Ok(())
     }
 
     pub async fn connect(&self, addr: Address) -> Result<Connect, Error> {
-        let (mut send, recv) = self.conn.open_bi().await?;
         let model = self.model.send_connect(addr);
+        let (mut send, recv) = self.conn.open_bi().await?;
         model.header().async_marshal(&mut send).await?;
         Ok(Connect::new(Side::Client(model), send, recv))
     }
 
     pub async fn dissociate(&self, assoc_id: u16) -> Result<(), Error> {
-        let mut send = self.conn.open_uni().await?;
         let model = self.model.send_dissociate(assoc_id);
+        let mut send = self.conn.open_uni().await?;
         model.header().async_marshal(&mut send).await?;
         send.close().await?;
         Ok(())
