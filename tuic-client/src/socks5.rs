@@ -1,6 +1,6 @@
 use crate::{config::Local, connection::Connection as TuicConnection, error::Error};
 use bytes::Bytes;
-use once_cell::sync::{Lazy, OnceCell};
+use once_cell::sync::OnceCell;
 use parking_lot::Mutex;
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use socks5_proto::{Address, Reply};
@@ -26,15 +26,14 @@ use tokio_util::compat::FuturesAsyncReadCompatExt;
 use tuic::Address as TuicAddress;
 
 static SERVER: OnceCell<Server> = OnceCell::new();
-static NEXT_ASSOCIATE_ID: AtomicU16 = AtomicU16::new(0);
-static UDP_SESSIONS: Lazy<Mutex<HashMap<u16, Arc<AssociatedUdpSocket>>>> =
-    Lazy::new(|| Mutex::new(HashMap::new()));
 
 pub struct Server {
     inner: Socks5Server,
     addr: SocketAddr,
     dual_stack: Option<bool>,
-    max_packet_size: usize,
+    max_pkt_size: usize,
+    next_assoc_id: AtomicU16,
+    udp_sessions: Mutex<HashMap<u16, Arc<AssociatedUdpSocket>>>,
 }
 
 impl Server {
@@ -68,7 +67,9 @@ impl Server {
             inner: Socks5Server::new(socket, auth),
             addr: cfg.server,
             dual_stack: cfg.dual_stack,
-            max_packet_size: cfg.max_packet_size,
+            max_pkt_size: cfg.max_packet_size,
+            next_assoc_id: AtomicU16::new(0),
+            udp_sessions: Mutex::new(HashMap::new()),
         };
 
         SERVER
@@ -129,7 +130,7 @@ impl Server {
 
             let socket = AssociatedUdpSocket::from((
                 UdpSocket::from_std(StdUdpSocket::from(socket))?,
-                SERVER.get().unwrap().max_packet_size,
+                SERVER.get().unwrap().max_pkt_size,
             ));
 
             let addr = socket.local_addr()?;
@@ -206,8 +207,19 @@ impl Server {
         mut assoc: Associate<associate::Ready>,
         assoc_socket: Arc<AssociatedUdpSocket>,
     ) -> Result<(), Error> {
-        let assoc_id = NEXT_ASSOCIATE_ID.fetch_add(1, Ordering::AcqRel);
-        UDP_SESSIONS.lock().insert(assoc_id, assoc_socket.clone());
+        let assoc_id = SERVER
+            .get()
+            .unwrap()
+            .next_assoc_id
+            .fetch_add(1, Ordering::AcqRel);
+
+        SERVER
+            .get()
+            .unwrap()
+            .udp_sessions
+            .lock()
+            .insert(assoc_id, assoc_socket.clone());
+
         let mut connected = None;
 
         async fn accept_pkt(
@@ -257,7 +269,7 @@ impl Server {
         };
 
         let _ = assoc.shutdown().await;
-        UDP_SESSIONS.lock().remove(&assoc_id);
+        SERVER.get().unwrap().udp_sessions.lock().remove(&assoc_id);
 
         match TuicConnection::get().await {
             Ok(conn) => match conn.dissociate(assoc_id).await {
@@ -271,7 +283,7 @@ impl Server {
     }
 
     pub async fn recv_pkt(pkt: Bytes, addr: Address, assoc_id: u16) -> Result<(), Error> {
-        let sessions = UDP_SESSIONS.lock();
+        let sessions = SERVER.get().unwrap().udp_sessions.lock();
         let Some(assoc_socket) = sessions.get(&assoc_id) else { unreachable!() };
         assoc_socket.send(pkt, 0, addr).await?;
         Ok(())
