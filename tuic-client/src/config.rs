@@ -1,12 +1,14 @@
-use crate::utils::{self, CongestionControl, UdpRelayMode};
+use crate::utils::{CongestionControl, UdpRelayMode};
 use lexopt::{Arg, Error as ArgumentError, Parser};
 use serde::{de::Error as DeError, Deserialize, Deserializer};
 use serde_json::Error as SerdeError;
 use std::{
     env::ArgsOs,
+    fmt::Display,
     fs::File,
     io::Error as IoError,
     net::{IpAddr, SocketAddr},
+    str::FromStr,
     time::Duration,
 };
 use thiserror::Error;
@@ -38,22 +40,26 @@ pub struct Relay {
     pub certificates: Vec<String>,
     #[serde(
         default = "default::relay::udp_relay_mode",
-        deserialize_with = "utils::deserialize_from_str"
+        deserialize_with = "deserialize_from_str"
     )]
     pub udp_relay_mode: UdpRelayMode,
     #[serde(
         default = "default::relay::congestion_control",
-        deserialize_with = "utils::deserialize_from_str"
+        deserialize_with = "deserialize_from_str"
     )]
     pub congestion_control: CongestionControl,
     #[serde(default = "default::relay::alpn")]
     pub alpn: Vec<String>,
     #[serde(default = "default::relay::zero_rtt_handshake")]
     pub zero_rtt_handshake: bool,
+    #[serde(default = "default::relay::disable_sni")]
+    pub disable_sni: bool,
     #[serde(default = "default::relay::timeout")]
     pub timeout: Duration,
     #[serde(default = "default::relay::heartbeat")]
     pub heartbeat: Duration,
+    #[serde(default = "default::relay::disable_native_certificates")]
+    pub disable_native_certificates: bool,
 }
 
 #[derive(Deserialize)]
@@ -65,47 +71,6 @@ pub struct Local {
     pub dual_stack: Option<bool>,
     #[serde(default = "default::local::max_packet_size")]
     pub max_packet_size: usize,
-}
-
-mod default {
-    pub mod relay {
-        use crate::utils::{CongestionControl, UdpRelayMode};
-        use std::time::Duration;
-
-        pub const fn certificates() -> Vec<String> {
-            Vec::new()
-        }
-
-        pub const fn udp_relay_mode() -> UdpRelayMode {
-            UdpRelayMode::Native
-        }
-
-        pub const fn congestion_control() -> CongestionControl {
-            CongestionControl::Cubic
-        }
-
-        pub const fn alpn() -> Vec<String> {
-            Vec::new()
-        }
-
-        pub const fn zero_rtt_handshake() -> bool {
-            false
-        }
-
-        pub const fn timeout() -> Duration {
-            Duration::from_secs(8)
-        }
-
-        pub const fn heartbeat() -> Duration {
-            Duration::from_secs(3)
-        }
-    }
-
-    pub mod local {
-        pub const fn max_packet_size() -> usize {
-            1500
-        }
-    }
 }
 
 impl Config {
@@ -135,9 +100,67 @@ impl Config {
         }
 
         let file = File::open(path.unwrap())?;
-
         Ok(serde_json::from_reader(file)?)
     }
+}
+
+mod default {
+    pub mod relay {
+        use crate::utils::{CongestionControl, UdpRelayMode};
+        use std::time::Duration;
+
+        pub fn certificates() -> Vec<String> {
+            Vec::new()
+        }
+
+        pub fn udp_relay_mode() -> UdpRelayMode {
+            UdpRelayMode::Native
+        }
+
+        pub fn congestion_control() -> CongestionControl {
+            CongestionControl::Cubic
+        }
+
+        pub fn alpn() -> Vec<String> {
+            Vec::new()
+        }
+
+        pub fn zero_rtt_handshake() -> bool {
+            false
+        }
+
+        pub fn disable_sni() -> bool {
+            false
+        }
+
+        pub fn timeout() -> Duration {
+            Duration::from_secs(8)
+        }
+
+        pub fn heartbeat() -> Duration {
+            Duration::from_secs(3)
+        }
+
+        pub fn disable_native_certificates() -> bool {
+            false
+        }
+    }
+
+    pub mod local {
+        pub fn max_packet_size() -> usize {
+            1500
+        }
+    }
+}
+
+pub fn deserialize_from_str<'de, T, D>(deserializer: D) -> Result<T, D::Error>
+where
+    T: FromStr,
+    <T as FromStr>::Err: Display,
+    D: Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    T::from_str(&s).map_err(DeError::custom)
 }
 
 pub fn deserialize_server<'de, D>(deserializer: D) -> Result<(String, u16), D::Error>

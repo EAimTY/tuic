@@ -60,7 +60,7 @@ impl Server {
                 Arc::new(Password::new(username.into_bytes(), password.into_bytes()))
             }
             (None, None) => Arc::new(NoAuth),
-            _ => return Err(Error::InvalidAuth),
+            _ => return Err(Error::InvalidSocks5Auth),
         };
 
         let server = Self {

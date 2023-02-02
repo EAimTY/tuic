@@ -2,6 +2,7 @@ use quinn::{ConnectError, ConnectionError};
 use std::io::Error as IoError;
 use thiserror::Error;
 use tuic_quinn::Error as ModelError;
+use webpki::Error as WebpkiError;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -13,8 +14,12 @@ pub enum Error {
     Connection(#[from] ConnectionError),
     #[error(transparent)]
     Model(#[from] ModelError),
-    #[error("timeout")]
+    #[error(transparent)]
+    Webpki(#[from] WebpkiError),
+    #[error("timeout establishing connection")]
     Timeout,
-    #[error("invalid authentication")]
-    InvalidAuth,
+    #[error("cannot resolve the server name")]
+    DnsResolve,
+    #[error("invalid socks5 authentication")]
+    InvalidSocks5Auth,
 }
