@@ -102,7 +102,7 @@ impl Connection<side::Client> {
         }
     }
 
-    pub async fn authenticate(&self, token: [u8; 8]) -> Result<(), Error> {
+    pub async fn authenticate(&self, token: [u8; 32]) -> Result<(), Error> {
         let model = self.model.send_authenticate(token);
         let mut send = self.conn.open_uni().await?;
         model.header().async_marshal(&mut send).await?;
@@ -388,7 +388,7 @@ impl Packet {
 
 #[non_exhaustive]
 pub enum Task {
-    Authenticate([u8; 8]),
+    Authenticate([u8; 32]),
     Connect(Connect),
     Packet(Packet),
     Dissociate(u16),

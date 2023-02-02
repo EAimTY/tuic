@@ -251,7 +251,7 @@ impl Connection {
     }
 
     async fn authenticate(self) {
-        match self.model.authenticate([0; 8]).await {
+        match self.model.authenticate([0; 32]).await {
             Ok(()) => {}
             Err(err) => eprintln!("{err}"),
         }

@@ -50,7 +50,7 @@ where
         }
     }
 
-    pub fn send_authenticate(&self, token: [u8; 8]) -> Authenticate<side::Tx> {
+    pub fn send_authenticate(&self, token: [u8; 32]) -> Authenticate<side::Tx> {
         Authenticate::<side::Tx>::new(token)
     }
 

@@ -164,14 +164,14 @@ impl Address {
 impl Authenticate {
     #[cfg(feature = "async_marshal")]
     async fn async_read(s: &mut (impl AsyncRead + Unpin)) -> Result<Self, UnmarshalError> {
-        let mut buf = [0; 8];
+        let mut buf = [0; 32];
         s.read_exact(&mut buf).await?;
         Ok(Self::new(buf))
     }
 
     #[cfg(feature = "marshal")]
     fn read(s: &mut impl Read) -> Result<Self, UnmarshalError> {
-        let mut buf = [0; 8];
+        let mut buf = [0; 32];
         s.read_exact(&mut buf)?;
         Ok(Self::new(buf))
     }
