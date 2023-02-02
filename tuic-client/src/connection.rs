@@ -44,11 +44,13 @@ pub struct Endpoint {
     udp_relay_mode: UdpRelayMode,
     zero_rtt_handshake: bool,
     heartbeat: Duration,
+    gc_interval: Duration,
+    gc_lifetime: Duration,
 }
 
 impl Endpoint {
     pub fn set_config(cfg: Relay) -> Result<(), Error> {
-        let certs = utils::load_certs(cfg.certificates, cfg.disable_native_certificates)?;
+        let certs = utils::load_certs(cfg.certificates, cfg.disable_native_certs)?;
 
         let mut crypto = RustlsClientConfig::builder()
             .with_safe_default_cipher_suites()
@@ -95,6 +97,8 @@ impl Endpoint {
             udp_relay_mode: cfg.udp_relay_mode,
             zero_rtt_handshake: cfg.zero_rtt_handshake,
             heartbeat: cfg.heartbeat,
+            gc_interval: cfg.gc_interval,
+            gc_lifetime: cfg.gc_lifetime,
         };
 
         ENDPOINT
@@ -155,7 +159,12 @@ impl Endpoint {
             .await
             {
                 Ok(conn) => {
-                    tokio::spawn(conn.clone().init(self.token.clone(), self.heartbeat));
+                    tokio::spawn(conn.clone().init(
+                        self.token.clone(),
+                        self.heartbeat,
+                        self.gc_interval,
+                        self.gc_lifetime,
+                    ));
                     return Ok(conn);
                 }
                 Err(err) => last_err = Some(err),
@@ -383,9 +392,28 @@ impl Connection {
         }
     }
 
-    async fn init(self, token: Arc<[u8]>, heartbeat: Duration) {
+    async fn collect_garbage(self, gc_interval: Duration, gc_lifetime: Duration) {
+        loop {
+            time::sleep(gc_interval).await;
+
+            if self.is_closed() {
+                break;
+            }
+
+            self.model.collect_garbage(gc_lifetime);
+        }
+    }
+
+    async fn init(
+        self,
+        token: Arc<[u8]>,
+        heartbeat: Duration,
+        gc_interval: Duration,
+        gc_lifetime: Duration,
+    ) {
         tokio::spawn(self.clone().authenticate(token));
         tokio::spawn(self.clone().heartbeat(heartbeat));
+        tokio::spawn(self.clone().collect_garbage(gc_interval, gc_lifetime));
 
         let err = loop {
             tokio::select! {

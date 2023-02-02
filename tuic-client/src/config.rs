@@ -58,8 +58,12 @@ pub struct Relay {
     pub timeout: Duration,
     #[serde(default = "default::relay::heartbeat")]
     pub heartbeat: Duration,
-    #[serde(default = "default::relay::disable_native_certificates")]
-    pub disable_native_certificates: bool,
+    #[serde(default = "default::relay::disable_native_certs")]
+    pub disable_native_certs: bool,
+    #[serde(default = "default::relay::gc_interval")]
+    pub gc_interval: Duration,
+    #[serde(default = "default::relay::gc_lifetime")]
+    pub gc_lifetime: Duration,
 }
 
 #[derive(Deserialize)]
@@ -141,8 +145,16 @@ mod default {
             Duration::from_secs(3)
         }
 
-        pub fn disable_native_certificates() -> bool {
+        pub fn disable_native_certs() -> bool {
             false
+        }
+
+        pub fn gc_interval() -> Duration {
+            Duration::from_secs(3)
+        }
+
+        pub fn gc_lifetime() -> Duration {
+            Duration::from_secs(15)
         }
     }
 
