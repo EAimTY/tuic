@@ -12,6 +12,7 @@ quinn = { version = "0.9.3", default-features = false, features = ["futures-io",
 register-count = { version = "0.1.0", default-features = false, features = ["std"] }
 serde = { version = "1.0.152", default-features = false, features = ["derive", "std"] }
 serde_json = { version = "1.0.91", default-features = false, features = ["std"] }
+socket2 = { version = "0.4.7", default-features = false }
 socks5-proto = { version = "0.3.3", default-features = false }
 socks5-server = { version = "0.8.3", default-features = false }
 thiserror = { version = "1.0.38", default-features = false }

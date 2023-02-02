@@ -15,4 +15,6 @@ pub enum Error {
     Model(#[from] ModelError),
     #[error("timeout")]
     Timeout,
+    #[error("invalid authentication")]
+    InvalidAuth,
 }

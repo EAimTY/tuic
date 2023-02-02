@@ -34,7 +34,7 @@ async fn main() {
         }
     }
 
-    match Server::set_config(cfg.local).await {
+    match Server::set_config(cfg.local) {
         Ok(()) => {}
         Err(err) => {
             eprintln!("{err}");

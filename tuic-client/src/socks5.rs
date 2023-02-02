@@ -2,16 +2,17 @@ use crate::{config::Local, connection::Connection as TuicConnection, error::Erro
 use bytes::Bytes;
 use once_cell::sync::{Lazy, OnceCell};
 use parking_lot::Mutex;
+use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use socks5_proto::{Address, Reply};
 use socks5_server::{
-    auth::NoAuth,
+    auth::{NoAuth, Password},
     connection::{associate, bind, connect},
-    Associate, AssociatedUdpSocket, Bind, Connect, Connection, Server as Socks5Server,
+    Associate, AssociatedUdpSocket, Auth, Bind, Connect, Connection, Server as Socks5Server,
 };
 use std::{
     collections::HashMap,
     io::{Error as IoError, ErrorKind},
-    net::SocketAddr,
+    net::{IpAddr, SocketAddr, TcpListener as StdTcpListener, UdpSocket as StdUdpSocket},
     sync::{
         atomic::{AtomicU16, Ordering},
         Arc,
@@ -19,7 +20,7 @@ use std::{
 };
 use tokio::{
     io::{self, AsyncWriteExt},
-    net::UdpSocket,
+    net::{TcpListener, UdpSocket},
 };
 use tokio_util::compat::FuturesAsyncReadCompatExt;
 use tuic::Address as TuicAddress;
@@ -31,16 +32,41 @@ static UDP_SESSIONS: Lazy<Mutex<HashMap<u16, Arc<AssociatedUdpSocket>>>> =
 
 pub struct Server {
     inner: Socks5Server,
+    addr: SocketAddr,
     dual_stack: Option<bool>,
     max_packet_size: usize,
 }
 
 impl Server {
-    pub async fn set_config(cfg: Local) -> Result<(), Error> {
-        let server = Socks5Server::bind(cfg.server, Arc::new(NoAuth)).await?;
+    pub fn set_config(cfg: Local) -> Result<(), Error> {
+        let socket = {
+            let domain = match cfg.server.ip() {
+                IpAddr::V4(_) => Domain::IPV4,
+                IpAddr::V6(_) => Domain::IPV6,
+            };
+
+            let socket = Socket::new(domain, Type::STREAM, Some(Protocol::TCP))?;
+
+            if let Some(dual_stack) = cfg.dual_stack {
+                socket.set_only_v6(!dual_stack)?;
+            }
+
+            socket.set_reuse_address(true)?;
+            socket.bind(&SockAddr::from(cfg.server))?;
+            TcpListener::from_std(StdTcpListener::from(socket))?
+        };
+
+        let auth: Arc<dyn Auth + Send + Sync> = match (cfg.username, cfg.password) {
+            (Some(username), Some(password)) => {
+                Arc::new(Password::new(username.into_bytes(), password.into_bytes()))
+            }
+            (None, None) => Arc::new(NoAuth),
+            _ => return Err(Error::InvalidAuth),
+        };
 
         let server = Self {
-            inner: server,
+            inner: Socks5Server::new(socket, auth),
+            addr: cfg.server,
             dual_stack: cfg.dual_stack,
             max_packet_size: cfg.max_packet_size,
         };
@@ -86,15 +112,31 @@ impl Server {
         assoc: Associate<associate::NeedReply>,
         _addr: Address,
     ) -> Result<(), Error> {
-        let assoc_socket = UdpSocket::bind(SocketAddr::from((assoc.local_addr()?.ip(), 0)))
-            .await
-            .and_then(|socket| {
-                socket
-                    .local_addr()
-                    .map(|addr| (Arc::new(AssociatedUdpSocket::from((socket, 1500))), addr))
-            });
+        async fn get_assoc_socket() -> Result<(Arc<AssociatedUdpSocket>, SocketAddr), IoError> {
+            let domain = match SERVER.get().unwrap().addr.ip() {
+                IpAddr::V4(_) => Domain::IPV4,
+                IpAddr::V6(_) => Domain::IPV6,
+            };
 
-        match assoc_socket {
+            let socket = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))?;
+
+            if let Some(dual_stack) = SERVER.get().unwrap().dual_stack {
+                socket.set_only_v6(!dual_stack)?;
+            }
+
+            socket.set_reuse_address(true)?;
+            socket.bind(&SockAddr::from(SERVER.get().unwrap().addr))?;
+
+            let socket = AssociatedUdpSocket::from((
+                UdpSocket::from_std(StdUdpSocket::from(socket))?,
+                SERVER.get().unwrap().max_packet_size,
+            ));
+
+            let addr = socket.local_addr()?;
+            Ok((Arc::new(socket), addr))
+        }
+
+        match get_assoc_socket().await {
             Ok((assoc_socket, assoc_addr)) => {
                 let assoc = assoc
                     .reply(Reply::Succeeded, Address::SocketAddress(assoc_addr))
