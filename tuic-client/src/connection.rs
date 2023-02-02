@@ -284,19 +284,22 @@ impl Connection {
     async fn handle_uni_stream(self, recv: RecvStream, _reg: Register) {
         let res = match self.model.accept_uni_stream(recv).await {
             Err(err) => Err(Error::from(err)),
-            Ok(Task::Packet(pkt)) => match pkt.accept().await {
-                Ok(Some((pkt, addr, assoc_id))) => {
-                    let addr = match addr {
-                        Address::None => unreachable!(),
-                        Address::DomainAddress(domain, port) => {
-                            Socks5Address::DomainAddress(domain, port)
-                        }
-                        Address::SocketAddress(addr) => Socks5Address::SocketAddress(addr),
-                    };
-                    Socks5Server::recv_pkt(pkt, addr, assoc_id).await
-                }
-                Ok(None) => Ok(()),
-                Err(err) => Err(Error::from(err)),
+            Ok(Task::Packet(pkt)) => match self.udp_relay_mode {
+                UdpRelayMode::Quic => match pkt.accept().await {
+                    Ok(Some((pkt, addr, assoc_id))) => {
+                        let addr = match addr {
+                            Address::None => unreachable!(),
+                            Address::DomainAddress(domain, port) => {
+                                Socks5Address::DomainAddress(domain, port)
+                            }
+                            Address::SocketAddress(addr) => Socks5Address::SocketAddress(addr),
+                        };
+                        Socks5Server::recv_pkt(pkt, addr, assoc_id).await
+                    }
+                    Ok(None) => Ok(()),
+                    Err(err) => Err(Error::from(err)),
+                },
+                UdpRelayMode::Native => Err(Error::WrongPacketSource),
             },
             _ => unreachable!(),
         };
@@ -322,19 +325,22 @@ impl Connection {
     async fn handle_datagram(self, dg: Bytes) {
         let res = match self.model.accept_datagram(dg) {
             Err(err) => Err(Error::from(err)),
-            Ok(Task::Packet(pkt)) => match pkt.accept().await {
-                Ok(Some((pkt, addr, assoc_id))) => {
-                    let addr = match addr {
-                        Address::None => unreachable!(),
-                        Address::DomainAddress(domain, port) => {
-                            Socks5Address::DomainAddress(domain, port)
-                        }
-                        Address::SocketAddress(addr) => Socks5Address::SocketAddress(addr),
-                    };
-                    Socks5Server::recv_pkt(pkt, addr, assoc_id).await
-                }
-                Ok(None) => Ok(()),
-                Err(err) => Err(Error::from(err)),
+            Ok(Task::Packet(pkt)) => match self.udp_relay_mode {
+                UdpRelayMode::Native => match pkt.accept().await {
+                    Ok(Some((pkt, addr, assoc_id))) => {
+                        let addr = match addr {
+                            Address::None => unreachable!(),
+                            Address::DomainAddress(domain, port) => {
+                                Socks5Address::DomainAddress(domain, port)
+                            }
+                            Address::SocketAddress(addr) => Socks5Address::SocketAddress(addr),
+                        };
+                        Socks5Server::recv_pkt(pkt, addr, assoc_id).await
+                    }
+                    Ok(None) => Ok(()),
+                    Err(err) => Err(Error::from(err)),
+                },
+                UdpRelayMode::Quic => Err(Error::WrongPacketSource),
             },
             _ => unreachable!(),
         };

@@ -20,6 +20,8 @@ pub enum Error {
     Timeout,
     #[error("cannot resolve the server name")]
     DnsResolve,
+    #[error("received packet from an unexpected source")]
+    WrongPacketSource,
     #[error("invalid socks5 authentication")]
     InvalidSocks5Auth,
 }
