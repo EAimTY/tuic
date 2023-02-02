@@ -1,4 +1,9 @@
-use crate::{error::Error, socks5};
+use crate::{
+    config::Relay,
+    error::Error,
+    socks5::Server as Socks5Server,
+    utils::{ServerAddr, UdpRelayMode},
+};
 use bytes::Bytes;
 use once_cell::sync::OnceCell;
 use parking_lot::Mutex;
@@ -27,14 +32,36 @@ static CONNECTION: AsyncOnceCell<AsyncMutex<Connection>> = AsyncOnceCell::const_
 
 const DEFAULT_CONCURRENT_STREAMS: usize = 32;
 
-struct Endpoint {
+pub struct Endpoint {
     ep: QuinnEndpoint,
+    server: ServerAddr,
+    token: Vec<u8>,
+    udp_relay_mode: UdpRelayMode,
+    zero_rtt_handshake: bool,
+    timeout: Duration,
+    heartbeat: Duration,
 }
 
 impl Endpoint {
-    fn new() -> Result<Self, Error> {
-        let ep = QuinnEndpoint::client(SocketAddr::from(([0, 0, 0, 0], 0)))?;
-        Ok(Self { ep })
+    pub fn set_config(cfg: Relay) -> Result<(), Error> {
+        let ep = todo!();
+
+        let ep = Self {
+            ep,
+            server: ServerAddr::new(cfg.server.0, cfg.server.1, cfg.ip),
+            token: cfg.token.into_bytes(),
+            udp_relay_mode: cfg.udp_relay_mode,
+            zero_rtt_handshake: cfg.zero_rtt_handshake,
+            timeout: cfg.timeout,
+            heartbeat: cfg.heartbeat,
+        };
+
+        ENDPOINT
+            .set(Mutex::new(ep))
+            .map_err(|_| "endpoint already initialized")
+            .unwrap();
+
+        Ok(())
     }
 
     async fn connect(&self) -> Result<Connection, Error> {
@@ -75,8 +102,9 @@ impl Connection {
     pub async fn get() -> Result<Connection, Error> {
         let try_init_conn = async {
             ENDPOINT
-                .get_or_try_init(|| Endpoint::new().map(Mutex::new))
-                .map(|ep| ep.lock())?
+                .get()
+                .unwrap()
+                .lock()
                 .connect()
                 .await
                 .map(AsyncMutex::new)
@@ -170,7 +198,7 @@ impl Connection {
                         }
                         Address::SocketAddress(addr) => Socks5Address::SocketAddress(addr),
                     };
-                    socks5::recv_pkt(pkt, addr, assoc_id).await
+                    Socks5Server::recv_pkt(pkt, addr, assoc_id).await
                 }
                 Ok(None) => Ok(()),
                 Err(err) => Err(Error::from(err)),
@@ -208,7 +236,7 @@ impl Connection {
                         }
                         Address::SocketAddress(addr) => Socks5Address::SocketAddress(addr),
                     };
-                    socks5::recv_pkt(pkt, addr, assoc_id).await
+                    Socks5Server::recv_pkt(pkt, addr, assoc_id).await
                 }
                 Ok(None) => Ok(()),
                 Err(err) => Err(Error::from(err)),
