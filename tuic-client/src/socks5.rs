@@ -1,4 +1,4 @@
-use crate::{config::Local, connection::Connection as TuicConnection, error::Error};
+use crate::{config::Local, connection::Connection as TuicConnection, Error};
 use bytes::Bytes;
 use once_cell::sync::OnceCell;
 use parking_lot::Mutex;

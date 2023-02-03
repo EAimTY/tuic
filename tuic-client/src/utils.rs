@@ -1,4 +1,4 @@
-use crate::error::Error;
+use crate::Error;
 use rustls::{Certificate, RootCertStore};
 use rustls_pemfile::Item;
 use std::{

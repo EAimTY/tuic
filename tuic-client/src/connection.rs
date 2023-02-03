@@ -1,8 +1,8 @@
 use crate::{
     config::Relay,
-    error::Error,
     socks5::Server as Socks5Server,
     utils::{self, CongestionControl, ServerAddr, UdpRelayMode},
+    Error,
 };
 use bytes::Bytes;
 use crossbeam_utils::atomic::AtomicCell;
