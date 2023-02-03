@@ -174,7 +174,7 @@ impl Connection {
             Ok(_) => unreachable!(),
             Err(err) => {
                 eprintln!("{err}");
-                self.inner.close(VarInt::from_u32(0), b"");
+                self.close();
                 return;
             }
         }
@@ -204,7 +204,7 @@ impl Connection {
             Ok(_) => unreachable!(),
             Err(err) => {
                 eprintln!("{err}");
-                self.inner.close(VarInt::from_u32(0), b"");
+                self.close();
                 return;
             }
         }
@@ -240,7 +240,7 @@ impl Connection {
             Ok(_) => unreachable!(),
             Err(err) => {
                 eprintln!("{err}");
-                self.inner.close(VarInt::from_u32(0), b"");
+                self.close();
                 return;
             }
         }
@@ -340,6 +340,10 @@ impl Connection {
     fn is_closed(&self) -> bool {
         self.inner.close_reason().is_some()
     }
+
+    fn close(&self) {
+        self.inner.close(VarInt::from_u32(0), b"");
+    }
 }
 
 async fn resolve_dns(addr: &Address) -> Result<impl Iterator<Item = SocketAddr>, IoError> {
@@ -395,7 +399,54 @@ impl UdpSession {
         socket_v6: Option<Arc<UdpSocket>>,
         cancel: Receiver<()>,
     ) {
-        todo!()
+        async fn send_pkt(conn: Connection, pkt: Bytes, addr: SocketAddr, assoc_id: u16) {
+            let addr = Address::SocketAddress(addr);
+
+            let res = match conn.get_udp_relay_mode() {
+                Some(UdpRelayMode::Native) => conn.model.packet_native(pkt, addr, assoc_id),
+                Some(UdpRelayMode::Quic) => conn.model.packet_quic(pkt, addr, assoc_id).await,
+                None => unreachable!(),
+            };
+
+            if let Err(err) = res {
+                eprintln!("{err}");
+            }
+        }
+
+        tokio::select! {
+            _ = cancel => {}
+            () = async {
+                loop {
+                    match Self::accept(&socket_v4, socket_v6.as_deref()).await {
+                        Ok((pkt, addr)) => {
+                            tokio::spawn(send_pkt(conn.clone(), pkt, addr, assoc_id));
+                        }
+                        Err(err) => eprintln!("{err}"),
+                    }
+                }
+            } => unreachable!(),
+        }
+    }
+
+    async fn accept(
+        socket_v4: &UdpSocket,
+        socket_v6: Option<&UdpSocket>,
+    ) -> Result<(Bytes, SocketAddr), IoError> {
+        async fn read_packet(socket: &UdpSocket) -> Result<(Bytes, SocketAddr), IoError> {
+            let mut buf = vec![0u8; 65535];
+            let (n, addr) = socket.recv_from(&mut buf).await?;
+            buf.truncate(n);
+            Ok((Bytes::from(buf), addr))
+        }
+
+        if let Some(socket_v6) = socket_v6 {
+            tokio::select! {
+                res = read_packet(socket_v4) => res,
+                res = read_packet(socket_v6) => res,
+            }
+        } else {
+            read_packet(socket_v4).await
+        }
     }
 }
 
