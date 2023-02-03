@@ -1,7 +1,7 @@
 use self::{
     config::{Config, ConfigError},
     connection::Endpoint,
-    socks5::Server,
+    socks5::Server as Socks5Server,
 };
 use quinn::{ConnectError, ConnectionError};
 use std::{env, io::Error as IoError, process};
@@ -36,7 +36,7 @@ async fn main() {
         }
     }
 
-    match Server::set_config(cfg.local) {
+    match Socks5Server::set_config(cfg.local) {
         Ok(()) => {}
         Err(err) => {
             eprintln!("{err}");
@@ -44,7 +44,7 @@ async fn main() {
         }
     }
 
-    Server::start().await;
+    Socks5Server::start().await;
 }
 
 #[derive(Debug, Error)]
