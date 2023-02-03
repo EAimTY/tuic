@@ -2,9 +2,10 @@ use self::{
     config::{Config, ConfigError},
     server::Server,
 };
-use quinn::{crypto::ExportKeyingMaterialError, ConnectionError};
-use std::{env, io::Error as IoError, process};
+use quinn::ConnectionError;
+use std::{env, io::Error as IoError, net::SocketAddr, process};
 use thiserror::Error;
+use tuic::Address;
 use tuic_quinn::Error as ModelError;
 
 mod config;
@@ -50,4 +51,6 @@ pub enum Error {
     AuthFailed,
     #[error("received packet from unexpected source")]
     UnexpectedPacketSource,
+    #[error("{0} resolved to {1} but IPv6 UDP relay disabled")]
+    UdpRelayIpv6Disabled(Address, SocketAddr),
 }
