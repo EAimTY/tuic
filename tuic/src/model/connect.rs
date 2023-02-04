@@ -2,6 +2,7 @@ use super::side::{self, Side};
 use crate::protocol::{Address, Connect as ConnectHeader, Header};
 use register_count::Register;
 
+/// The model of the `Connect` command
 pub struct Connect<M> {
     inner: Side<Tx, Rx>,
     _marker: M,
@@ -23,6 +24,7 @@ impl Connect<side::Tx> {
         }
     }
 
+    /// Returns the header of the `Connect` command
     pub fn header(&self) -> &Header {
         let Side::Tx(tx) = &self.inner else { unreachable!() };
         &tx.header
@@ -45,6 +47,7 @@ impl Connect<side::Rx> {
         }
     }
 
+    /// Returns the address
     pub fn addr(&self) -> &Address {
         let Side::Rx(rx) = &self.inner else { unreachable!() };
         &rx.addr

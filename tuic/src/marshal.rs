@@ -9,6 +9,7 @@ use std::{
 };
 
 impl Header {
+    /// Marshals the header into an `AsyncWrite` stream
     #[cfg(feature = "async_marshal")]
     pub async fn async_marshal(&self, s: &mut (impl AsyncWrite + Unpin)) -> Result<(), IoError> {
         let mut buf = vec![0; self.len()];
@@ -16,6 +17,7 @@ impl Header {
         s.write_all(&buf).await
     }
 
+    /// Marshals the header into a `Write` stream
     #[cfg(feature = "marshal")]
     pub fn marshal(&self, s: &mut impl Write) -> Result<(), IoError> {
         let mut buf = vec![0; self.len()];
@@ -23,6 +25,7 @@ impl Header {
         s.write_all(&buf)
     }
 
+    /// Writes the header into a `BufMut`
     pub fn write(&self, buf: &mut impl BufMut) {
         buf.put_u8(VERSION);
         buf.put_u8(self.type_code());
@@ -64,6 +67,7 @@ impl Address {
 
 impl Authenticate {
     fn write(&self, buf: &mut impl BufMut) {
+        buf.put_slice(self.uuid().as_ref());
         buf.put_slice(&self.token());
     }
 }

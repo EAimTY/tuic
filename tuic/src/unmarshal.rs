@@ -8,8 +8,10 @@ use std::{
     string::FromUtf8Error,
 };
 use thiserror::Error;
+use uuid::{Error as UuidError, Uuid};
 
 impl Header {
+    /// Unmarshals a header from an `AsyncRead` stream
     #[cfg(feature = "async_marshal")]
     pub async fn async_unmarshal(s: &mut (impl AsyncRead + Unpin)) -> Result<Self, UnmarshalError> {
         let mut buf = [0; 1];
@@ -36,6 +38,7 @@ impl Header {
         }
     }
 
+    /// Unmarshals a header from a `Read` stream
     #[cfg(feature = "marshal")]
     pub fn unmarshal(s: &mut impl Read) -> Result<Self, UnmarshalError> {
         let mut buf = [0; 1];
@@ -164,16 +167,20 @@ impl Address {
 impl Authenticate {
     #[cfg(feature = "async_marshal")]
     async fn async_read(s: &mut (impl AsyncRead + Unpin)) -> Result<Self, UnmarshalError> {
-        let mut buf = [0; 32];
+        let mut buf = [0; 48];
         s.read_exact(&mut buf).await?;
-        Ok(Self::new(buf))
+        let uuid = Uuid::from_slice(&buf[..16])?;
+        let token = TryFrom::try_from(&buf[16..]).unwrap();
+        Ok(Self::new(uuid, token))
     }
 
     #[cfg(feature = "marshal")]
     fn read(s: &mut impl Read) -> Result<Self, UnmarshalError> {
         let mut buf = [0; 32];
         s.read_exact(&mut buf)?;
-        Ok(Self::new(buf))
+        let uuid = Uuid::from_slice(&buf[..16])?;
+        let token = TryFrom::try_from(&buf[16..]).unwrap();
+        Ok(Self::new(uuid, token))
     }
 }
 
@@ -251,6 +258,7 @@ impl Heartbeat {
     }
 }
 
+/// Errors that can occur when unmarshalling a packet
 #[derive(Debug, Error)]
 pub enum UnmarshalError {
     #[error(transparent)]
@@ -259,6 +267,8 @@ pub enum UnmarshalError {
     InvalidVersion(u8),
     #[error("invalid command: {0}")]
     InvalidCommand(u8),
+    #[error("invalid UUID: {0}")]
+    InvalidUuid(#[from] UuidError),
     #[error("invalid address type: {0}")]
     InvalidAddressType(u8),
     #[error("address parsing error: {0}")]

@@ -1,3 +1,5 @@
+//! An abstraction of a TUIC connection, with packet fragmentation management and task counters. No I/O operation is involved internally
+
 use crate::protocol::{
     Address, Authenticate as AuthenticateHeader, Connect as ConnectHeader,
     Dissociate as DissociateHeader, Heartbeat as HeartbeatHeader, Packet as PacketHeader,
@@ -14,6 +16,7 @@ use std::{
     time::{Duration, Instant},
 };
 use thiserror::Error;
+use uuid::Uuid;
 
 mod authenticate;
 mod connect;
@@ -22,14 +25,14 @@ mod heartbeat;
 mod packet;
 
 pub use self::{
-    authenticate::Authenticate,
+    authenticate::{Authenticate, KeyingMaterialExporter},
     connect::Connect,
     dissociate::Dissociate,
     heartbeat::Heartbeat,
     packet::{Fragments, Packet},
 };
 
-#[derive(Clone)]
+/// An abstraction of a TUIC connection, with packet fragmentation management and task counters. No I/O operation is involved internally
 pub struct Connection<B> {
     udp_sessions: Arc<Mutex<UdpSessions<B>>>,
     task_connect_count: Counter,
@@ -40,6 +43,7 @@ impl<B> Connection<B>
 where
     B: AsRef<[u8]>,
 {
+    /// Creates a new `Connection`
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         let task_associate_count = Counter::new();
@@ -51,24 +55,33 @@ where
         }
     }
 
-    pub fn send_authenticate(&self, token: [u8; 32]) -> Authenticate<side::Tx> {
-        Authenticate::<side::Tx>::new(token)
+    /// Sends an `Authenticate`
+    pub fn send_authenticate(
+        &self,
+        uuid: Uuid,
+        exporter: impl KeyingMaterialExporter,
+    ) -> Authenticate<side::Tx> {
+        Authenticate::<side::Tx>::new(uuid, exporter)
     }
 
+    /// Receives an `Authenticate`
     pub fn recv_authenticate(&self, header: AuthenticateHeader) -> Authenticate<side::Rx> {
-        let (token,) = header.into();
-        Authenticate::<side::Rx>::new(token)
+        let (uuid, token) = header.into();
+        Authenticate::<side::Rx>::new(uuid, token)
     }
 
+    /// Sends a `Connect`
     pub fn send_connect(&self, addr: Address) -> Connect<side::Tx> {
         Connect::<side::Tx>::new(self.task_connect_count.reg(), addr)
     }
 
+    /// Receives a `Connect`
     pub fn recv_connect(&self, header: ConnectHeader) -> Connect<side::Rx> {
         let (addr,) = header.into();
         Connect::<side::Rx>::new(self.task_connect_count.reg(), addr)
     }
 
+    /// Sends a `Packet`
     pub fn send_packet(
         &self,
         assoc_id: u16,
@@ -80,6 +93,7 @@ where
             .send_packet(assoc_id, addr, max_pkt_size)
     }
 
+    /// Receives a `Packet`. If the association ID is not found, returns `None`
     pub fn recv_packet(&self, header: PacketHeader) -> Option<Packet<side::Rx, B>> {
         let (assoc_id, pkt_id, frag_total, frag_id, size, addr) = header.into();
         self.udp_sessions.lock().recv_packet(
@@ -93,6 +107,7 @@ where
         )
     }
 
+    /// Receives a `Packet` without checking the association ID
     pub fn recv_packet_unrestricted(&self, header: PacketHeader) -> Packet<side::Rx, B> {
         let (assoc_id, pkt_id, frag_total, frag_id, size, addr) = header.into();
         self.udp_sessions.lock().recv_packet_unrestricted(
@@ -106,39 +121,49 @@ where
         )
     }
 
+    /// Sends a `Dissociate`
     pub fn send_dissociate(&self, assoc_id: u16) -> Dissociate<side::Tx> {
         self.udp_sessions.lock().send_dissociate(assoc_id)
     }
 
+    /// Receives a `Dissociate`
     pub fn recv_dissociate(&self, header: DissociateHeader) -> Dissociate<side::Rx> {
         let (assoc_id,) = header.into();
         self.udp_sessions.lock().recv_dissociate(assoc_id)
     }
 
+    /// Sends a `Heartbeat`
     pub fn send_heartbeat(&self) -> Heartbeat<side::Tx> {
         Heartbeat::<side::Tx>::new()
     }
 
+    /// Receives a `Heartbeat`
     pub fn recv_heartbeat(&self, header: HeartbeatHeader) -> Heartbeat<side::Rx> {
         let () = header.into();
         Heartbeat::<side::Rx>::new()
     }
 
+    /// Returns the number of `Connect` tasks
     pub fn task_connect_count(&self) -> usize {
         self.task_connect_count.count()
     }
 
+    /// Returns the number of active UDP sessions
     pub fn task_associate_count(&self) -> usize {
         self.task_associate_count.count()
     }
 
+    /// Removes fragments that can not be reassembled within the specified timeout
     pub fn collect_garbage(&self, timeout: Duration) {
         self.udp_sessions.lock().collect_garbage(timeout);
     }
 }
 
+/// Abstracts the side of a task
 pub mod side {
+    /// The side of a task that sends data
     pub struct Tx;
+    /// The side of a task that receives data
     pub struct Rx;
 
     pub(super) enum Side<T, R> {
@@ -392,6 +417,7 @@ where
     }
 }
 
+/// A complete packet that can be assembled
 pub struct Assemblable<B> {
     buf: Vec<Option<B>>,
     addr: Address,
@@ -420,6 +446,7 @@ where
     }
 }
 
+/// A trait for assembling a packet
 pub trait Assembler<B>
 where
     Self: Sized,
@@ -439,6 +466,7 @@ where
     }
 }
 
+/// An error that can occur when assembling a packet
 #[derive(Debug, Error)]
 pub enum AssembleError {
     #[error("invalid fragment id {1} in total {0} fragments")]

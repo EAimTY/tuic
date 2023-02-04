@@ -6,7 +6,7 @@ pub struct Heartbeat<M> {
     _marker: M,
 }
 
-pub struct Tx {
+struct Tx {
     header: Header,
 }
 
@@ -20,13 +20,14 @@ impl Heartbeat<side::Tx> {
         }
     }
 
+    /// Returns the header of the `Heartbeat` command
     pub fn header(&self) -> &Header {
         let Side::Tx(tx) = &self.inner else { unreachable!() };
         &tx.header
     }
 }
 
-pub struct Rx;
+struct Rx;
 
 impl Heartbeat<side::Rx> {
     pub(super) fn new() -> Self {

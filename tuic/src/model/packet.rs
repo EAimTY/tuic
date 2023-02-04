@@ -11,7 +11,7 @@ pub struct Packet<M, B> {
     _marker: M,
 }
 
-pub struct Tx {
+struct Tx {
     assoc_id: u16,
     pkt_id: u16,
     addr: Address,
@@ -31,6 +31,7 @@ impl<B> Packet<side::Tx, B> {
         }
     }
 
+    /// Fragment the payload into multiple packets
     pub fn into_fragments<'a, P>(self, payload: P) -> Fragments<'a, P>
     where
         P: AsRef<[u8]>,
@@ -39,18 +40,20 @@ impl<B> Packet<side::Tx, B> {
         Fragments::new(tx.assoc_id, tx.pkt_id, tx.addr, tx.max_pkt_size, payload)
     }
 
+    /// Returns the UDP session ID
     pub fn assoc_id(&self) -> u16 {
         let Side::Tx(tx) = &self.inner else { unreachable!() };
         tx.assoc_id
     }
 
+    /// Returns the address
     pub fn addr(&self) -> &Address {
         let Side::Tx(tx) = &self.inner else { unreachable!() };
         &tx.addr
     }
 }
 
-pub struct Rx<B> {
+struct Rx<B> {
     sessions: Arc<Mutex<UdpSessions<B>>>,
     assoc_id: u16,
     pkt_id: u16,
@@ -118,6 +121,7 @@ where
     }
 }
 
+/// Iterator over fragments of a packet
 pub struct Fragments<'a, P>
 where
     P: 'a,
