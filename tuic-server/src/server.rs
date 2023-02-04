@@ -1,15 +1,24 @@
-use crate::{config::Config, utils::UdpRelayMode, Error};
+use crate::{
+    config::Config,
+    utils::{self, CongestionControl, UdpRelayMode},
+    Error,
+};
 use bytes::Bytes;
 use crossbeam_utils::atomic::AtomicCell;
 use parking_lot::Mutex;
-use quinn::{Connecting, Connection as QuinnConnection, Endpoint, RecvStream, SendStream, VarInt};
+use quinn::{
+    congestion::{BbrConfig, CubicConfig, NewRenoConfig},
+    Connecting, Connection as QuinnConnection, Endpoint, EndpointConfig, IdleTimeout, RecvStream,
+    SendStream, ServerConfig, TokioRuntime, TransportConfig, VarInt,
+};
 use register_count::{Counter, Register};
+use rustls::{version, ServerConfig as RustlsServerConfig};
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use std::{
     collections::{hash_map::Entry, HashMap},
     future::Future,
     io::{Error as IoError, ErrorKind},
-    net::{Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket as StdUdpSocket},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket as StdUdpSocket},
     pin::Pin,
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -39,13 +48,83 @@ pub struct Server {
     udp_relay_ipv6: bool,
     zero_rtt_handshake: bool,
     auth_timeout: Duration,
+    max_external_pkt_size: usize,
     gc_interval: Duration,
     gc_lifetime: Duration,
 }
 
 impl Server {
     pub fn init(cfg: Config) -> Result<Self, Error> {
-        todo!()
+        let certs = utils::load_certs(cfg.certificate)?;
+        let priv_key = utils::load_priv_key(cfg.private_key)?;
+
+        let mut crypto = RustlsServerConfig::builder()
+            .with_safe_default_cipher_suites()
+            .with_safe_default_kx_groups()
+            .with_protocol_versions(&[&version::TLS13])
+            .unwrap()
+            .with_no_client_auth()
+            .with_single_cert(certs, priv_key)?;
+
+        crypto.alpn_protocols = cfg.alpn.into_iter().map(|alpn| alpn.into_bytes()).collect();
+        crypto.max_early_data_size = u32::MAX;
+        crypto.send_half_rtt_data = cfg.zero_rtt_handshake;
+
+        let mut config = ServerConfig::with_crypto(Arc::new(crypto));
+        let mut tp_cfg = TransportConfig::default();
+
+        tp_cfg
+            .max_concurrent_bidi_streams(VarInt::from(DEFAULT_CONCURRENT_STREAMS as u32))
+            .max_concurrent_uni_streams(VarInt::from(DEFAULT_CONCURRENT_STREAMS as u32))
+            .max_idle_timeout(Some(
+                IdleTimeout::try_from(cfg.max_idle_time).map_err(|_| Error::InvalidMaxIdleTime)?,
+            ));
+
+        match cfg.congestion_control {
+            CongestionControl::Cubic => {
+                tp_cfg.congestion_controller_factory(Arc::new(CubicConfig::default()))
+            }
+            CongestionControl::NewReno => {
+                tp_cfg.congestion_controller_factory(Arc::new(NewRenoConfig::default()))
+            }
+            CongestionControl::Bbr => {
+                tp_cfg.congestion_controller_factory(Arc::new(BbrConfig::default()))
+            }
+        };
+
+        config.transport_config(Arc::new(tp_cfg));
+
+        let domain = match cfg.server.ip() {
+            IpAddr::V4(_) => Domain::IPV4,
+            IpAddr::V6(_) => Domain::IPV6,
+        };
+
+        let socket = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))?;
+
+        if let Some(dual_stack) = cfg.dual_stack {
+            socket.set_only_v6(!dual_stack)?;
+        }
+
+        socket.bind(&SockAddr::from(cfg.server))?;
+        let socket = StdUdpSocket::from(socket);
+
+        let ep = Endpoint::new(
+            EndpointConfig::default(),
+            Some(config),
+            socket,
+            TokioRuntime,
+        )?;
+
+        Ok(Self {
+            ep,
+            token: Arc::from(cfg.token.into_bytes().into_boxed_slice()),
+            udp_relay_ipv6: cfg.udp_relay_ipv6,
+            zero_rtt_handshake: cfg.zero_rtt_handshake,
+            auth_timeout: cfg.auth_timeout,
+            max_external_pkt_size: cfg.max_external_packet_size,
+            gc_interval: cfg.gc_interval,
+            gc_lifetime: cfg.gc_lifetime,
+        })
     }
 
     pub async fn start(&self) {
@@ -58,6 +137,7 @@ impl Server {
                 self.udp_relay_ipv6,
                 self.zero_rtt_handshake,
                 self.auth_timeout,
+                self.max_external_pkt_size,
                 self.gc_interval,
                 self.gc_lifetime,
             ));
@@ -74,6 +154,7 @@ struct Connection {
     is_authed: IsAuthed,
     udp_sessions: Arc<AsyncMutex<HashMap<u16, UdpSession>>>,
     udp_relay_mode: Arc<AtomicCell<Option<UdpRelayMode>>>,
+    max_external_pkt_size: usize,
     remote_uni_stream_cnt: Counter,
     remote_bi_stream_cnt: Counter,
     max_concurrent_uni_streams: Arc<AtomicUsize>,
@@ -87,10 +168,19 @@ impl Connection {
         udp_relay_ipv6: bool,
         zero_rtt_handshake: bool,
         auth_timeout: Duration,
+        max_external_pkt_size: usize,
         gc_interval: Duration,
         gc_lifetime: Duration,
     ) {
-        match Self::init(conn, token, udp_relay_ipv6, zero_rtt_handshake).await {
+        match Self::init(
+            conn,
+            token,
+            udp_relay_ipv6,
+            zero_rtt_handshake,
+            max_external_pkt_size,
+        )
+        .await
+        {
             Ok(conn) => {
                 tokio::spawn(conn.clone().handle_auth_timeout(auth_timeout));
                 tokio::spawn(conn.clone().collect_garbage(gc_interval, gc_lifetime));
@@ -115,6 +205,7 @@ impl Connection {
         token: Arc<[u8]>,
         udp_relay_ipv6: bool,
         zero_rtt_handshake: bool,
+        max_external_pkt_size: usize,
     ) -> Result<Self, Error> {
         let conn = if zero_rtt_handshake {
             match conn.into_0rtt() {
@@ -136,6 +227,7 @@ impl Connection {
             is_authed: IsAuthed::new(),
             udp_sessions: Arc::new(AsyncMutex::new(HashMap::new())),
             udp_relay_mode: Arc::new(AtomicCell::new(None)),
+            max_external_pkt_size,
             remote_uni_stream_cnt: Counter::new(),
             remote_bi_stream_cnt: Counter::new(),
             max_concurrent_uni_streams: Arc::new(AtomicUsize::new(DEFAULT_CONCURRENT_STREAMS)),
@@ -494,7 +586,11 @@ impl UdpSession {
             _ = cancel => {}
             () = async {
                 loop {
-                    match Self::accept(&socket_v4, socket_v6.as_deref()).await {
+                    match Self::accept(
+                        &socket_v4,
+                        socket_v6.as_deref(),
+                        conn.max_external_pkt_size,
+                    ).await {
                         Ok((pkt, addr)) => {
                             tokio::spawn(send_pkt(conn.clone(), pkt, addr, assoc_id));
                         }
@@ -508,9 +604,13 @@ impl UdpSession {
     async fn accept(
         socket_v4: &UdpSocket,
         socket_v6: Option<&UdpSocket>,
+        max_pkt_size: usize,
     ) -> Result<(Bytes, SocketAddr), IoError> {
-        async fn read_pkt(socket: &UdpSocket) -> Result<(Bytes, SocketAddr), IoError> {
-            let mut buf = vec![0u8; 65535];
+        async fn read_pkt(
+            socket: &UdpSocket,
+            max_pkt_size: usize,
+        ) -> Result<(Bytes, SocketAddr), IoError> {
+            let mut buf = vec![0u8; max_pkt_size];
             let (n, addr) = socket.recv_from(&mut buf).await?;
             buf.truncate(n);
             Ok((Bytes::from(buf), addr))
@@ -518,11 +618,11 @@ impl UdpSession {
 
         if let Some(socket_v6) = socket_v6 {
             tokio::select! {
-                res = read_pkt(socket_v4) => res,
-                res = read_pkt(socket_v6) => res,
+                res = read_pkt(socket_v4, max_pkt_size) => res,
+                res = read_pkt(socket_v6, max_pkt_size) => res,
             }
         } else {
-            read_pkt(socket_v4).await
+            read_pkt(socket_v4, max_pkt_size).await
         }
     }
 }

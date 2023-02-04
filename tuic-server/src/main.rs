@@ -3,6 +3,7 @@ use self::{
     server::Server,
 };
 use quinn::ConnectionError;
+use rustls::Error as RustlsError;
 use std::{env, io::Error as IoError, net::SocketAddr, process};
 use thiserror::Error;
 use tuic::Address;
@@ -39,6 +40,10 @@ async fn main() {
 pub enum Error {
     #[error(transparent)]
     Io(#[from] IoError),
+    #[error(transparent)]
+    Rustls(#[from] RustlsError),
+    #[error("invalid max idle time")]
+    InvalidMaxIdleTime,
     #[error(transparent)]
     Connection(#[from] ConnectionError),
     #[error(transparent)]
