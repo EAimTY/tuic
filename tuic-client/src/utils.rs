@@ -5,11 +5,12 @@ use std::{
     fs::{self, File},
     io::BufReader,
     net::{IpAddr, SocketAddr},
+    path::PathBuf,
     str::FromStr,
 };
 use tokio::net;
 
-pub fn load_certs(paths: Vec<String>, disable_native: bool) -> Result<RootCertStore, Error> {
+pub fn load_certs(paths: Vec<PathBuf>, disable_native: bool) -> Result<RootCertStore, Error> {
     let mut certs = RootCertStore::empty();
 
     for path in &paths {

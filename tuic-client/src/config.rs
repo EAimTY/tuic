@@ -8,6 +8,7 @@ use std::{
     fs::File,
     io::Error as IoError,
     net::{IpAddr, SocketAddr},
+    path::PathBuf,
     str::FromStr,
     time::Duration,
 };
@@ -37,7 +38,7 @@ pub struct Relay {
     pub token: String,
     pub ip: Option<IpAddr>,
     #[serde(default = "default::relay::certificates")]
-    pub certificates: Vec<String>,
+    pub certificates: Vec<PathBuf>,
     #[serde(
         default = "default::relay::udp_relay_mode",
         deserialize_with = "deserialize_from_str"
@@ -111,9 +112,9 @@ impl Config {
 mod default {
     pub mod relay {
         use crate::utils::{CongestionControl, UdpRelayMode};
-        use std::time::Duration;
+        use std::{path::PathBuf, time::Duration};
 
-        pub fn certificates() -> Vec<String> {
+        pub fn certificates() -> Vec<PathBuf> {
             Vec::new()
         }
 
