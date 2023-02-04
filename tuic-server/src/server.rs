@@ -4,11 +4,12 @@ use crossbeam_utils::atomic::AtomicCell;
 use parking_lot::Mutex;
 use quinn::{Connecting, Connection as QuinnConnection, Endpoint, RecvStream, SendStream, VarInt};
 use register_count::{Counter, Register};
+use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use std::{
     collections::{hash_map::Entry, HashMap},
     future::Future,
     io::{Error as IoError, ErrorKind},
-    net::{Ipv4Addr, Ipv6Addr, SocketAddr},
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket as StdUdpSocket},
     pin::Pin,
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -440,9 +441,13 @@ impl UdpSession {
         let socket_v4 =
             Arc::new(UdpSocket::bind(SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0))).await?);
         let socket_v6 = if udp_relay_ipv6 {
-            Some(Arc::new(
-                UdpSocket::bind(SocketAddr::from((Ipv6Addr::UNSPECIFIED, 0))).await?,
-            ))
+            let socket = Socket::new(Domain::IPV6, Type::DGRAM, Some(Protocol::UDP))?;
+            socket.set_only_v6(true)?;
+            socket.bind(&SockAddr::from(SocketAddr::from((
+                Ipv6Addr::UNSPECIFIED,
+                0,
+            ))))?;
+            Some(Arc::new(UdpSocket::from_std(StdUdpSocket::from(socket))?))
         } else {
             None
         };
