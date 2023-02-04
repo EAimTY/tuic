@@ -137,7 +137,10 @@ impl Endpoint {
             let conn = if zero_rtt_handshake {
                 match conn.into_0rtt() {
                     Ok((conn, _)) => conn,
-                    Err(conn) => conn.await?,
+                    Err(conn) => {
+                        eprintln!("0-RTT handshake failed, fallback to 1-RTT handshake");
+                        conn.await?
+                    }
                 }
             } else {
                 conn.await?

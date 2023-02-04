@@ -125,7 +125,6 @@ impl Server {
                 socket.set_only_v6(!dual_stack)?;
             }
 
-            socket.set_reuse_address(true)?;
             socket.bind(&SockAddr::from(SERVER.get().unwrap().addr))?;
 
             let socket = AssociatedUdpSocket::from((
