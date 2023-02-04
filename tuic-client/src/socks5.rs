@@ -243,7 +243,7 @@ impl Server {
             if frag != 0 {
                 Err(IoError::new(
                     ErrorKind::Other,
-                    format!("fragmented packet is not supported"),
+                    "fragmented packet is not supported",
                 ))?;
             }
 
@@ -282,8 +282,12 @@ impl Server {
     }
 
     pub async fn recv_pkt(pkt: Bytes, addr: Address, assoc_id: u16) -> Result<(), Error> {
-        let sessions = SERVER.get().unwrap().udp_sessions.lock();
-        let Some(assoc_socket) = sessions.get(&assoc_id) else { unreachable!() };
+        let assoc_socket = {
+            let sessions = SERVER.get().unwrap().udp_sessions.lock();
+            let Some(assoc_socket) = sessions.get(&assoc_id) else { unreachable!() };
+            assoc_socket.clone()
+        };
+
         assoc_socket.send(pkt, 0, addr).await?;
         Ok(())
     }

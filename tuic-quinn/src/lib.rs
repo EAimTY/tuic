@@ -316,7 +316,7 @@ impl Connect {
         match &self.model {
             Side::Client(model) => {
                 let Header::Connect(conn) = model.header() else { unreachable!() };
-                &conn.addr()
+                conn.addr()
             }
             Side::Server(model) => model.addr(),
         }

@@ -53,6 +53,7 @@ impl Header {
         }
     }
 
+    #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         2 + match self {
             Self::Authenticate(auth) => auth.len(),
@@ -106,12 +107,13 @@ impl Address {
         }
     }
 
+    #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         1 + match self {
             Address::None => 0,
             Address::DomainAddress(addr, _) => 1 + addr.len() + 2,
             Address::SocketAddress(addr) => match addr {
-                SocketAddr::V4(_) => 1 * 4 + 2,
+                SocketAddr::V4(_) => 4 + 2,
                 SocketAddr::V6(_) => 2 * 8 + 2,
             },
         }

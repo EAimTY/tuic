@@ -131,7 +131,7 @@ impl Server {
         loop {
             let conn = self.ep.accept().await.unwrap();
 
-            tokio::spawn(Connection::new(
+            tokio::spawn(Connection::handle(
                 conn,
                 self.token.clone(),
                 self.udp_relay_ipv6,
@@ -161,8 +161,9 @@ struct Connection {
     max_concurrent_bi_streams: Arc<AtomicUsize>,
 }
 
+#[allow(clippy::too_many_arguments)]
 impl Connection {
-    async fn new(
+    async fn handle(
         conn: Connecting,
         token: Arc<[u8]>,
         udp_relay_ipv6: bool,
@@ -310,7 +311,6 @@ impl Connection {
             Err(err) => {
                 eprintln!("{err}");
                 self.close();
-                return;
             }
         }
     }
@@ -350,7 +350,6 @@ impl Connection {
             Err(err) => {
                 eprintln!("{err}");
                 self.close();
-                return;
             }
         }
     }
@@ -386,7 +385,6 @@ impl Connection {
             Err(err) => {
                 eprintln!("{err}");
                 self.close();
-                return;
             }
         }
     }

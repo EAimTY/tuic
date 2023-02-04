@@ -40,6 +40,7 @@ impl<B> Connection<B>
 where
     B: AsRef<[u8]>,
 {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         let task_associate_count = Counter::new();
 
@@ -174,6 +175,7 @@ where
             .send_packet(assoc_id, addr, max_pkt_size)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn recv_packet(
         &mut self,
         sessions: Arc<Mutex<Self>>,
@@ -189,6 +191,7 @@ where
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn recv_packet_unrestricted(
         &mut self,
         sessions: Arc<Mutex<Self>>,
@@ -215,6 +218,7 @@ where
         Dissociate::<side::Rx>::new(assoc_id)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn insert(
         &mut self,
         assoc_id: u16,
@@ -270,6 +274,7 @@ where
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn recv_packet(
         &self,
         sessions: Arc<Mutex<UdpSessions<B>>>,
@@ -283,6 +288,7 @@ where
         Packet::<side::Rx, B>::new(sessions, assoc_id, pkt_id, frag_total, frag_id, size, addr)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn insert(
         &mut self,
         assoc_id: u16,

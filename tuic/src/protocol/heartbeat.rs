@@ -17,13 +17,12 @@ impl Heartbeat {
         Self::TYPE_CODE
     }
 
+    #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         0
     }
 }
 
 impl From<Heartbeat> for () {
-    fn from(_: Heartbeat) -> Self {
-        ()
-    }
+    fn from(_: Heartbeat) -> Self {}
 }
