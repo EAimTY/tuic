@@ -1,0 +1,19 @@
+[package]
+name = "tuic"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+async_marshal = ["bytes", "futures-util"]
+marshal = ["bytes"]
+model = ["parking_lot", "register-count", "thiserror"]
+
+[dependencies]
+bytes = { version = "1.4.0", default-features = false, features = ["std"], optional = true }
+futures-util = { version = "0.3.26", default-features = false, features = ["io", "std"], optional = true }
+parking_lot = { version = "0.12.1", default-features = false, optional = true }
+register-count = { version = "0.1.0", default-features = false, features = ["std"], optional = true }
+thiserror = { version = "1.0.38", default-features = false, optional = true }
+
+[dev-dependencies]
+tuic = { path = ".", features = ["async_marshal", "marshal", "model"] }

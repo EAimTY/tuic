@@ -1,12 +1,2 @@
 [workspace]
-members = [
-    "client",
-    "server",
-    "protocol",
-]
-
-[profile.release]
-lto = true
-strip = true
-codegen-units = 1
-panic = "abort"
+members = ["tuic", "tuic-quinn", "tuic-server", "tuic-client"]
