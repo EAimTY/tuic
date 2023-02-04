@@ -15,6 +15,7 @@ use std::{
         Arc,
     },
     task::{Context, Poll, Waker},
+    time::Duration,
 };
 use tokio::{
     io::{self, AsyncWriteExt},
@@ -23,6 +24,7 @@ use tokio::{
         oneshot::{self, Receiver, Sender},
         Mutex as AsyncMutex,
     },
+    time,
 };
 use tokio_util::compat::FuturesAsyncReadCompatExt;
 use tuic::Address;
@@ -35,6 +37,9 @@ pub struct Server {
     token: Arc<[u8]>,
     udp_relay_ipv6: bool,
     zero_rtt_handshake: bool,
+    auth_timeout: Duration,
+    gc_interval: Duration,
+    gc_lifetime: Duration,
 }
 
 impl Server {
@@ -45,11 +50,15 @@ impl Server {
     pub async fn start(&self) {
         loop {
             let conn = self.ep.accept().await.unwrap();
-            tokio::spawn(Connection::init(
+
+            tokio::spawn(Connection::new(
                 conn,
                 self.token.clone(),
                 self.udp_relay_ipv6,
                 self.zero_rtt_handshake,
+                self.auth_timeout,
+                self.gc_interval,
+                self.gc_lifetime,
             ));
         }
     }
@@ -71,28 +80,36 @@ struct Connection {
 }
 
 impl Connection {
-    pub async fn init(
+    async fn new(
         conn: Connecting,
         token: Arc<[u8]>,
         udp_relay_ipv6: bool,
         zero_rtt_handshake: bool,
+        auth_timeout: Duration,
+        gc_interval: Duration,
+        gc_lifetime: Duration,
     ) {
-        match Self::handshake(conn, token, udp_relay_ipv6, zero_rtt_handshake).await {
-            Ok(conn) => loop {
-                if conn.is_closed() {
-                    break;
-                }
+        match Self::init(conn, token, udp_relay_ipv6, zero_rtt_handshake).await {
+            Ok(conn) => {
+                tokio::spawn(conn.clone().handle_auth_timeout(auth_timeout));
+                tokio::spawn(conn.clone().collect_garbage(gc_interval, gc_lifetime));
 
-                match conn.accept().await {
-                    Ok(()) => {}
-                    Err(err) => eprintln!("{err}"),
+                loop {
+                    if conn.is_closed() {
+                        break;
+                    }
+
+                    match conn.accept().await {
+                        Ok(()) => {}
+                        Err(err) => eprintln!("{err}"),
+                    }
                 }
-            },
+            }
             Err(err) => eprintln!("{err}"),
         }
     }
 
-    async fn handshake(
+    async fn init(
         conn: Connecting,
         token: Arc<[u8]>,
         udp_relay_ipv6: bool,
@@ -350,6 +367,26 @@ impl Connection {
     async fn handle_dissociate(&self, assoc_id: u16) -> Result<(), Error> {
         self.udp_sessions.lock().await.remove(&assoc_id);
         Ok(())
+    }
+
+    async fn handle_auth_timeout(self, timeout: Duration) {
+        time::sleep(timeout).await;
+
+        if !self.is_authed() {
+            self.close();
+        }
+    }
+
+    async fn collect_garbage(self, gc_interval: Duration, gc_lifetime: Duration) {
+        loop {
+            time::sleep(gc_interval).await;
+
+            if self.is_closed() {
+                break;
+            }
+
+            self.model.collect_garbage(gc_lifetime);
+        }
     }
 
     fn set_authed(&self) {
