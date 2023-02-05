@@ -18,6 +18,23 @@ Some optional features that can be enabled:
 
 The root of the protocol abstraction is the [`Header`](https://docs.rs/tuic/latest/tuic/enum.Header.html).
 
+## Semantic Versioning Syntax
+
+```
+5.0.0-rc0
+^ ^ ^  ^
+| | |  |- Pre-release version
+| | |---- Patch version, no breaking changes
+| |------ Major version of a specific TUIC protocol version, may have breaking changes
+|-------- TUIC protocol version
+```
+
+To avoid breaking changes, import `tuic` into `Cargo.toml` using:
+
+```toml
+tuic = "5.0.*"
+```
+
 ## License
 
 GNU General Public License v3.0
