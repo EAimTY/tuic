@@ -1,6 +1,6 @@
 //! An abstraction of a TUIC connection, with packet fragmentation management and task counters. No I/O operation is involved internally
 
-use crate::protocol::{
+use crate::{
     Address, Authenticate as AuthenticateHeader, Connect as ConnectHeader,
     Dissociate as DissociateHeader, Heartbeat as HeartbeatHeader, Packet as PacketHeader,
 };

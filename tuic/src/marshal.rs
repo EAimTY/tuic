@@ -1,6 +1,4 @@
-use crate::protocol::{
-    Address, Authenticate, Connect, Dissociate, Header, Heartbeat, Packet, VERSION,
-};
+use crate::{Address, Authenticate, Connect, Dissociate, Header, Heartbeat, Packet, VERSION};
 use bytes::BufMut;
 use futures_util::{AsyncWrite, AsyncWriteExt};
 use std::{

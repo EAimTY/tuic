@@ -1,5 +1,5 @@
 use super::side::{self, Side};
-use crate::protocol::{Address, Connect as ConnectHeader, Header};
+use crate::{Address, Connect as ConnectHeader, Header};
 use register_count::Register;
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 

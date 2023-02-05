@@ -1,5 +1,5 @@
 use super::side::{self, Side};
-use crate::protocol::{Dissociate as DissociateHeader, Header};
+use crate::{Dissociate as DissociateHeader, Header};
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 
 /// The model of the `Dissociate` command

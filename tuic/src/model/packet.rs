@@ -2,7 +2,7 @@ use super::{
     side::{self, Side},
     Assemblable, AssembleError, UdpSessions,
 };
-use crate::protocol::{Address, Header, Packet as PacketHeader};
+use crate::{Address, Header, Packet as PacketHeader};
 use parking_lot::Mutex;
 use std::{
     fmt::{Debug, Formatter, Result as FmtResult},

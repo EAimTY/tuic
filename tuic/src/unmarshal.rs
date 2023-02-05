@@ -1,6 +1,4 @@
-use crate::protocol::{
-    Address, Authenticate, Connect, Dissociate, Header, Heartbeat, Packet, VERSION,
-};
+use crate::{Address, Authenticate, Connect, Dissociate, Header, Heartbeat, Packet, VERSION};
 use futures_util::{AsyncRead, AsyncReadExt};
 use std::{
     io::{Error as IoError, Read},

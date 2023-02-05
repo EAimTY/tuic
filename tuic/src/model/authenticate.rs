@@ -1,5 +1,5 @@
 use super::side::{self, Side};
-use crate::protocol::{Authenticate as AuthenticateHeader, Header};
+use crate::{Authenticate as AuthenticateHeader, Header};
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use uuid::Uuid;
 

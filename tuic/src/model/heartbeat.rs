@@ -1,5 +1,5 @@
 use super::side::{self, Side};
-use crate::protocol::{Header, Heartbeat as HeartbeatHeader};
+use crate::{Header, Heartbeat as HeartbeatHeader};
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 
 pub struct Heartbeat<M> {
