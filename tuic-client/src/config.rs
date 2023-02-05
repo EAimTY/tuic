@@ -13,6 +13,7 @@ use std::{
     time::Duration,
 };
 use thiserror::Error;
+use uuid::Uuid;
 
 const HELP_MSG: &str = r#"
 Usage tuic-client [arguments]
@@ -35,7 +36,8 @@ pub struct Config {
 pub struct Relay {
     #[serde(deserialize_with = "deserialize_server")]
     pub server: (String, u16),
-    pub token: String,
+    pub uuid: Uuid,
+    pub password: String,
     pub ip: Option<IpAddr>,
     #[serde(default = "default::relay::certificates")]
     pub certificates: Vec<PathBuf>,

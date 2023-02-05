@@ -30,6 +30,7 @@ use tokio::{
 };
 use tuic::Address;
 use tuic_quinn::{side, Connect, Connection as Model, Task};
+use uuid::Uuid;
 
 static ENDPOINT: OnceCell<Mutex<Endpoint>> = OnceCell::new();
 static CONNECTION: AsyncOnceCell<AsyncMutex<Connection>> = AsyncOnceCell::const_new();
@@ -40,7 +41,8 @@ const DEFAULT_CONCURRENT_STREAMS: usize = 32;
 pub struct Endpoint {
     ep: QuinnEndpoint,
     server: ServerAddr,
-    token: Arc<[u8]>,
+    uuid: Uuid,
+    password: Arc<[u8]>,
     udp_relay_mode: UdpRelayMode,
     zero_rtt_handshake: bool,
     heartbeat: Duration,
@@ -93,7 +95,8 @@ impl Endpoint {
         let ep = Self {
             ep,
             server: ServerAddr::new(cfg.server.0, cfg.server.1, cfg.ip),
-            token: Arc::from(cfg.token.into_bytes().into_boxed_slice()),
+            uuid: cfg.uuid,
+            password: Arc::from(cfg.password.into_bytes().into_boxed_slice()),
             udp_relay_mode: cfg.udp_relay_mode,
             zero_rtt_handshake: cfg.zero_rtt_handshake,
             heartbeat: cfg.heartbeat,
@@ -116,6 +119,8 @@ impl Endpoint {
             ep: &mut QuinnEndpoint,
             addr: SocketAddr,
             server_name: &str,
+            uuid: Uuid,
+            password: Arc<[u8]>,
             udp_relay_mode: UdpRelayMode,
             zero_rtt_handshake: bool,
         ) -> Result<Connection, Error> {
@@ -146,7 +151,7 @@ impl Endpoint {
                 conn.await?
             };
 
-            Ok(Connection::new(conn, udp_relay_mode))
+            Ok(Connection::new(conn, udp_relay_mode, uuid, password))
         }
 
         let mut last_err = None;
@@ -156,6 +161,8 @@ impl Endpoint {
                 &mut self.ep,
                 addr,
                 self.server.server_name(),
+                self.uuid,
+                self.password.clone(),
                 self.udp_relay_mode,
                 self.zero_rtt_handshake,
             )
@@ -163,7 +170,6 @@ impl Endpoint {
             {
                 Ok(conn) => {
                     tokio::spawn(conn.clone().init(
-                        self.token.clone(),
                         self.heartbeat,
                         self.gc_interval,
                         self.gc_lifetime,
@@ -182,6 +188,8 @@ impl Endpoint {
 pub struct Connection {
     conn: QuinnConnection,
     model: Model<side::Client>,
+    uuid: Uuid,
+    password: Arc<[u8]>,
     udp_relay_mode: UdpRelayMode,
     remote_uni_stream_cnt: Counter,
     remote_bi_stream_cnt: Counter,
@@ -190,10 +198,17 @@ pub struct Connection {
 }
 
 impl Connection {
-    fn new(conn: QuinnConnection, udp_relay_mode: UdpRelayMode) -> Self {
+    fn new(
+        conn: QuinnConnection,
+        udp_relay_mode: UdpRelayMode,
+        uuid: Uuid,
+        password: Arc<[u8]>,
+    ) -> Self {
         Self {
             conn: conn.clone(),
             model: Model::<side::Client>::new(conn),
+            uuid,
+            password,
             udp_relay_mode,
             remote_uni_stream_cnt: Counter::new(),
             remote_bi_stream_cnt: Counter::new(),
@@ -363,18 +378,12 @@ impl Connection {
         }
     }
 
-    async fn authenticate(self, token: Arc<[u8]>) {
-        let mut buf = [0; 32];
-
-        match self.conn.export_keying_material(&mut buf, &token, &token) {
-            Ok(()) => {}
-            Err(_) => {
-                eprintln!("token length too short");
-                return;
-            }
-        }
-
-        match self.model.authenticate(buf).await {
+    async fn authenticate(self) {
+        match self
+            .model
+            .authenticate(self.uuid, self.password.clone())
+            .await
+        {
             Ok(()) => {}
             Err(err) => eprintln!("{err}"),
         }
@@ -407,14 +416,8 @@ impl Connection {
         }
     }
 
-    async fn init(
-        self,
-        token: Arc<[u8]>,
-        heartbeat: Duration,
-        gc_interval: Duration,
-        gc_lifetime: Duration,
-    ) {
-        tokio::spawn(self.clone().authenticate(token));
+    async fn init(self, heartbeat: Duration, gc_interval: Duration, gc_lifetime: Duration) {
+        tokio::spawn(self.clone().authenticate());
         tokio::spawn(self.clone().heartbeat(heartbeat));
         tokio::spawn(self.clone().collect_garbage(gc_interval, gc_lifetime));
 
