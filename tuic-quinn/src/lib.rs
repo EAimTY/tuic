@@ -14,11 +14,13 @@ use thiserror::Error;
 use tuic::{
     model::{
         side::{Rx, Tx},
-        AssembleError, Connect as ConnectModel, Connection as ConnectionModel,
+        AssembleError, Authenticate as AuthenticateModel, Connect as ConnectModel,
+        Connection as ConnectionModel, KeyingMaterialExporter as KeyingMaterialExporterImpl,
         Packet as PacketModel,
     },
     Address, Header, UnmarshalError,
 };
+use uuid::Uuid;
 
 pub mod side {
     #[derive(Clone)]
@@ -91,6 +93,10 @@ impl<Side> Connection<Side> {
     pub fn collect_garbage(&self, timeout: Duration) {
         self.model.collect_garbage(timeout);
     }
+
+    pub fn keying_material_exporter(&self) -> KeyingMaterialExporter {
+        KeyingMaterialExporter(self.conn.clone())
+    }
 }
 
 impl Connection<side::Client> {
@@ -102,8 +108,11 @@ impl Connection<side::Client> {
         }
     }
 
-    pub async fn authenticate(&self, token: [u8; 32]) -> Result<(), Error> {
-        let model = self.model.send_authenticate(token);
+    pub async fn authenticate(&self, uuid: Uuid, password: impl AsRef<[u8]>) -> Result<(), Error> {
+        let model = self
+            .model
+            .send_authenticate(uuid, password, self.keying_material_exporter());
+
         let mut send = self.conn.open_uni().await?;
         model.header().async_marshal(&mut send).await?;
         send.close().await?;
@@ -229,7 +238,10 @@ impl Connection<side::Server> {
         match header {
             Header::Authenticate(auth) => {
                 let model = self.model.recv_authenticate(auth);
-                Ok(Task::Authenticate(model.token()))
+                Ok(Task::Authenticate(Authenticate::new(
+                    model,
+                    self.keying_material_exporter(),
+                )))
             }
             Header::Connect(_) => Err(Error::BadCommandUniStream("connect", recv)),
             Header::Packet(pkt) => {
@@ -294,6 +306,29 @@ impl Connection<side::Server> {
             }
             _ => unreachable!(),
         }
+    }
+}
+
+pub struct Authenticate {
+    model: AuthenticateModel<Rx>,
+    exporter: KeyingMaterialExporter,
+}
+
+impl Authenticate {
+    fn new(model: AuthenticateModel<Rx>, exporter: KeyingMaterialExporter) -> Self {
+        Self { model, exporter }
+    }
+
+    pub fn uuid(&self) -> Uuid {
+        self.model.uuid()
+    }
+
+    pub fn token(&self) -> [u8; 32] {
+        self.model.token()
+    }
+
+    pub fn validate(self, password: impl AsRef<[u8]>) -> bool {
+        self.model.is_valid(password, self.exporter)
     }
 }
 
@@ -366,6 +401,14 @@ impl Packet {
         Self { src, model }
     }
 
+    pub fn assoc_id(&self) -> u16 {
+        self.model.assoc_id()
+    }
+
+    pub fn addr(&self) -> &Address {
+        self.model.addr()
+    }
+
     pub async fn accept(self) -> Result<Option<(Bytes, Address, u16)>, Error> {
         let pkt = match self.src {
             PacketSource::Quic(mut recv) => {
@@ -388,11 +431,23 @@ impl Packet {
 
 #[non_exhaustive]
 pub enum Task {
-    Authenticate([u8; 32]),
+    Authenticate(Authenticate),
     Connect(Connect),
     Packet(Packet),
     Dissociate(u16),
     Heartbeat,
+}
+
+pub struct KeyingMaterialExporter(QuinnConnection);
+
+impl KeyingMaterialExporterImpl for KeyingMaterialExporter {
+    fn export_keying_material(&self, label: &[u8], context: &[u8]) -> [u8; 32] {
+        let mut buf = [0; 32];
+        self.0
+            .export_keying_material(&mut buf, label, context)
+            .unwrap();
+        buf
+    }
 }
 
 #[derive(Debug, Error)]
