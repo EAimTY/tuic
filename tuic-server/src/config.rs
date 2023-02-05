@@ -1,5 +1,6 @@
 use crate::utils::CongestionControl;
 use lexopt::{Arg, Error as ArgumentError, Parser};
+use log::LevelFilter;
 use serde::{de::Error as DeError, Deserialize, Deserializer};
 use serde_json::Error as SerdeError;
 use std::{
@@ -48,6 +49,8 @@ pub struct Config {
     pub gc_interval: Duration,
     #[serde(default = "default::gc_lifetime")]
     pub gc_lifetime: Duration,
+    #[serde(default = "default::log_level")]
+    pub log_level: LevelFilter,
 }
 
 impl Config {
@@ -83,6 +86,7 @@ impl Config {
 
 mod default {
     use crate::utils::CongestionControl;
+    use log::LevelFilter;
     use std::time::Duration;
 
     pub fn congestion_control() -> CongestionControl {
@@ -119,6 +123,10 @@ mod default {
 
     pub fn gc_lifetime() -> Duration {
         Duration::from_secs(15)
+    }
+
+    pub fn log_level() -> LevelFilter {
+        LevelFilter::Warn
     }
 }
 

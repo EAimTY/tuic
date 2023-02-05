@@ -2,6 +2,7 @@ use self::{
     config::{Config, ConfigError},
     server::Server,
 };
+use env_logger::Builder as LoggerBuilder;
 use quinn::ConnectionError;
 use rustls::Error as RustlsError;
 use std::{env, io::Error as IoError, net::SocketAddr, process};
@@ -27,6 +28,8 @@ async fn main() {
             process::exit(1);
         }
     };
+
+    LoggerBuilder::new().filter_level(cfg.log_level).init();
 
     match Server::init(cfg) {
         Ok(server) => server.start().await,
