@@ -55,7 +55,7 @@ Command `Connect` and `Packet` carry payload (stream / packet fragment)
 where:
 
 - `UUID` - client UUID
-- `TOKEN` - client token. The client UUID is hashed into a 256-bit long token using [TLS Keying Material Exporter](https://www.rfc-editor.org/rfc/rfc5705) on current TLS session. While exporting, both the `label` and `context` should be the client UUID
+- `TOKEN` - client token. The client raw password is hashed into a 256-bit long token using [TLS Keying Material Exporter](https://www.rfc-editor.org/rfc/rfc5705) on current TLS session. While exporting, the `label` should be the client UUID and the `context` should be the raw password.
 
 #### `Connect`
 
@@ -194,4 +194,6 @@ When there is any ongoing relaying task, the client should send a `Heartbeat` co
 
 ## Error Handling
 
-Note that there is no response for any command. If the server receives a command that is not valid, or encounters any error during the processing (e.g. the target address is unreachable, authentication failure), there is no *standard* way to deal with it. The behavior is implementation-defined.
+Note that there is no response for any command. If the server receives a command that is not valid, or encounters any error during the processing (e.g. the target address is unreachable, authentication failure), there is no *standard* way to deal with it. The behavior is implementation-defined. The server may close the QUIC connection, or just ignore the command.
+
+For example, if the server receives a `Connect` command with an unreachable target address, it may close `bidirectional_stream` to indicate the error.

@@ -59,9 +59,10 @@ where
     pub fn send_authenticate(
         &self,
         uuid: Uuid,
+        password: impl AsRef<[u8]>,
         exporter: impl KeyingMaterialExporter,
     ) -> Authenticate<side::Tx> {
-        Authenticate::<side::Tx>::new(uuid, exporter)
+        Authenticate::<side::Tx>::new(uuid, password, exporter)
     }
 
     /// Receives an `Authenticate`

@@ -13,12 +13,16 @@ struct Tx {
 }
 
 impl Authenticate<side::Tx> {
-    pub(super) fn new(uuid: Uuid, exporter: impl KeyingMaterialExporter) -> Self {
+    pub(super) fn new(
+        uuid: Uuid,
+        password: impl AsRef<[u8]>,
+        exporter: impl KeyingMaterialExporter,
+    ) -> Self {
         Self {
             inner: Side::Tx(Tx {
                 header: Header::Authenticate(AuthenticateHeader::new(
                     uuid,
-                    exporter.export_keying_material(uuid.as_ref(), uuid.as_ref()),
+                    exporter.export_keying_material(uuid.as_ref(), password.as_ref()),
                 )),
             }),
             _marker: side::Tx,
@@ -58,9 +62,13 @@ impl Authenticate<side::Rx> {
     }
 
     /// Returns whether the token is valid
-    pub fn is_valid(&self, exporter: impl KeyingMaterialExporter) -> bool {
+    pub fn is_valid(
+        &self,
+        password: impl AsRef<[u8]>,
+        exporter: impl KeyingMaterialExporter,
+    ) -> bool {
         let Side::Rx(rx) = &self.inner else { unreachable!() };
-        rx.token == exporter.export_keying_material(rx.uuid.as_ref(), rx.uuid.as_ref())
+        rx.token == exporter.export_keying_material(rx.uuid.as_ref(), password.as_ref())
     }
 }
 
