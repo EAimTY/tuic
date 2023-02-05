@@ -18,7 +18,7 @@ serde = { version = "1.0.152", default-features = false, features = ["derive", "
 serde_json = { version = "1.0.92", default-features = false, features = ["std"] }
 socket2 = { version = "0.4.7", default-features = false }
 thiserror = { version = "1.0.38", default-features = false }
-tokio = { version = "1.25.0", default-features = false, features = ["macros", "net", "parking_lot", "rt-multi-thread", "time"] }
+tokio = { version = "1.25.0", default-features = false, features = ["io-util", "macros", "net", "parking_lot", "rt-multi-thread", "time"] }
 tokio-util = { version = "0.7.4", default-features = false, features = ["compat"] }
 tuic = { version = "5.0.0-pre-alpha6", default-features = false }
 tuic-quinn = { version = "0.1.0-pre-alpha2", default-features = false }
