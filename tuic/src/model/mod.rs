@@ -62,7 +62,7 @@ where
         &self,
         uuid: Uuid,
         password: impl AsRef<[u8]>,
-        exporter: impl KeyingMaterialExporter,
+        exporter: &impl KeyingMaterialExporter,
     ) -> Authenticate<side::Tx> {
         Authenticate::<side::Tx>::new(uuid, password, exporter)
     }

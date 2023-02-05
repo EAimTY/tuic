@@ -17,7 +17,7 @@ impl Authenticate<side::Tx> {
     pub(super) fn new(
         uuid: Uuid,
         password: impl AsRef<[u8]>,
-        exporter: impl KeyingMaterialExporter,
+        exporter: &impl KeyingMaterialExporter,
     ) -> Self {
         Self {
             inner: Side::Tx(Tx {
@@ -75,7 +75,7 @@ impl Authenticate<side::Rx> {
     pub fn is_valid(
         &self,
         password: impl AsRef<[u8]>,
-        exporter: impl KeyingMaterialExporter,
+        exporter: &impl KeyingMaterialExporter,
     ) -> bool {
         let Side::Rx(rx) = &self.inner else { unreachable!() };
         rx.token == exporter.export_keying_material(rx.uuid.as_ref(), password.as_ref())
