@@ -8,6 +8,7 @@ use parking_lot::Mutex;
 use register_count::{Counter, Register};
 use std::{
     collections::HashMap,
+    fmt::{Debug, Formatter, Result as FmtResult},
     mem,
     sync::{
         atomic::{AtomicU16, Ordering},
@@ -33,6 +34,7 @@ pub use self::{
 };
 
 /// An abstraction of a TUIC connection, with packet fragmentation management and task counters. No I/O operation is involved internally
+#[derive(Clone)]
 pub struct Connection<B> {
     udp_sessions: Arc<Mutex<UdpSessions<B>>>,
     task_connect_count: Counter,
@@ -160,6 +162,19 @@ where
     }
 }
 
+impl<B> Debug for Connection<B>
+where
+    B: AsRef<[u8]> + Debug,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        f.debug_struct("Connection")
+            .field("udp_sessions", &self.udp_sessions)
+            .field("task_connect_count", &self.task_connect_count())
+            .field("task_associate_count", &self.task_associate_count())
+            .finish()
+    }
+}
+
 /// Abstracts the side of a task
 pub mod side {
     /// The side of a task that sends data
@@ -268,6 +283,17 @@ where
     }
 }
 
+impl<B> Debug for UdpSessions<B>
+where
+    B: AsRef<[u8]> + Debug,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        f.debug_struct("UdpSessions")
+            .field("sessions", &self.sessions)
+            .finish()
+    }
+}
+
 struct UdpSession<B> {
     pkt_buf: HashMap<u16, PacketBuffer<B>>,
     next_pkt_id: AtomicU16,
@@ -343,6 +369,19 @@ where
     }
 }
 
+impl<B> Debug for UdpSession<B>
+where
+    B: AsRef<[u8]> + Debug,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        f.debug_struct("UdpSession")
+            .field("pkt_buf", &self.pkt_buf)
+            .field("next_pkt_id", &self.next_pkt_id)
+            .finish()
+    }
+}
+
+#[derive(Debug)]
 struct PacketBuffer<B> {
     buf: Vec<Option<B>>,
     frag_total: u8,
@@ -419,6 +458,7 @@ where
 }
 
 /// A complete packet that can be assembled
+#[derive(Debug)]
 pub struct Assemblable<B> {
     buf: Vec<Option<B>>,
     addr: Address,

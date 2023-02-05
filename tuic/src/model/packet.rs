@@ -4,7 +4,12 @@ use super::{
 };
 use crate::protocol::{Address, Header, Packet as PacketHeader};
 use parking_lot::Mutex;
-use std::{marker::PhantomData, slice, sync::Arc};
+use std::{
+    fmt::{Debug, Formatter, Result as FmtResult},
+    marker::PhantomData,
+    slice,
+    sync::Arc,
+};
 
 pub struct Packet<M, B> {
     inner: Side<Tx, Rx<B>>,
@@ -53,6 +58,18 @@ impl<B> Packet<side::Tx, B> {
     }
 }
 
+impl Debug for Packet<side::Tx, ()> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        let Side::Tx(tx) = &self.inner else { unreachable!() };
+        f.debug_struct("Packet")
+            .field("assoc_id", &tx.assoc_id)
+            .field("pkt_id", &tx.pkt_id)
+            .field("addr", &tx.addr)
+            .field("max_pkt_size", &tx.max_pkt_size)
+            .finish()
+    }
+}
+
 struct Rx<B> {
     sessions: Arc<Mutex<UdpSessions<B>>>,
     assoc_id: u16,
@@ -90,6 +107,7 @@ where
         }
     }
 
+    /// Reassembles the packet. If the packet is not complete yet, `None` is returned.
     pub fn assemble(self, data: B) -> Result<Option<Assemblable<B>>, AssembleError> {
         let Side::Rx(rx) = self.inner else { unreachable!() };
         let mut sessions = rx.sessions.lock();
@@ -105,23 +123,41 @@ where
         )
     }
 
+    /// Returns the UDP session ID
     pub fn assoc_id(&self) -> u16 {
         let Side::Rx(rx) = &self.inner else { unreachable!() };
         rx.assoc_id
     }
 
+    /// Returns the address
     pub fn addr(&self) -> &Address {
         let Side::Rx(rx) = &self.inner else { unreachable!() };
         &rx.addr
     }
 
+    /// Returns the size of the (fragmented) packet
     pub fn size(&self) -> u16 {
         let Side::Rx(rx) = &self.inner else { unreachable!() };
         rx.size
     }
 }
 
+impl<B> Debug for Packet<side::Rx, B> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        let Side::Rx(rx) = &self.inner else { unreachable!() };
+        f.debug_struct("Packet")
+            .field("assoc_id", &rx.assoc_id)
+            .field("pkt_id", &rx.pkt_id)
+            .field("frag_total", &rx.frag_total)
+            .field("frag_id", &rx.frag_id)
+            .field("size", &rx.size)
+            .field("addr", &rx.addr)
+            .finish()
+    }
+}
+
 /// Iterator over fragments of a packet
+#[derive(Debug)]
 pub struct Fragments<'a, P>
 where
     P: 'a,

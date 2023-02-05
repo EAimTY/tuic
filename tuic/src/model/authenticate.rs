@@ -1,5 +1,6 @@
 use super::side::{self, Side};
 use crate::protocol::{Authenticate as AuthenticateHeader, Header};
+use std::fmt::{Debug, Formatter, Result as FmtResult};
 use uuid::Uuid;
 
 /// The model of the `Authenticate` command
@@ -36,6 +37,15 @@ impl Authenticate<side::Tx> {
     }
 }
 
+impl Debug for Authenticate<side::Tx> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        let Side::Tx(tx) = &self.inner else { unreachable!() };
+        f.debug_struct("Authenticate")
+            .field("header", &tx.header)
+            .finish()
+    }
+}
+
 struct Rx {
     uuid: Uuid,
     token: [u8; 32],
@@ -69,6 +79,16 @@ impl Authenticate<side::Rx> {
     ) -> bool {
         let Side::Rx(rx) = &self.inner else { unreachable!() };
         rx.token == exporter.export_keying_material(rx.uuid.as_ref(), password.as_ref())
+    }
+}
+
+impl Debug for Authenticate<side::Rx> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        let Side::Rx(rx) = &self.inner else { unreachable!() };
+        f.debug_struct("Authenticate")
+            .field("uuid", &rx.uuid)
+            .field("token", &rx.token)
+            .finish()
     }
 }
 

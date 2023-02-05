@@ -1,5 +1,6 @@
 use super::side::{self, Side};
 use crate::protocol::{Header, Heartbeat as HeartbeatHeader};
+use std::fmt::{Debug, Formatter, Result as FmtResult};
 
 pub struct Heartbeat<M> {
     inner: Side<Tx, Rx>,
@@ -27,6 +28,15 @@ impl Heartbeat<side::Tx> {
     }
 }
 
+impl Debug for Heartbeat<side::Tx> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        let Side::Tx(tx) = &self.inner else { unreachable!() };
+        f.debug_struct("Heartbeat")
+            .field("header", &tx.header)
+            .finish()
+    }
+}
+
 struct Rx;
 
 impl Heartbeat<side::Rx> {
@@ -35,5 +45,11 @@ impl Heartbeat<side::Rx> {
             inner: Side::Rx(Rx),
             _marker: side::Rx,
         }
+    }
+}
+
+impl Debug for Heartbeat<side::Rx> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        f.debug_struct("Heartbeat").finish()
     }
 }
