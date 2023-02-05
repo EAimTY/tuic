@@ -128,7 +128,7 @@ impl Connection<side::Client> {
     pub async fn authenticate(&self, uuid: Uuid, password: impl AsRef<[u8]>) -> Result<(), Error> {
         let model = self
             .model
-            .send_authenticate(uuid, password, self.keying_material_exporter());
+            .send_authenticate(uuid, password, &self.keying_material_exporter());
 
         let mut send = self.conn.open_uni().await?;
         model.header().async_marshal(&mut send).await?;
@@ -380,8 +380,8 @@ impl Authenticate {
     }
 
     /// Validates if the given password is matching the hashed token.
-    pub fn validate(self, password: impl AsRef<[u8]>) -> bool {
-        self.model.is_valid(password, self.exporter)
+    pub fn validate(&self, password: impl AsRef<[u8]>) -> bool {
+        self.model.is_valid(password, &self.exporter)
     }
 }
 
