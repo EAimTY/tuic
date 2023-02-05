@@ -6,7 +6,9 @@ edition = "2021"
 [dependencies]
 bytes = { version = "1.4.0", default-features = false, features = ["std"] }
 crossbeam-utils = { version = "0.8.14", default-features = false, features = ["std"] }
+env_logger = { version = "0.10.0", default-features = false, features = ["humantime"] }
 lexopt = { version = "0.3.0", default-features = false }
+log = { version = "0.4.17", default-features = false, features = ["serde", "std"] }
 once_cell = { version = "1.17.0", default-features = false, features = ["parking_lot", "std"] }
 parking_lot = { version = "0.12.1", default-features = false, features = ["send_guard"] }
 quinn = { version = "0.9.3", default-features = false, features = ["futures-io", "runtime-tokio", "tls-rustls"] }

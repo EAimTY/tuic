@@ -1,5 +1,6 @@
 use crate::utils::{CongestionControl, UdpRelayMode};
 use lexopt::{Arg, Error as ArgumentError, Parser};
+use log::LevelFilter;
 use serde::{de::Error as DeError, Deserialize, Deserializer};
 use serde_json::Error as SerdeError;
 use std::{
@@ -29,6 +30,8 @@ Arguments:
 pub struct Config {
     pub relay: Relay,
     pub local: Local,
+    #[serde(default = "default::log_level")]
+    pub log_level: LevelFilter,
 }
 
 #[derive(Deserialize)]
@@ -112,6 +115,8 @@ impl Config {
 }
 
 mod default {
+    use log::LevelFilter;
+
     pub mod relay {
         use crate::utils::{CongestionControl, UdpRelayMode};
         use std::{path::PathBuf, time::Duration};
@@ -165,6 +170,10 @@ mod default {
         pub fn max_packet_size() -> usize {
             1500
         }
+    }
+
+    pub fn log_level() -> LevelFilter {
+        LevelFilter::Warn
     }
 }
 

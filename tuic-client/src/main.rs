@@ -3,6 +3,7 @@ use self::{
     connection::Endpoint,
     socks5::Server as Socks5Server,
 };
+use env_logger::Builder as LoggerBuilder;
 use quinn::{ConnectError, ConnectionError};
 use std::{env, io::Error as IoError, process};
 use thiserror::Error;
@@ -27,6 +28,8 @@ async fn main() {
             process::exit(1);
         }
     };
+
+    LoggerBuilder::new().filter_level(cfg.log_level).init();
 
     match Endpoint::set_config(cfg.relay) {
         Ok(()) => {}
