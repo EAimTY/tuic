@@ -40,7 +40,9 @@ pub mod side {
 }
 
 /// The TUIC Connection.
+///
 /// This struct takes a clone of `quinn::Connection` for performing TUIC operations.
+///
 /// See more details about the TUIC protocol at [SPEC.md](https://github.com/EAimTY/tuic/blob/dev/tuic/SPEC.md)
 #[derive(Clone)]
 pub struct Connection<Side> {
@@ -161,6 +163,7 @@ impl Connection<side::Client> {
     }
 
     /// Try to parse a `quinn::RecvStream` as a TUIC command.
+    ///
     /// The `quinn::RecvStream` should be accepted by `quinn::Connection::accept_uni()` from the same `quinn::Connection`.
     pub async fn accept_uni_stream(&self, mut recv: RecvStream) -> Result<Task, Error> {
         let header = match Header::async_unmarshal(&mut recv).await {
@@ -186,6 +189,7 @@ impl Connection<side::Client> {
     }
 
     /// Try to parse a pair of `quinn::SendStream` and `quinn::RecvStream` as a TUIC command.
+    ///
     /// The pair of stream should be accepted by `quinn::Connection::accept_bi()` from the same `quinn::Connection`.
     pub async fn accept_bi_stream(
         &self,
@@ -208,6 +212,7 @@ impl Connection<side::Client> {
     }
 
     /// Try to parse a QUIC Datagram as a TUIC command.
+    ///
     /// The Datagram should be accepted by `quinn::Connection::read_datagram()` from the same `quinn::Connection`.
     pub fn accept_datagram(&self, dg: Bytes) -> Result<Task, Error> {
         let mut dg = Cursor::new(dg);
@@ -255,6 +260,7 @@ impl Connection<side::Server> {
     }
 
     /// Try to parse a `quinn::RecvStream` as a TUIC command.
+    ///
     /// The `quinn::RecvStream` should be accepted by `quinn::Connection::accept_uni()` from the same `quinn::Connection`.
     pub async fn accept_uni_stream(&self, mut recv: RecvStream) -> Result<Task, Error> {
         let header = match Header::async_unmarshal(&mut recv).await {
@@ -285,6 +291,7 @@ impl Connection<side::Server> {
     }
 
     /// Try to parse a pair of `quinn::SendStream` and `quinn::RecvStream` as a TUIC command.
+    ///
     /// The pair of stream should be accepted by `quinn::Connection::accept_bi()` from the same `quinn::Connection`.
     pub async fn accept_bi_stream(
         &self,
@@ -310,6 +317,7 @@ impl Connection<side::Server> {
     }
 
     /// Try to parse a QUIC Datagram as a TUIC command.
+    ///
     /// The Datagram should be accepted by `quinn::Connection::read_datagram()` from the same `quinn::Connection`.
     pub fn accept_datagram(&self, dg: Bytes) -> Result<Task, Error> {
         let mut dg = Cursor::new(dg);
