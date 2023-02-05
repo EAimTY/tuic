@@ -12,7 +12,7 @@ use uuid::Uuid;
 /// where:
 ///
 /// - `UUID` - client UUID
-/// - `TOKEN` - client token. The client UUID is hashed into a 256-bit long token using [TLS Keying Material Exporter](https://www.rfc-editor.org/rfc/rfc5705) on current TLS session. While exporting, both the `label` and `context` should be the client UUID
+/// - `TOKEN` - client token. The client raw password is hashed into a 256-bit long token using [TLS Keying Material Exporter](https://www.rfc-editor.org/rfc/rfc5705) on current TLS session. While exporting, the `label` should be the client UUID and the `context` should be the raw password.
 #[derive(Clone, Debug)]
 pub struct Authenticate {
     uuid: Uuid,

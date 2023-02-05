@@ -1,10 +1,10 @@
 [package]
 name = "tuic"
-version = "5.0.0-pre-alpha3"
+version = "5.0.0-pre-alpha4"
 authors = ["EAimTY <ea.imty@gmail.com>"]
 description = "Delicately-TUICed 0-RTT proxy protocol"
 categories = ["network-programming"]
-keywords = ["network", "proxy", "tuic"]
+keywords = ["network", "proxy", "quic", "tuic"]
 edition = "2021"
 rust-version = "1.65.0"
 readme = "README.md"
