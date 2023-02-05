@@ -13,10 +13,11 @@ register-count = { version = "0.1.0", default-features = false, features = ["std
 rustls = { version = "0.20.8", default-features = false, features = ["quic"] }
 rustls-pemfile = { version = "1.0.2", default-features = false }
 serde = { version = "1.0.152", default-features = false, features = ["derive", "std"] }
-serde_json = { version = "1.0.91", default-features = false, features = ["std"] }
+serde_json = { version = "1.0.92", default-features = false, features = ["std"] }
 socket2 = { version = "0.4.7", default-features = false }
 thiserror = { version = "1.0.38", default-features = false }
 tokio = { version = "1.25.0", default-features = false, features = ["macros", "net", "parking_lot", "rt-multi-thread", "time"] }
 tokio-util = { version = "0.7.4", default-features = false, features = ["compat"] }
-tuic = { path = "../tuic", default-features = false }
-tuic-quinn = { path = "../tuic-quinn", default-features = false }
+tuic = { version = "5.0.0-pre-alpha6", default-features = false }
+tuic-quinn = { version = "0.1.0-pre-alpha2", default-features = false }
+uuid = { version = "1.3.0", default-features = false, features = ["serde", "std"] }

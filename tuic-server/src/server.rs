@@ -39,12 +39,13 @@ use tokio::{
 use tokio_util::compat::FuturesAsyncReadCompatExt;
 use tuic::Address;
 use tuic_quinn::{side, Connect, Connection as Model, Packet, Task};
+use uuid::Uuid;
 
 const DEFAULT_CONCURRENT_STREAMS: usize = 32;
 
 pub struct Server {
     ep: Endpoint,
-    token: Arc<[u8]>,
+    users: Arc<HashMap<Uuid, Vec<u8>>>,
     udp_relay_ipv6: bool,
     zero_rtt_handshake: bool,
     auth_timeout: Duration,
@@ -115,9 +116,15 @@ impl Server {
             TokioRuntime,
         )?;
 
+        let users = cfg
+            .users
+            .into_iter()
+            .map(|(uuid, password)| (uuid, password.into_bytes()))
+            .collect();
+
         Ok(Self {
             ep,
-            token: Arc::from(cfg.token.into_bytes().into_boxed_slice()),
+            users: Arc::new(users),
             udp_relay_ipv6: cfg.udp_relay_ipv6,
             zero_rtt_handshake: cfg.zero_rtt_handshake,
             auth_timeout: cfg.auth_timeout,
@@ -133,7 +140,7 @@ impl Server {
 
             tokio::spawn(Connection::handle(
                 conn,
-                self.token.clone(),
+                self.users.clone(),
                 self.udp_relay_ipv6,
                 self.zero_rtt_handshake,
                 self.auth_timeout,
@@ -149,7 +156,7 @@ impl Server {
 struct Connection {
     inner: QuinnConnection,
     model: Model<side::Server>,
-    token: Arc<[u8]>,
+    users: Arc<HashMap<Uuid, Vec<u8>>>,
     udp_relay_ipv6: bool,
     is_authed: IsAuthed,
     udp_sessions: Arc<AsyncMutex<HashMap<u16, UdpSession>>>,
@@ -165,7 +172,7 @@ struct Connection {
 impl Connection {
     async fn handle(
         conn: Connecting,
-        token: Arc<[u8]>,
+        users: Arc<HashMap<Uuid, Vec<u8>>>,
         udp_relay_ipv6: bool,
         zero_rtt_handshake: bool,
         auth_timeout: Duration,
@@ -175,7 +182,7 @@ impl Connection {
     ) {
         match Self::init(
             conn,
-            token,
+            users,
             udp_relay_ipv6,
             zero_rtt_handshake,
             max_external_pkt_size,
@@ -203,7 +210,7 @@ impl Connection {
 
     async fn init(
         conn: Connecting,
-        token: Arc<[u8]>,
+        users: Arc<HashMap<Uuid, Vec<u8>>>,
         udp_relay_ipv6: bool,
         zero_rtt_handshake: bool,
         max_external_pkt_size: usize,
@@ -223,7 +230,7 @@ impl Connection {
         Ok(Self {
             inner: conn.clone(),
             model: Model::<side::Server>::new(conn),
-            token,
+            users,
             udp_relay_ipv6,
             is_authed: IsAuthed::new(),
             udp_sessions: Arc::new(AsyncMutex::new(HashMap::new())),
@@ -263,21 +270,17 @@ impl Connection {
         async fn pre_process(conn: &Connection, recv: RecvStream) -> Result<Task, Error> {
             let task = conn.model.accept_uni_stream(recv).await?;
 
-            if let Task::Authenticate(token) = &task {
+            if let Task::Authenticate(auth) = &task {
                 if conn.is_authed() {
                     return Err(Error::DuplicatedAuth);
+                } else if conn
+                    .users
+                    .get(&auth.uuid())
+                    .map_or(false, |password| auth.validate(password))
+                {
+                    conn.set_authed();
                 } else {
-                    let mut buf = [0; 32];
-
-                    conn.inner
-                        .export_keying_material(&mut buf, &conn.token, &conn.token)
-                        .map_err(|_| Error::ExportKeyingMaterial)?;
-
-                    if token == &buf {
-                        conn.set_authed();
-                    } else {
-                        return Err(Error::AuthFailed);
-                    }
+                    return Err(Error::AuthFailed(auth.uuid()));
                 }
             }
 
@@ -296,6 +299,7 @@ impl Connection {
         }
 
         match pre_process(&self, recv).await {
+            Ok(Task::Authenticate(_)) => {}
             Ok(Task::Packet(pkt)) => {
                 self.set_udp_relay_mode(UdpRelayMode::Quic);
                 match self.handle_packet(pkt).await {

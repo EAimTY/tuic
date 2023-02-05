@@ -8,6 +8,7 @@ use std::{env, io::Error as IoError, net::SocketAddr, process};
 use thiserror::Error;
 use tuic::Address;
 use tuic_quinn::Error as ModelError;
+use uuid::Uuid;
 
 mod config;
 mod server;
@@ -52,8 +53,8 @@ pub enum Error {
     DuplicatedAuth,
     #[error("token length too short")]
     ExportKeyingMaterial,
-    #[error("authentication failed")]
-    AuthFailed,
+    #[error("authentication failed: {0}")]
+    AuthFailed(Uuid),
     #[error("received packet from unexpected source")]
     UnexpectedPacketSource,
     #[error("{0} resolved to {1} but IPv6 UDP relay disabled")]

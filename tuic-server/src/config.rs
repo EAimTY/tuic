@@ -3,10 +3,11 @@ use lexopt::{Arg, Error as ArgumentError, Parser};
 use serde::{de::Error as DeError, Deserialize, Deserializer};
 use serde_json::Error as SerdeError;
 use std::{
-    env::ArgsOs, fmt::Display, fs::File, io::Error as IoError, net::SocketAddr, path::PathBuf,
-    str::FromStr, time::Duration,
+    collections::HashMap, env::ArgsOs, fmt::Display, fs::File, io::Error as IoError,
+    net::SocketAddr, path::PathBuf, str::FromStr, time::Duration,
 };
 use thiserror::Error;
+use uuid::Uuid;
 
 const HELP_MSG: &str = r#"
 Usage tuic-server [arguments]
@@ -21,7 +22,8 @@ Arguments:
 #[serde(deny_unknown_fields)]
 pub struct Config {
     pub server: SocketAddr,
-    pub token: String,
+    #[serde(deserialize_with = "deserialize_users")]
+    pub users: HashMap<Uuid, String>,
     pub certificate: PathBuf,
     pub private_key: PathBuf,
     #[serde(
@@ -128,6 +130,19 @@ where
 {
     let s = String::deserialize(deserializer)?;
     T::from_str(&s).map_err(DeError::custom)
+}
+
+pub fn deserialize_users<'de, D>(deserializer: D) -> Result<HashMap<Uuid, String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let map = HashMap::<Uuid, String>::deserialize(deserializer)?;
+
+    if map.is_empty() {
+        return Err(DeError::custom("users cannot be empty"));
+    }
+
+    Ok(map)
 }
 
 #[derive(Debug, Error)]
