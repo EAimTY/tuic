@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 use self::side::Side;
 use bytes::{BufMut, Bytes};
 use futures_util::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -5,6 +7,7 @@ use quinn::{
     Connection as QuinnConnection, ConnectionError, RecvStream, SendDatagramError, SendStream,
 };
 use std::{
+    fmt::{Debug, Formatter, Result as FmtResult},
     io::{Cursor, Error as IoError},
     pin::Pin,
     task::{Context, Poll},
@@ -23,9 +26,11 @@ use tuic::{
 use uuid::Uuid;
 
 pub mod side {
-    #[derive(Clone)]
+    //! Side marker types for a connection.
+
+    #[derive(Clone, Debug)]
     pub struct Client;
-    #[derive(Clone)]
+    #[derive(Clone, Debug)]
     pub struct Server;
 
     pub(super) enum Side<C, S> {
@@ -34,6 +39,9 @@ pub mod side {
     }
 }
 
+/// The TUIC Connection.
+/// This struct takes a clone of `quinn::Connection` for performing TUIC operations.
+/// See more details about the TUIC protocol at [SPEC.md](https://github.com/EAimTY/tuic/blob/dev/tuic/SPEC.md)
 #[derive(Clone)]
 pub struct Connection<Side> {
     conn: QuinnConnection,
@@ -42,6 +50,7 @@ pub struct Connection<Side> {
 }
 
 impl<Side> Connection<Side> {
+    /// Sends a `Packet` using UDP relay mode `native`.
     pub fn packet_native(
         &self,
         pkt: impl AsRef<[u8]>,
@@ -64,6 +73,7 @@ impl<Side> Connection<Side> {
         Ok(())
     }
 
+    /// Sends a `Packet` using UDP relay mode `quic`.
     pub async fn packet_quic(
         &self,
         pkt: impl AsRef<[u8]>,
@@ -82,24 +92,28 @@ impl<Side> Connection<Side> {
         Ok(())
     }
 
+    /// Returns the number of `Connect` tasks
     pub fn task_connect_count(&self) -> usize {
         self.model.task_connect_count()
     }
 
+    /// Returns the number of active UDP sessions
     pub fn task_associate_count(&self) -> usize {
         self.model.task_associate_count()
     }
 
+    /// Removes packet fragments that can not be reassembled within the specified timeout
     pub fn collect_garbage(&self, timeout: Duration) {
         self.model.collect_garbage(timeout);
     }
 
-    pub fn keying_material_exporter(&self) -> KeyingMaterialExporter {
+    fn keying_material_exporter(&self) -> KeyingMaterialExporter {
         KeyingMaterialExporter(self.conn.clone())
     }
 }
 
 impl Connection<side::Client> {
+    /// Creates a new client side `Connection`.
     pub fn new(conn: QuinnConnection) -> Self {
         Self {
             conn,
@@ -108,6 +122,7 @@ impl Connection<side::Client> {
         }
     }
 
+    /// Sends an `Authenticate` command.
     pub async fn authenticate(&self, uuid: Uuid, password: impl AsRef<[u8]>) -> Result<(), Error> {
         let model = self
             .model
@@ -119,6 +134,7 @@ impl Connection<side::Client> {
         Ok(())
     }
 
+    /// Sends a `Connect` command.
     pub async fn connect(&self, addr: Address) -> Result<Connect, Error> {
         let model = self.model.send_connect(addr);
         let (mut send, recv) = self.conn.open_bi().await?;
@@ -126,6 +142,7 @@ impl Connection<side::Client> {
         Ok(Connect::new(Side::Client(model), send, recv))
     }
 
+    /// Sends a `Dissociate` command.
     pub async fn dissociate(&self, assoc_id: u16) -> Result<(), Error> {
         let model = self.model.send_dissociate(assoc_id);
         let mut send = self.conn.open_uni().await?;
@@ -134,6 +151,7 @@ impl Connection<side::Client> {
         Ok(())
     }
 
+    /// Sends a `Heartbeat` command.
     pub async fn heartbeat(&self) -> Result<(), Error> {
         let model = self.model.send_heartbeat();
         let mut buf = Vec::with_capacity(model.header().len());
@@ -142,6 +160,8 @@ impl Connection<side::Client> {
         Ok(())
     }
 
+    /// Try to parse a `quinn::RecvStream` as a TUIC command.
+    /// The `quinn::RecvStream` should be accepted by `quinn::Connection::accept_uni()` from the same `quinn::Connection`.
     pub async fn accept_uni_stream(&self, mut recv: RecvStream) -> Result<Task, Error> {
         let header = match Header::async_unmarshal(&mut recv).await {
             Ok(header) => header,
@@ -165,6 +185,8 @@ impl Connection<side::Client> {
         }
     }
 
+    /// Try to parse a pair of `quinn::SendStream` and `quinn::RecvStream` as a TUIC command.
+    /// The pair of stream should be accepted by `quinn::Connection::accept_bi()` from the same `quinn::Connection`.
     pub async fn accept_bi_stream(
         &self,
         send: SendStream,
@@ -185,6 +207,8 @@ impl Connection<side::Client> {
         }
     }
 
+    /// Try to parse a QUIC Datagram as a TUIC command.
+    /// The Datagram should be accepted by `quinn::Connection::read_datagram()` from the same `quinn::Connection`.
     pub fn accept_datagram(&self, dg: Bytes) -> Result<Task, Error> {
         let mut dg = Cursor::new(dg);
 
@@ -221,6 +245,7 @@ impl Connection<side::Client> {
 }
 
 impl Connection<side::Server> {
+    /// Creates a new server side `Connection`.
     pub fn new(conn: QuinnConnection) -> Self {
         Self {
             conn,
@@ -229,6 +254,8 @@ impl Connection<side::Server> {
         }
     }
 
+    /// Try to parse a `quinn::RecvStream` as a TUIC command.
+    /// The `quinn::RecvStream` should be accepted by `quinn::Connection::accept_uni()` from the same `quinn::Connection`.
     pub async fn accept_uni_stream(&self, mut recv: RecvStream) -> Result<Task, Error> {
         let header = match Header::async_unmarshal(&mut recv).await {
             Ok(header) => header,
@@ -257,6 +284,8 @@ impl Connection<side::Server> {
         }
     }
 
+    /// Try to parse a pair of `quinn::SendStream` and `quinn::RecvStream` as a TUIC command.
+    /// The pair of stream should be accepted by `quinn::Connection::accept_bi()` from the same `quinn::Connection`.
     pub async fn accept_bi_stream(
         &self,
         send: SendStream,
@@ -280,6 +309,8 @@ impl Connection<side::Server> {
         }
     }
 
+    /// Try to parse a QUIC Datagram as a TUIC command.
+    /// The Datagram should be accepted by `quinn::Connection::read_datagram()` from the same `quinn::Connection`.
     pub fn accept_datagram(&self, dg: Bytes) -> Result<Task, Error> {
         let mut dg = Cursor::new(dg);
 
@@ -309,6 +340,17 @@ impl Connection<side::Server> {
     }
 }
 
+impl<Side> Debug for Connection<Side> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        f.debug_struct("Connection")
+            .field("conn", &self.conn)
+            .field("model", &self.model)
+            .finish()
+    }
+}
+
+/// A received `Authenticate` command.
+#[derive(Debug)]
 pub struct Authenticate {
     model: AuthenticateModel<Rx>,
     exporter: KeyingMaterialExporter,
@@ -319,19 +361,23 @@ impl Authenticate {
         Self { model, exporter }
     }
 
+    /// The UUID of the client.
     pub fn uuid(&self) -> Uuid {
         self.model.uuid()
     }
 
+    /// The hashed token.
     pub fn token(&self) -> [u8; 32] {
         self.model.token()
     }
 
+    /// Validates if the given password is matching the hashed token.
     pub fn validate(self, password: impl AsRef<[u8]>) -> bool {
         self.model.is_valid(password, self.exporter)
     }
 }
 
+/// A received `Connect` command.
 pub struct Connect {
     model: Side<ConnectModel<Tx>, ConnectModel<Rx>>,
     send: SendStream,
@@ -347,6 +393,7 @@ impl Connect {
         Self { model, send, recv }
     }
 
+    /// Returns the `Connect` address
     pub fn addr(&self) -> &Address {
         match &self.model {
             Side::Client(model) => {
@@ -386,11 +433,29 @@ impl AsyncWrite for Connect {
     }
 }
 
+impl Debug for Connect {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        let model = match &self.model {
+            Side::Client(model) => model as &dyn Debug,
+            Side::Server(model) => model as &dyn Debug,
+        };
+
+        f.debug_struct("Connect")
+            .field("model", model)
+            .field("send", &self.send)
+            .field("recv", &self.recv)
+            .finish()
+    }
+}
+
+/// A received `Packet` command.
+#[derive(Debug)]
 pub struct Packet {
     model: PacketModel<Rx, Bytes>,
     src: PacketSource,
 }
 
+#[derive(Debug)]
 enum PacketSource {
     Quic(RecvStream),
     Native(Bytes),
@@ -401,14 +466,12 @@ impl Packet {
         Self { src, model }
     }
 
+    /// Returns the UDP session ID
     pub fn assoc_id(&self) -> u16 {
         self.model.assoc_id()
     }
 
-    pub fn addr(&self) -> &Address {
-        self.model.addr()
-    }
-
+    /// Accepts the packet payload. If the packet is fragmented and not yet fully assembled, `Ok(None)` is returned.
     pub async fn accept(self) -> Result<Option<(Bytes, Address, u16)>, Error> {
         let pkt = match self.src {
             PacketSource::Quic(mut recv) => {
@@ -429,7 +492,9 @@ impl Packet {
     }
 }
 
+/// Type of tasks that can be received.
 #[non_exhaustive]
+#[derive(Debug)]
 pub enum Task {
     Authenticate(Authenticate),
     Connect(Connect),
@@ -438,7 +503,8 @@ pub enum Task {
     Heartbeat,
 }
 
-pub struct KeyingMaterialExporter(QuinnConnection);
+#[derive(Debug)]
+struct KeyingMaterialExporter(QuinnConnection);
 
 impl KeyingMaterialExporterImpl for KeyingMaterialExporter {
     fn export_keying_material(&self, label: &[u8], context: &[u8]) -> [u8; 32] {
@@ -450,6 +516,7 @@ impl KeyingMaterialExporterImpl for KeyingMaterialExporter {
     }
 }
 
+/// Errors that can occur when processing a task.
 #[derive(Debug, Error)]
 pub enum Error {
     #[error(transparent)]

@@ -1,7 +1,15 @@
 [package]
 name = "tuic-quinn"
-version = "0.1.0"
+version = "0.1.0-pre-alpha0"
+authors = ["EAimTY <ea.imty@gmail.com>"]
+description = "A thin layer on top of quinn to provide functions for TUIC"
+categories = ["network-programming"]
+keywords = ["network", "proxy", "quic", "tuic"]
 edition = "2021"
+rust-version = "1.65.0"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/EAimTY/tuic"
 
 [dependencies]
 bytes = { version = "1.4.0", default-features = false, features = ["std"] }
