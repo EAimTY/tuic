@@ -393,7 +393,9 @@ impl Connection {
         loop {
             time::sleep(heartbeat).await;
 
-            if self.is_closed() {
+            let task_count = self.model.task_connect_count() + self.model.task_associate_count();
+
+            if self.is_closed() || task_count == 0 {
                 break;
             }
 
