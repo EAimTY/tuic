@@ -138,12 +138,13 @@ impl Endpoint {
             }
 
             let conn = ep.connect(addr, server_name)?;
-
             let conn = if zero_rtt_handshake {
                 match conn.into_0rtt() {
                     Ok((conn, _)) => conn,
                     Err(conn) => {
-                        eprintln!("0-RTT handshake failed, fallback to 1-RTT handshake");
+                        log::info!(
+                            "[connection] 0-RTT handshake failed, fallback to 1-RTT handshake"
+                        );
                         conn.await?
                     }
                 }
@@ -157,7 +158,7 @@ impl Endpoint {
         let mut last_err = None;
 
         for addr in self.server.resolve().await? {
-            match connect_to(
+            let res = connect_to(
                 &mut self.ep,
                 addr,
                 self.server.server_name(),
@@ -166,9 +167,11 @@ impl Endpoint {
                 self.udp_relay_mode,
                 self.zero_rtt_handshake,
             )
-            .await
-            {
+            .await;
+
+            match res {
                 Ok(conn) => {
+                    log::info!("[connection] established");
                     tokio::spawn(conn.clone().init(
                         self.heartbeat,
                         self.gc_interval,
@@ -309,6 +312,7 @@ impl Connection {
     }
 
     async fn handle_uni_stream(self, recv: RecvStream, _reg: Register) {
+        log::debug!("[connection] incoming unidirectional stream");
         let res = match self.model.accept_uni_stream(recv).await {
             Err(err) => Err(Error::from(err)),
             Ok(Task::Packet(pkt)) => match self.udp_relay_mode {
@@ -321,7 +325,8 @@ impl Connection {
                             }
                             Address::SocketAddress(addr) => Socks5Address::SocketAddress(addr),
                         };
-                        Socks5Server::recv_pkt(pkt, addr, assoc_id).await
+                        Socks5Server::recv_pkt(pkt, addr, assoc_id).await;
+                        Ok(())
                     }
                     Ok(None) => Ok(()),
                     Err(err) => Err(Error::from(err)),
@@ -333,11 +338,12 @@ impl Connection {
 
         match res {
             Ok(()) => {}
-            Err(err) => eprintln!("{err}"),
+            Err(err) => log::error!("[connection] {err}"),
         }
     }
 
     async fn handle_bi_stream(self, send: SendStream, recv: RecvStream, _reg: Register) {
+        log::debug!("[connection] incoming bidirectional stream");
         let res = match self.model.accept_bi_stream(send, recv).await {
             Err(err) => Err(Error::from(err)),
             _ => unreachable!(),
@@ -345,11 +351,12 @@ impl Connection {
 
         match res {
             Ok(()) => {}
-            Err(err) => eprintln!("{err}"),
+            Err(err) => log::error!("[connection] {err}"),
         }
     }
 
     async fn handle_datagram(self, dg: Bytes) {
+        log::debug!("[connection] incoming datagram");
         let res = match self.model.accept_datagram(dg) {
             Err(err) => Err(Error::from(err)),
             Ok(Task::Packet(pkt)) => match self.udp_relay_mode {
@@ -362,7 +369,8 @@ impl Connection {
                             }
                             Address::SocketAddress(addr) => Socks5Address::SocketAddress(addr),
                         };
-                        Socks5Server::recv_pkt(pkt, addr, assoc_id).await
+                        Socks5Server::recv_pkt(pkt, addr, assoc_id).await;
+                        Ok(())
                     }
                     Ok(None) => Ok(()),
                     Err(err) => Err(Error::from(err)),
@@ -374,7 +382,7 @@ impl Connection {
 
         match res {
             Ok(()) => {}
-            Err(err) => eprintln!("{err}"),
+            Err(err) => log::error!("[connection] {err}"),
         }
     }
 
@@ -384,8 +392,8 @@ impl Connection {
             .authenticate(self.uuid, self.password.clone())
             .await
         {
-            Ok(()) => {}
-            Err(err) => eprintln!("{err}"),
+            Ok(()) => log::info!("[connection] authentication sent"),
+            Err(err) => log::warn!("[connection] authentication failed: {err}"),
         }
     }
 
@@ -402,8 +410,8 @@ impl Connection {
             }
 
             match self.model.heartbeat().await {
-                Ok(()) => {}
-                Err(err) => eprintln!("{err}"),
+                Ok(()) => log::info!("[connection] heartbeat"),
+                Err(err) => log::warn!("[connection] heartbeat error: {err}"),
             }
         }
     }
@@ -416,6 +424,7 @@ impl Connection {
                 break;
             }
 
+            log::debug!("[connection] packet garbage collection");
             self.model.collect_garbage(gc_lifetime);
         }
     }
@@ -442,6 +451,6 @@ impl Connection {
             };
         };
 
-        eprintln!("{err}");
+        log::error!("[connection] {err}");
     }
 }

@@ -29,7 +29,10 @@ async fn main() {
         }
     };
 
-    LoggerBuilder::new().filter_level(cfg.log_level).init();
+    LoggerBuilder::new()
+        .filter_level(cfg.log_level)
+        .format_module_path(false)
+        .init();
 
     match Endpoint::set_config(cfg.relay) {
         Ok(()) => {}

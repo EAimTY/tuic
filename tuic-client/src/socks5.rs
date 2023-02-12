@@ -52,6 +52,7 @@ impl Server {
 
             socket.set_reuse_address(true)?;
             socket.bind(&SockAddr::from(cfg.server))?;
+            socket.listen(128)?;
             TcpListener::from_std(StdTcpListener::from(socket))?
         };
 
@@ -82,10 +83,12 @@ impl Server {
 
     pub async fn start() {
         let server = SERVER.get().unwrap();
+        log::warn!("[socks5] server started, listening on {}", server.addr);
 
         loop {
             match server.inner.accept().await {
-                Ok((conn, _)) => {
+                Ok((conn, addr)) => {
+                    log::debug!("[socks5] [{addr}] connection established");
                     tokio::spawn(async move {
                         let res = match conn.handshake().await {
                             Ok(Connection::Associate(associate, addr)) => {
@@ -99,12 +102,12 @@ impl Server {
                         };
 
                         match res {
-                            Ok(_) => {}
-                            Err(err) => eprintln!("{err}"),
+                            Ok(()) => log::debug!("[socks5] [{addr}] connection closed"),
+                            Err(err) => log::warn!("[socks5] [{addr}] {err}"),
                         }
                     });
                 }
-                Err(err) => eprintln!("{err}"),
+                Err(err) => log::warn!("[socks5] failed to establish connection: {err}"),
             }
         }
     }
@@ -144,11 +147,12 @@ impl Server {
                 Self::send_pkt(assoc, assoc_socket).await
             }
             Err(err) => {
+                log::warn!("[socks5] failed to create associated socket: {err}");
                 let mut assoc = assoc
                     .reply(Reply::GeneralFailure, Address::unspecified())
                     .await?;
                 let _ = assoc.shutdown().await;
-                Err(Error::from(err))
+                Ok(())
             }
         }
     }
@@ -175,9 +179,8 @@ impl Server {
         match relay {
             Ok(relay) => {
                 let mut relay = relay.compat();
-                let conn = conn.reply(Reply::Succeeded, Address::unspecified()).await;
 
-                match conn {
+                match conn.reply(Reply::Succeeded, Address::unspecified()).await {
                     Ok(mut conn) => match io::copy_bidirectional(&mut conn, &mut relay).await {
                         Ok(_) => Ok(()),
                         Err(err) => {
@@ -192,12 +195,13 @@ impl Server {
                     }
                 }
             }
-            Err(err) => {
+            Err(relay_err) => {
+                log::error!("[connection] {relay_err}");
                 let mut conn = conn
                     .reply(Reply::GeneralFailure, Address::unspecified())
                     .await?;
                 let _ = conn.shutdown().await;
-                Err(err)
+                Ok(())
             }
         }
     }
@@ -252,17 +256,24 @@ impl Server {
                 Address::SocketAddress(addr) => TuicAddress::SocketAddress(addr),
             };
 
-            TuicConnection::get()
-                .await?
-                .packet(pkt, target_addr, assoc_id)
-                .await
+            let res = match TuicConnection::get().await {
+                Ok(conn) => conn.packet(pkt, target_addr, assoc_id).await,
+                Err(err) => Err(err),
+            };
+
+            match res {
+                Ok(()) => {}
+                Err(err) => log::error!("[connection] {err}"),
+            }
+
+            Ok(())
         }
 
         let res = tokio::select! {
             res = assoc.wait_until_closed() => res,
             _ = async { loop {
                 if let Err(err) = accept_pkt(&assoc_socket, &mut connected, assoc_id).await {
-                    eprintln!("{err}");
+                    log::warn!("[socks5] {err}");
                 }
             }} => unreachable!(),
         };
@@ -270,25 +281,29 @@ impl Server {
         let _ = assoc.shutdown().await;
         SERVER.get().unwrap().udp_sessions.lock().remove(&assoc_id);
 
-        match TuicConnection::get().await {
-            Ok(conn) => match conn.dissociate(assoc_id).await {
-                Ok(_) => {}
-                Err(err) => eprintln!("{err}"),
-            },
-            Err(err) => eprintln!("{err}"),
+        let dissoc_res = match TuicConnection::get().await {
+            Ok(conn) => conn.dissociate(assoc_id).await,
+            Err(err) => Err(err),
+        };
+
+        match dissoc_res {
+            Ok(()) => {}
+            Err(err) => log::error!("[connection] [dissociate] {err}"),
         }
 
         Ok(res?)
     }
 
-    pub async fn recv_pkt(pkt: Bytes, addr: Address, assoc_id: u16) -> Result<(), Error> {
+    pub async fn recv_pkt(pkt: Bytes, addr: Address, assoc_id: u16) {
         let assoc_socket = {
             let sessions = SERVER.get().unwrap().udp_sessions.lock();
             let Some(assoc_socket) = sessions.get(&assoc_id) else { unreachable!() };
             assoc_socket.clone()
         };
 
-        assoc_socket.send(pkt, 0, addr).await?;
-        Ok(())
+        match assoc_socket.send(pkt, 0, addr).await {
+            Ok(_) => {}
+            Err(err) => log::error!("[socks5] [send] {err}"),
+        }
     }
 }
