@@ -32,6 +32,7 @@ async fn main() {
     LoggerBuilder::new()
         .filter_level(cfg.log_level)
         .format_module_path(false)
+        .format_target(false)
         .init();
 
     match Endpoint::set_config(cfg.relay) {

@@ -171,7 +171,7 @@ impl Endpoint {
 
             match res {
                 Ok(conn) => {
-                    log::info!("[connection] established");
+                    log::info!("[connection] connection established");
                     tokio::spawn(conn.clone().init(
                         self.heartbeat,
                         self.gc_interval,
