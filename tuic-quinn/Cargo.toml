@@ -16,5 +16,5 @@ bytes = { version = "1.4.0", default-features = false, features = ["std"] }
 futures-util = { version = "0.3.26", default-features = false, features = ["io", "std"] }
 quinn = { version = "0.9.3", default-features = false, features = ["futures-io"] }
 thiserror = { version = "1.0.38", default-features = false }
-tuic = { version = "5.0.0-pre-alpha6", default-features = false, features = ["async_marshal", "marshal", "model"] }
+tuic = { path = "../tuic", default-features = false, features = ["async_marshal", "marshal", "model"] }
 uuid = { version = "1.3.0", default-features = false, features = ["std"] }
