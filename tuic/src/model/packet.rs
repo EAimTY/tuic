@@ -51,6 +51,12 @@ impl<B> Packet<side::Tx, B> {
         tx.assoc_id
     }
 
+    /// Returns the packet ID
+    pub fn pkt_id(&self) -> u16 {
+        let Side::Tx(tx) = &self.inner else { unreachable!() };
+        tx.pkt_id
+    }
+
     /// Returns the address
     pub fn addr(&self) -> &Address {
         let Side::Tx(tx) = &self.inner else { unreachable!() };
@@ -127,6 +133,24 @@ where
     pub fn assoc_id(&self) -> u16 {
         let Side::Rx(rx) = &self.inner else { unreachable!() };
         rx.assoc_id
+    }
+
+    /// Returns the packet ID
+    pub fn pkt_id(&self) -> u16 {
+        let Side::Rx(rx) = &self.inner else { unreachable!() };
+        rx.pkt_id
+    }
+
+    /// Returns the fragment ID
+    pub fn frag_id(&self) -> u8 {
+        let Side::Rx(rx) = &self.inner else { unreachable!() };
+        rx.frag_id
+    }
+
+    /// Returns the total number of fragments
+    pub fn frag_total(&self) -> u8 {
+        let Side::Rx(rx) = &self.inner else { unreachable!() };
+        rx.frag_total
     }
 
     /// Returns the address
