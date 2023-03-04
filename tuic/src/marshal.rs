@@ -1,5 +1,5 @@
 use crate::{Address, Authenticate, Connect, Dissociate, Header, Heartbeat, Packet, VERSION};
-use bytes::BufMut;
+use bytes::{BufMut, BytesMut};
 use futures_util::{AsyncWrite, AsyncWriteExt};
 use std::{
     io::{Error as IoError, Write},
@@ -10,7 +10,7 @@ impl Header {
     /// Marshals the header into an `AsyncWrite` stream
     #[cfg(feature = "async_marshal")]
     pub async fn async_marshal(&self, s: &mut (impl AsyncWrite + Unpin)) -> Result<(), IoError> {
-        let mut buf = vec![0; self.len()];
+        let mut buf = BytesMut::with_capacity(self.len());
         self.write(&mut buf);
         s.write_all(&buf).await
     }
@@ -18,7 +18,7 @@ impl Header {
     /// Marshals the header into a `Write` stream
     #[cfg(feature = "marshal")]
     pub fn marshal(&self, s: &mut impl Write) -> Result<(), IoError> {
-        let mut buf = vec![0; self.len()];
+        let mut buf = BytesMut::with_capacity(self.len());
         self.write(&mut buf);
         s.write_all(&buf)
     }
