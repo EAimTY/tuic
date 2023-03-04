@@ -132,7 +132,7 @@ impl Connection<side::Client> {
 
         let mut send = self.conn.open_uni().await?;
         model.header().async_marshal(&mut send).await?;
-        send.close().await?;
+        send.close().await?; // stuck here
         Ok(())
     }
 
@@ -477,6 +477,21 @@ impl Packet {
     /// Returns the UDP session ID
     pub fn assoc_id(&self) -> u16 {
         self.model.assoc_id()
+    }
+
+    /// Returns the packet ID
+    pub fn pkt_id(&self) -> u16 {
+        self.model.pkt_id()
+    }
+
+    /// Returns the fragment ID
+    pub fn frag_id(&self) -> u8 {
+        self.model.frag_id()
+    }
+
+    /// Returns the total number of fragments
+    pub fn frag_total(&self) -> u8 {
+        self.model.frag_total()
     }
 
     /// Accepts the packet payload. If the packet is fragmented and not yet fully assembled, `Ok(None)` is returned.
