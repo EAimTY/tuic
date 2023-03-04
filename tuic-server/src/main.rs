@@ -29,7 +29,11 @@ async fn main() {
         }
     };
 
-    LoggerBuilder::new().filter_level(cfg.log_level).init();
+    LoggerBuilder::new()
+        .filter_level(cfg.log_level)
+        .format_module_path(false)
+        .format_target(false)
+        .init();
 
     match Server::init(cfg) {
         Ok(server) => server.start().await,

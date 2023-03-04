@@ -106,7 +106,7 @@ mod default {
     }
 
     pub fn auth_timeout() -> Duration {
-        Duration::from_secs(3)
+        Duration::from_secs(10)
     }
 
     pub fn max_idle_time() -> Duration {
