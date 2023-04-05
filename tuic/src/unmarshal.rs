@@ -174,7 +174,7 @@ impl Authenticate {
 
     #[cfg(feature = "marshal")]
     fn read(s: &mut impl Read) -> Result<Self, UnmarshalError> {
-        let mut buf = [0; 32];
+        let mut buf = [0; 48];
         s.read_exact(&mut buf)?;
         let uuid = Uuid::from_slice(&buf[..16])?;
         let token = TryFrom::try_from(&buf[16..]).unwrap();
