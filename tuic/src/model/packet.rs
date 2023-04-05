@@ -39,7 +39,7 @@ impl<B> Packet<side::Tx, B> {
     /// Fragment the payload into multiple packets
     pub fn into_fragments<'a, P>(self, payload: P) -> Fragments<'a, P>
     where
-        P: AsRef<[u8]>,
+        P: AsRef<[u8]> + 'a,
     {
         let Side::Tx(tx) = self.inner else { unreachable!() };
         Fragments::new(tx.assoc_id, tx.pkt_id, tx.addr, tx.max_pkt_size, payload)
@@ -182,10 +182,7 @@ impl<B> Debug for Packet<side::Rx, B> {
 
 /// Iterator over fragments of a packet
 #[derive(Debug)]
-pub struct Fragments<'a, P>
-where
-    P: 'a,
-{
+pub struct Fragments<'a, P> {
     assoc_id: u16,
     pkt_id: u16,
     addr: Address,
