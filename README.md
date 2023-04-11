@@ -35,11 +35,10 @@ Arguments:
 ```json
 {
   "server": "[::]:443", 
-  "users": {"UUID":"password", "UUID2":"password2"},
+  "users": {"UUID":"PASSWARD", "UUID2":"PASSWARD2"},
   
   "certificate": "path/s.crt",
   "private_key": "path/s.key",
-  "disable_sni" : "false",
   "alpn": ["h3"],
   "congestion_control":"cubic",
   "zero_rtt_handshake": false,
@@ -59,12 +58,13 @@ Arguments:
     "relay": {
         "server": "example.com:443",
         "alpn": ["h3"],
-        "ip": "IP",
+        "ip": "127.0.0.1",
         "uuid": "UUID",
-        "password" : "password",
+        "password" : "PASSWARD",
         "udp_relay_mode": "native",
         "zero_rtt_handshake": false,
-        "disable_sni": false
+        "disable_sni": false,
+        "disable_native_certs": false
     },
 
     "local": {
@@ -92,7 +92,7 @@ Arguments:
 - [v2rayN](https://github.com/2dust/v2rayN)
 
 
-## Overview
+## Overviewp
 
 There are 4 crates provided in this repository:
 
