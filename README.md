@@ -24,6 +24,74 @@ When paired with QUIC, TUIC can achieve:
     - Connection migration
     - Optional 0-RTT connection handshake
 
+### Server 
+```
+Arguments:
+    -c, --config <path>     Path to the config file (required)
+    -v, --version           Print the version
+    -h, --help              Print this help message
+```
+
+```json
+{
+  "server": "[::]:443", 
+  "users": {"UUID":"password", "UUID2":"password2"},
+  
+  "certificate": "path/s.crt",
+  "private_key": "path/s.key",
+  "disable_sni" : "false",
+  "alpn": ["h3"],
+  "congestion_control":"cubic",
+  "zero_rtt_handshake": false,
+  
+  "max_idle_time": "15000",
+  "authentication_timeout": "1000",
+  "max_udp_relay_packet_size": "1500",
+ 
+  "log_level": "info"
+}
+```
+
+### Client
+
+```json
+{
+    "relay": {
+        "server": "example.com:443",
+        "alpn": ["h3"],
+        "ip": "IP",
+        "uuid": "UUID",
+        "password" : "password",
+        "udp_relay_mode": "native",
+        "zero_rtt_handshake": false,
+        "disable_sni": false
+    },
+
+    "local": {
+        "server": "127.0.0.1:1080"
+    },
+
+    "log_level" : "info"
+}
+```
+
+## GUI Clients
+
+### Android
+
+- [SagerNet](https://sagernet.org/)
+
+### iOS
+
+- [Stash](https://stash.ws/) *
+
+*[Stash](https://stash.ws/) re-implemented the TUIC protocol from scratch, so it didn't preserve the GPL License.
+
+### Windows
+
+- [v2rayN](https://github.com/2dust/v2rayN)
+
+
 ## Overview
 
 There are 4 crates provided in this repository:
