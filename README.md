@@ -42,11 +42,6 @@ Arguments:
   "alpn": ["h3"],
   "congestion_control":"cubic",
   "zero_rtt_handshake": false,
-  
-  "max_idle_time": "15000",
-  "authentication_timeout": "1000",
-  "max_udp_relay_packet_size": "1500",
- 
   "log_level": "info"
 }
 ```
