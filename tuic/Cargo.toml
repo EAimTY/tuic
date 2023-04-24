@@ -1,6 +1,6 @@
 [package]
 name = "tuic"
-version = "5.0.0-pre-alpha6"
+version = "5.0.0-pre-alpha7"
 authors = ["EAimTY <ea.imty@gmail.com>"]
 description = "Delicately-TUICed 0-RTT proxy protocol"
 categories = ["network-programming"]
