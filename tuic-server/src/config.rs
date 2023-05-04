@@ -1,4 +1,5 @@
 use crate::utils::CongestionControl;
+use humantime::Duration as HumanDuration;
 use lexopt::{Arg, Error as ArgumentError, Parser};
 use log::LevelFilter;
 use serde::{de::Error as DeError, Deserialize, Deserializer};
@@ -23,44 +24,58 @@ Arguments:
 #[serde(deny_unknown_fields)]
 pub struct Config {
     pub server: SocketAddr,
+
     #[serde(deserialize_with = "deserialize_users")]
     pub users: HashMap<Uuid, String>,
+
     pub certificate: PathBuf,
+
     pub private_key: PathBuf,
+
     #[serde(
         default = "default::congestion_control",
         deserialize_with = "deserialize_from_str"
     )]
     pub congestion_control: CongestionControl,
+
     #[serde(default = "default::alpn")]
     pub alpn: Vec<String>,
+
     #[serde(default = "default::udp_relay_ipv6")]
     pub udp_relay_ipv6: bool,
+
     #[serde(default = "default::zero_rtt_handshake")]
     pub zero_rtt_handshake: bool,
+
     pub dual_stack: Option<bool>,
+
     #[serde(
         default = "default::auth_timeout",
         deserialize_with = "deserialize_duration"
     )]
     pub auth_timeout: Duration,
+
     #[serde(
         default = "default::max_idle_time",
         deserialize_with = "deserialize_duration"
     )]
     pub max_idle_time: Duration,
+
     #[serde(default = "default::max_external_packet_size")]
     pub max_external_packet_size: usize,
+
     #[serde(
         default = "default::gc_interval",
         deserialize_with = "deserialize_duration"
     )]
     pub gc_interval: Duration,
+
     #[serde(
         default = "default::gc_lifetime",
         deserialize_with = "deserialize_duration"
     )]
     pub gc_lifetime: Duration,
+
     #[serde(default = "default::log_level")]
     pub log_level: LevelFilter,
 }
@@ -118,11 +133,11 @@ mod default {
     }
 
     pub fn auth_timeout() -> Duration {
-        Duration::from_secs(10)
+        Duration::from_secs(3)
     }
 
     pub fn max_idle_time() -> Duration {
-        Duration::from_secs(15)
+        Duration::from_secs(10)
     }
 
     pub fn max_external_packet_size() -> usize {
@@ -165,57 +180,15 @@ where
     Ok(map)
 }
 
-fn parse_duration(s: &str) -> Result<Duration, String> {
-    let mut num = Vec::with_capacity(8);
-    let mut chars = Vec::with_capacity(2);
-    let mut expected_unit = false;
-    for c in s.chars() {
-        if !expected_unit && c.is_numeric() {
-            num.push(c);
-            continue;
-        }
-
-        if !expected_unit && c.is_ascii() {
-            expected_unit = true;
-        }
-        chars.push(c);
-    }
-
-    let n: u64 = num
-        .into_iter()
-        .collect::<String>()
-        .parse()
-        .map_err(|e| format!("invalid value: {}, reason {}", &s, e))?;
-
-    match chars.into_iter().collect::<String>().as_str() {
-        "" => Ok(Duration::from_millis(n)),
-        "s" => Ok(Duration::from_secs(n)),
-        "ms" => Ok(Duration::from_millis(n)),
-        _ => Err(format!("invalid value: {}, expected 10s or 10ms", &s)),
-    }
-}
-
-#[test]
-fn test_parseduration() {
-    // test parse
-    assert_eq!(parse_duration("100s"), Ok(Duration::from_secs(100)));
-    assert_eq!(parse_duration("100ms"), Ok(Duration::from_millis(100)));
-
-    // test default unit
-    assert_eq!(parse_duration("10000"), Ok(Duration::from_millis(10000)));
-
-    // test invalid data
-    assert!(parse_duration("").is_err());
-    assert!(parse_duration("1ms100").is_err());
-    assert!(parse_duration("ms").is_err());
-}
-
 pub fn deserialize_duration<'de, D>(deserializer: D) -> Result<Duration, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let s: String = String::deserialize(deserializer)?;
-    parse_duration(&s).map_err(DeError::custom)
+    let s = String::deserialize(deserializer)?;
+
+    s.parse::<HumanDuration>()
+        .map(|d| *d)
+        .map_err(DeError::custom)
 }
 
 #[derive(Debug, Error)]

@@ -7,6 +7,7 @@ edition = "2021"
 bytes = { version = "1.4.0", default-features = false, features = ["std"] }
 crossbeam-utils = { version = "0.8.15", default-features = false, features = ["std"] }
 env_logger = { version = "0.10.0", default-features = false, features = ["humantime"] }
+humantime = { version = "2.1.0", default-features = false }
 lexopt = { version = "0.3.0", default-features = false }
 log = { version = "0.4.17", default-features = false, features = ["serde", "std"] }
 parking_lot = { version = "0.12.1", default-features = false }
