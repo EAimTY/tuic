@@ -113,7 +113,7 @@ impl Server {
             EndpointConfig::default(),
             Some(config),
             socket,
-            TokioRuntime,
+            Arc::new(TokioRuntime),
         )?;
 
         let users = cfg

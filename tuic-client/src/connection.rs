@@ -89,7 +89,12 @@ impl Endpoint {
         config.transport_config(Arc::new(tp_cfg));
 
         let socket = UdpSocket::bind(SocketAddr::from(([0, 0, 0, 0], 0)))?;
-        let mut ep = QuinnEndpoint::new(EndpointConfig::default(), None, socket, TokioRuntime)?;
+        let mut ep = QuinnEndpoint::new(
+            EndpointConfig::default(),
+            None,
+            socket,
+            Arc::new(TokioRuntime),
+        )?;
         ep.set_default_client_config(config);
 
         let ep = Self {

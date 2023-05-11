@@ -5,10 +5,10 @@ use self::{
 };
 use env_logger::Builder as LoggerBuilder;
 use quinn::{ConnectError, ConnectionError};
+use rustls::Error as RustlsError;
 use std::{env, io::Error as IoError, process};
 use thiserror::Error;
 use tuic_quinn::Error as ModelError;
-use webpki::Error as WebpkiError;
 
 mod config;
 mod connection;
@@ -65,7 +65,7 @@ pub enum Error {
     #[error(transparent)]
     Model(#[from] ModelError),
     #[error(transparent)]
-    Webpki(#[from] WebpkiError),
+    Rustls(#[from] RustlsError),
     #[error("timeout establishing connection")]
     Timeout,
     #[error("cannot resolve the server name")]
