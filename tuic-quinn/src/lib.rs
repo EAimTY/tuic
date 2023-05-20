@@ -413,6 +413,7 @@ impl Connect {
         }
     }
 
+    /// Immediately closes the `Connect` streams with the given error code. Returns the result of closing the send and receive streams, respectively.
     pub fn reset(
         &mut self,
         error_code: VarInt,

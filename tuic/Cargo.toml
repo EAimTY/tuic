@@ -1,6 +1,6 @@
 [package]
 name = "tuic"
-version = "5.0.0-pre-alpha7"
+version = "5.0.0-pre-alpha9"
 authors = ["EAimTY <ea.imty@gmail.com>"]
 description = "Delicately-TUICed 0-RTT proxy protocol"
 categories = ["network-programming"]
@@ -12,8 +12,8 @@ license = "GPL-3.0-or-later"
 repository = "https://github.com/EAimTY/tuic"
 
 [features]
-async_marshal = ["bytes", "futures-util"]
-marshal = ["bytes"]
+async_marshal = ["bytes", "futures-util", "thiserror"]
+marshal = ["bytes", "thiserror"]
 model = ["parking_lot", "register-count", "thiserror"]
 
 [dependencies]
@@ -22,7 +22,7 @@ futures-util = { version = "0.3.28", default-features = false, features = ["io",
 parking_lot = { version = "0.12.1", default-features = false, optional = true }
 register-count = { version = "0.1.0", default-features = false, features = ["std"], optional = true }
 thiserror = { version = "1.0.40", default-features = false, optional = true }
-uuid = { version = "1.3.2", default-features = false, features = ["std"] }
+uuid = { version = "1.3.3", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 tuic = { path = ".", features = ["async_marshal", "marshal", "model"] }
