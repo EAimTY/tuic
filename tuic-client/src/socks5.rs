@@ -2,6 +2,7 @@ use crate::{config::Local, connection::Connection as TuicConnection, Error};
 use bytes::Bytes;
 use once_cell::sync::OnceCell;
 use parking_lot::Mutex;
+use quinn::VarInt;
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use socks5_proto::{Address, Reply};
 use socks5_server::{
@@ -185,7 +186,7 @@ impl Server {
                         Ok(_) => Ok(()),
                         Err(err) => {
                             let _ = conn.shutdown().await;
-                            let _ = relay.shutdown().await;
+                            let _ = relay.get_mut().reset(VarInt::from_u32(0));
                             Err(Error::from(err))
                         }
                     },

@@ -11,16 +11,16 @@ humantime = { version = "2.1.0", default-features = false }
 lexopt = { version = "0.3.0", default-features = false }
 log = { version = "0.4.17", default-features = false, features = ["serde", "std"] }
 parking_lot = { version = "0.12.1", default-features = false }
-quinn = { version = "0.10.0", default-features = false, features = ["futures-io", "runtime-tokio", "tls-rustls"] }
+quinn = { version = "0.10.1", default-features = false, features = ["futures-io", "runtime-tokio", "tls-rustls"] }
 register-count = { version = "0.1.0", default-features = false, features = ["std"] }
 rustls = { version = "0.21.1", default-features = false, features = ["quic"] }
 rustls-pemfile = { version = "1.0.2", default-features = false }
 serde = { version = "1.0.163", default-features = false, features = ["derive", "std"] }
 serde_json = { version = "1.0.96", default-features = false, features = ["std"] }
-socket2 = { version = "0.5.2", default-features = false }
+socket2 = { version = "0.5.3", default-features = false }
 thiserror = { version = "1.0.40", default-features = false }
 tokio = { version = "1.28.1", default-features = false, features = ["io-util", "macros", "net", "parking_lot", "rt-multi-thread", "time"] }
 tokio-util = { version = "0.7.8", default-features = false, features = ["compat"] }
 tuic = { path = "../tuic", default-features = false }
 tuic-quinn = { path = "../tuic-quinn", default-features = false }
-uuid = { version = "1.3.2", default-features = false, features = ["serde", "std"] }
+uuid = { version = "1.3.3", default-features = false, features = ["serde", "std"] }

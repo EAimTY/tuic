@@ -471,7 +471,7 @@ impl Connection {
         if let Some(mut stream) = stream {
             let mut conn = conn.compat();
             let res = io::copy_bidirectional(&mut conn, &mut stream).await;
-            let _ = conn.shutdown().await;
+            let _ = conn.get_mut().reset(VarInt::from_u32(0));
             let _ = stream.shutdown().await;
             res?;
             Ok(())
