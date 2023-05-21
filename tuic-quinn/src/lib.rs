@@ -133,7 +133,7 @@ impl Connection<side::Client> {
 
         let mut send = self.conn.open_uni().await?;
         model.header().async_marshal(&mut send).await?;
-        send.close().await?; // stuck here
+        send.close().await?;
         Ok(())
     }
 

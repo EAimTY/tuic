@@ -29,9 +29,9 @@ When paired with QUIC, TUIC can achieve:
 There are 4 crates provided in this repository:
 
 - **[tuic](https://github.com/EAimTY/tuic/tree/dev/tuic)** - Library. The protocol itself, protocol & model abstraction, synchronous / asynchronous marshalling
-- **[tuic-quinn](https://github.com/EAimTY/tuic/tree/dev/tuic-quinn)** - Library. A thin layer on top of [quinn](https://github.com/quinn-rs/quinn) to provide functions for TUIC
-- **[tuic-server](https://github.com/EAimTY/tuic/tree/dev/tuic-server)** - Binary. Minimalistic TUIC server implementation as a reference, focusing on the simplicity
-- **[tuic-client](https://github.com/EAimTY/tuic/tree/dev/tuic-client)** - Binary. Minimalistic TUIC client implementation as a reference, focusing on the simplicity
+- **[tuic-quinn](https://github.com/EAimTY/tuic/tree/dev/tuic-quinn)** - Library. A thin layer on top of [quinn](https://github.com/quinn-rs/quinn) to provide functions of TUIC
+- **[tuic-server](https://github.com/EAimTY/tuic/tree/dev/tuic-server)** - Binary. Minimalistic TUIC server implementation as a reference
+- **[tuic-client](https://github.com/EAimTY/tuic/tree/dev/tuic-client)** - Binary. Minimalistic TUIC client implementation as a reference
 
 ## License
 
