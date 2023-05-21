@@ -13,12 +13,12 @@ use quinn::{
 };
 use register_count::{Counter, Register};
 use rustls::{version, ServerConfig as RustlsServerConfig};
-use socket2::{Domain, Protocol, SockAddr, Socket, Type};
+use socket2::Socket;
 use std::{
     collections::{hash_map::Entry, HashMap},
     future::Future,
     io::{Error as IoError, ErrorKind},
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket as StdUdpSocket},
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket as StdUdpSocket},
     pin::Pin,
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -95,24 +95,16 @@ impl Server {
 
         config.transport_config(Arc::new(tp_cfg));
 
-        let domain = match cfg.server.ip() {
-            IpAddr::V4(_) => Domain::IPV4,
-            IpAddr::V6(_) => Domain::IPV6,
-        };
-
-        let socket = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))?;
+        let socket = Socket::from(StdUdpSocket::bind(cfg.server)?);
 
         if let Some(dual_stack) = cfg.dual_stack {
             socket.set_only_v6(!dual_stack)?;
         }
 
-        socket.bind(&SockAddr::from(cfg.server))?;
-        let socket = StdUdpSocket::from(socket);
-
         let ep = Endpoint::new(
             EndpointConfig::default(),
             Some(config),
-            socket,
+            StdUdpSocket::from(socket),
             Arc::new(TokioRuntime),
         )?;
 
@@ -593,12 +585,14 @@ impl UdpSession {
         let socket_v4 =
             Arc::new(UdpSocket::bind(SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0))).await?);
         let socket_v6 = if udp_relay_ipv6 {
-            let socket = Socket::new(Domain::IPV6, Type::DGRAM, Some(Protocol::UDP))?;
+            let socket = Socket::from(
+                UdpSocket::bind(SocketAddr::from((Ipv6Addr::UNSPECIFIED, 0)))
+                    .await?
+                    .into_std()?,
+            );
+
             socket.set_only_v6(true)?;
-            socket.bind(&SockAddr::from(SocketAddr::from((
-                Ipv6Addr::UNSPECIFIED,
-                0,
-            ))))?;
+
             Some(Arc::new(UdpSocket::from_std(StdUdpSocket::from(socket))?))
         } else {
             None

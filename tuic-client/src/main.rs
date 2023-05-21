@@ -43,7 +43,7 @@ async fn main() {
         }
     }
 
-    match Socks5Server::set_config(cfg.local) {
+    match Socks5Server::set_config(cfg.local).await {
         Ok(()) => {}
         Err(err) => {
             eprintln!("{err}");
