@@ -23,7 +23,7 @@ tuic-client -c PATH/TO/CONFIG
 
 ## Configuration
 
-```json
+```
 {
     // Settings for the outbound TUIC proxy
     "relay": {

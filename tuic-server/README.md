@@ -23,7 +23,7 @@ tuic-server -c PATH/TO/CONFIG
 
 ## Configuration
 
-```json
+```
 {
     // The socket address to listen on
     "server": "[::]:443",
