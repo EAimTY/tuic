@@ -1,7 +1,15 @@
 [package]
 name = "tuic-server"
-version = "0.1.0"
+version = "1.0.0-pre-alpha0"
+authors = ["EAimTY <ea.imty@gmail.com>"]
+description = "Minimalistic TUIC server implementation as a reference"
+categories = ["network-programming"]
+keywords = ["network", "proxy", "quic", "tuic"]
 edition = "2021"
+rust-version = "1.65.0"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/EAimTY/tuic"
 
 [dependencies]
 bytes = { version = "1.4.0", default-features = false, features = ["std"] }
