@@ -1,0 +1,13 @@
+name: release-tuic-server
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release-tuic-server:
+    permissions:
+      contents: write
+
+    uses: ./.github/workflows/binary-release.yml
+    with:
+      PACKAGE_NAME: "tuic-server"

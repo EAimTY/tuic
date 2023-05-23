@@ -1,0 +1,168 @@
+name: binary-release
+
+on:
+  workflow_call:
+    inputs:
+      PACKAGE_NAME:
+        required: true
+        type: string
+
+jobs:
+  binary-release:
+    permissions:
+      contents: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch-name: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            cross: false
+            file-ext:
+
+          - arch-name: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            cross: true
+            file-ext:
+
+          - arch-name: x86_64-unknown-freebsd
+            os: ubuntu-latest
+            target: x86_64-unknown-freebsd
+            cross: true
+            file-ext:
+
+          - arch-name: x86_64-pc-windows-msvc
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            cross: false
+            file-ext: .exe
+
+          - arch-name: x86_64-pc-windows-gnu
+            os: ubuntu-latest
+            target: x86_64-pc-windows-gnu
+            cross: true
+            file-ext: .exe
+
+          - arch-name: x86_64-apple-darwin
+            os: macos-latest
+            target: x86_64-apple-darwin
+            cross: false
+            file-ext:
+
+          - arch-name: i686-unknown-linux-gnu
+            os: ubuntu-latest
+            target: i686-unknown-linux-gnu
+            cross: true
+            file-ext:
+
+          - arch-name: i686-unknown-linux-musl
+            os: ubuntu-latest
+            target: i686-unknown-linux-musl
+            cross: true
+            file-ext:
+
+          - arch-name: i686-pc-windows-msvc
+            os: windows-latest
+            target: i686-pc-windows-msvc
+            cross: true
+            file-ext: .exe
+
+          - arch-name: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            cross: true
+            file-ext:
+
+          - arch-name: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            cross: true
+            file-ext:
+
+          - arch-name: aarch64-apple-darwin
+            os: macos-latest
+            target: aarch64-apple-darwin
+            cross: true
+            file-ext:
+
+          - arch-name: armv7-unknown-linux-gnueabi
+            os: ubuntu-latest
+            target: armv7-unknown-linux-gnueabi
+            cross: true
+            file-ext:
+
+          - arch-name: armv7-unknown-linux-gnueabihf
+            os: ubuntu-latest
+            target: armv7-unknown-linux-gnueabihf
+            cross: true
+            file-ext:
+
+          - arch-name: armv7-unknown-linux-musleabi
+            os: ubuntu-latest
+            target: armv7-unknown-linux-musleabi
+            cross: true
+            file-ext:
+
+          - arch-name: armv7-unknown-linux-musleabihf
+            os: ubuntu-latest
+            target: armv7-unknown-linux-musleabihf
+            cross: true
+            file-ext:
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Install toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          target: ${{ matrix.target }}
+          override: true
+
+      - name: Get package version on Unix-like system
+        if: runner.os != 'Windows'
+        run: |
+          echo "version=$(sed -rn 's/^version = \"(.*)\"/\1/p' ${{ inputs.PACKAGE_NAME }}/Cargo.toml)" >> $GITHUB_ENV
+          echo "prerelease=$((sed -rn 's/^version = \"(.*)\"/\1/p' ${{ inputs.PACKAGE_NAME }}/Cargo.toml | grep -qF '-') && echo "true" || echo "false")" >> $GITHUB_ENV
+
+      - name: Get package version on Windows
+        if: runner.os == 'Windows'
+        run: |
+          chcp 65001
+          echo "version=$(sed -rn 's/^version = \"(.*)\"/\1/p' ${{ inputs.PACKAGE_NAME }}/Cargo.toml)" >> $env:GITHUB_ENV
+          echo "prerelease=$((sed -rn 's/^version = \"(.*)\"/\1/p' ${{ inputs.PACKAGE_NAME }}/Cargo.toml | grep -qF '-') && echo "true" || echo "false")" >> $env:GITHUB_ENV
+
+      - name: Build
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: ${{ matrix.cross }}
+          command: build
+          args: --release -p ${{ inputs.PACKAGE_NAME }} --target ${{ matrix.target }}
+
+      - name: Move binaries
+        run: |
+          mkdir artifacts/
+          mv target/${{ matrix.target }}/release/${{ inputs.PACKAGE_NAME }}${{ matrix.file-ext }} artifacts/${{ inputs.PACKAGE_NAME }}-${{ env.version }}-${{ matrix.arch-name }}${{ matrix.file-ext }}
+
+      - name: Calculate SHA256
+        run: |
+          cd artifacts/
+          openssl dgst -sha256 -r ${{ inputs.PACKAGE_NAME }}-${{ env.version }}-${{ matrix.arch-name }}${{ matrix.file-ext }} > ${{ inputs.PACKAGE_NAME }}-${{ env.version }}-${{ matrix.arch-name }}${{ matrix.file-ext }}.sha256sum
+
+      - name: Release binaries
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "artifacts/*"
+          name: ${{ inputs.PACKAGE_NAME }}-${{ env.version }}
+          tag: ${{ inputs.PACKAGE_NAME }}-${{ env.version }}
+          commit: ${{ github.sha }}
+          allowUpdates: true
+          prerelease: ${{ env.prerelease }}

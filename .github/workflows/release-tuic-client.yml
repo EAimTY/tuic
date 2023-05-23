@@ -1,0 +1,13 @@
+name: release-tuic-client
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release-tuic-client:
+    permissions:
+      contents: write
+
+    uses: ./.github/workflows/binary-release.yml
+    with:
+      PACKAGE_NAME: "tuic-client"

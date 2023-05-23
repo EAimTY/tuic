@@ -1,0 +1,13 @@
+name: release-tuic-quinn
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release-tuic-quinn:
+    permissions:
+      contents: write
+
+    uses: ./.github/workflows/library-release.yml
+    with:
+      PACKAGE_NAME: "tuic-quinn"

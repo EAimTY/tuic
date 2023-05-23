@@ -1,0 +1,43 @@
+name: library-release
+
+on:
+  workflow_call:
+    inputs:
+      PACKAGE_NAME:
+        required: true
+        type: string
+
+jobs:
+  library-release:
+    permissions:
+      contents: write
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Get package version on Unix-like system
+        if: runner.os != 'Windows'
+        run: |
+          echo "version=$(sed -rn 's/^version = \"(.*)\"/\1/p' ${{ inputs.PACKAGE_NAME }}/Cargo.toml)" >> $GITHUB_ENV
+          echo "prerelease=$((sed -rn 's/^version = \"(.*)\"/\1/p' ${{ inputs.PACKAGE_NAME }}/Cargo.toml | grep -qF '-') && echo "true" || echo "false")" >> $GITHUB_ENV
+
+      - name: Get package version on Windows
+        if: runner.os == 'Windows'
+        run: |
+          chcp 65001
+          echo "version=$(sed -rn 's/^version = \"(.*)\"/\1/p' ${{ inputs.PACKAGE_NAME }}/Cargo.toml)" >> $env:GITHUB_ENV
+          echo "prerelease=$((sed -rn 's/^version = \"(.*)\"/\1/p' ${{ inputs.PACKAGE_NAME }}/Cargo.toml | grep -qF '-') && echo "true" || echo "false")" >> $env:GITHUB_ENV
+
+      - name: Release library
+        uses: ncipollo/release-action@v1
+        with:
+          name: ${{ inputs.PACKAGE_NAME }}-${{ env.version }}
+          tag: ${{ inputs.PACKAGE_NAME }}-${{ env.version }}
+          commit: ${{ github.sha }}
+          allowUpdates: true
+          prerelease: ${{ env.prerelease }}
