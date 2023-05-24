@@ -111,6 +111,12 @@ jobs:
             target: armv7-unknown-linux-musleabihf
             cross: true
             file-ext:
+         
+          - arch-name: armv7-android
+            os: ubuntu-latest
+            target: armv7-linux-androideabi
+            cross: true
+            file-ext:
 
     runs-on: ${{ matrix.os }}
 
