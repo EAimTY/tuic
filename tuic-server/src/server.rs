@@ -492,14 +492,18 @@ impl Connection {
                 (session.socket_v4.clone(), session.socket_v6.clone())
             }
             Entry::Vacant(entry) => {
-                let session = entry
-                    .insert(UdpSession::new(assoc_id, self.clone(), self.udp_relay_ipv6).await?);
+                let session = entry.insert(
+                    UdpSession::new(assoc_id, self.clone(), self.udp_relay_ipv6)
+                        .await
+                        .map_err(Error::CreateUdpSessionSocket)?,
+                );
+
                 (session.socket_v4.clone(), session.socket_v6.clone())
             }
         };
 
         let Some(socket_addr) = resolve_dns(&addr).await?.next() else {
-            Err(IoError::new(ErrorKind::NotFound, "no address resolved"))?
+            return Err(Error::from(IoError::new(ErrorKind::NotFound, "no address resolved")));
         };
 
         let socket = match socket_addr {
@@ -588,7 +592,7 @@ struct UdpSession {
 }
 
 impl UdpSession {
-    async fn new(assoc_id: u16, conn: Connection, udp_relay_ipv6: bool) -> Result<Self, Error> {
+    async fn new(assoc_id: u16, conn: Connection, udp_relay_ipv6: bool) -> Result<Self, IoError> {
         let socket_v4 =
             Arc::new(UdpSocket::bind(SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0))).await?);
         let socket_v6 = if udp_relay_ipv6 {

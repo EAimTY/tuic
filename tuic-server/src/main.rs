@@ -64,6 +64,8 @@ pub enum Error {
     AuthFailed(Uuid),
     #[error("received packet from unexpected source")]
     UnexpectedPacketSource,
+    #[error("create UDP session socket failed: {0}")]
+    CreateUdpSessionSocket(IoError),
     #[error("{0} resolved to {1} but IPv6 UDP relay disabled")]
     UdpRelayIpv6Disabled(Address, SocketAddr),
 }
