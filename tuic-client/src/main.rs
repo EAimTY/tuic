@@ -64,6 +64,8 @@ pub enum Error {
     Connection(#[from] ConnectionError),
     #[error(transparent)]
     Model(#[from] ModelError),
+    #[error("load native certificates error: {0}")]
+    LoadNativeCerts(IoError),
     #[error(transparent)]
     Rustls(#[from] RustlsError),
     #[error("timeout establishing connection")]
