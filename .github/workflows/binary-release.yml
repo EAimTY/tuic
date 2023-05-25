@@ -19,7 +19,7 @@ jobs:
           - arch-name: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            cross: false
+            cross: true
             file-ext:
 
           - arch-name: x86_64-unknown-linux-musl
