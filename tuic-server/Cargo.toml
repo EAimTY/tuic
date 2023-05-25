@@ -1,6 +1,6 @@
 [package]
 name = "tuic-server"
-version = "1.0.0-pre-alpha0"
+version = "1.0.0-pre-alpha1"
 authors = ["EAimTY <ea.imty@gmail.com>"]
 description = "Minimalistic TUIC server implementation as a reference"
 categories = ["network-programming"]
