@@ -98,6 +98,13 @@ impl Server {
         let socket = Socket::from(StdUdpSocket::bind(cfg.server)?);
 
         if let Some(dual_stack) = cfg.dual_stack {
+            if cfg.server.is_ipv4() && dual_stack {
+                return Err(Error::from(IoError::new(
+                    ErrorKind::Unsupported,
+                    "IPv4 socket cannot be dual stack",
+                )));
+            }
+
             socket.set_only_v6(!dual_stack)?;
         }
 

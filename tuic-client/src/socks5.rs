@@ -43,6 +43,13 @@ impl Server {
             let socket = Socket::from(TcpListener::bind(&cfg.server).await?.into_std()?);
 
             if let Some(dual_stack) = cfg.dual_stack {
+                if cfg.server.is_ipv4() && dual_stack {
+                    return Err(Error::from(IoError::new(
+                        ErrorKind::Unsupported,
+                        "IPv4 socket cannot be dual stack",
+                    )));
+                }
+
                 socket.set_only_v6(!dual_stack)?;
             }
 
@@ -119,6 +126,7 @@ impl Server {
             );
 
             if let Some(dual_stack) = SERVER.get().unwrap().dual_stack {
+                // We already checked that the server address is IPv6
                 socket.set_only_v6(!dual_stack)?;
             }
 
