@@ -13,7 +13,7 @@ use quinn::{
 };
 use register_count::{Counter, Register};
 use rustls::{version, ServerConfig as RustlsServerConfig};
-use socket2::Socket;
+use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use std::{
     collections::{hash_map::Entry, HashMap},
     future::Future,
@@ -95,23 +95,32 @@ impl Server {
 
         config.transport_config(Arc::new(tp_cfg));
 
-        let socket = Socket::from(StdUdpSocket::bind(cfg.server)?);
+        let socket = {
+            let domain = match cfg.server {
+                SocketAddr::V4(_) => Domain::IPV4,
+                SocketAddr::V6(_) => Domain::IPV6,
+            };
 
-        if let Some(dual_stack) = cfg.dual_stack {
-            if cfg.server.is_ipv4() && dual_stack {
-                return Err(Error::from(IoError::new(
-                    ErrorKind::Unsupported,
-                    "IPv4 socket cannot be dual stack",
-                )));
+            let socket = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))
+                .map_err(|err| Error::Socket("failed to create endpoint UDP socket", err))?;
+
+            if let Some(dual_stack) = cfg.dual_stack {
+                socket.set_only_v6(!dual_stack).map_err(|err| {
+                    Error::Socket("endpoint dual-stack socket setting error", err)
+                })?;
             }
 
-            socket.set_only_v6(!dual_stack)?;
-        }
+            socket
+                .bind(&SockAddr::from(cfg.server))
+                .map_err(|err| Error::Socket("failed to bind endpoint UDP socket", err))?;
+
+            StdUdpSocket::from(socket)
+        };
 
         let ep = Endpoint::new(
             EndpointConfig::default(),
             Some(config),
-            StdUdpSocket::from(socket),
+            socket,
             Arc::new(TokioRuntime),
         )?;
 
@@ -492,11 +501,8 @@ impl Connection {
                 (session.socket_v4.clone(), session.socket_v6.clone())
             }
             Entry::Vacant(entry) => {
-                let session = entry.insert(
-                    UdpSession::new(assoc_id, self.clone(), self.udp_relay_ipv6)
-                        .await
-                        .map_err(Error::CreateUdpSessionSocket)?,
-                );
+                let session = entry
+                    .insert(UdpSession::new(assoc_id, self.clone(), self.udp_relay_ipv6).await?);
 
                 (session.socket_v4.clone(), session.socket_v6.clone())
             }
@@ -592,17 +598,33 @@ struct UdpSession {
 }
 
 impl UdpSession {
-    async fn new(assoc_id: u16, conn: Connection, udp_relay_ipv6: bool) -> Result<Self, IoError> {
-        let socket_v4 =
-            Arc::new(UdpSocket::bind(SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0))).await?);
+    async fn new(assoc_id: u16, conn: Connection, udp_relay_ipv6: bool) -> Result<Self, Error> {
+        let socket_v4 = Arc::new(
+            UdpSocket::bind(SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0)))
+                .await
+                .map_err(|err| Error::Socket("failed to create UDP associate IPv4 socket", err))?,
+        );
         let socket_v6 = if udp_relay_ipv6 {
-            let socket = Socket::from(
-                UdpSocket::bind(SocketAddr::from((Ipv6Addr::UNSPECIFIED, 0)))
-                    .await?
-                    .into_std()?,
-            );
+            let socket = Socket::new(Domain::IPV6, Type::DGRAM, Some(Protocol::UDP))
+                .map_err(|err| Error::Socket("failed to create UDP associate IPv6 socket", err))?;
 
-            socket.set_only_v6(true)?;
+            socket.set_nonblocking(true).map_err(|err| {
+                Error::Socket(
+                    "failed setting UDP associate IPv6 socket as non-blocking",
+                    err,
+                )
+            })?;
+
+            socket.set_only_v6(true).map_err(|err| {
+                Error::Socket("failed setting UDP associate IPv6 socket as IPv6-only", err)
+            })?;
+
+            socket
+                .bind(&SockAddr::from(SocketAddr::from((
+                    Ipv6Addr::UNSPECIFIED,
+                    0,
+                ))))
+                .map_err(|err| Error::Socket("failed to bind UDP associate IPv6 socket", err))?;
 
             Some(Arc::new(UdpSocket::from_std(StdUdpSocket::from(socket))?))
         } else {

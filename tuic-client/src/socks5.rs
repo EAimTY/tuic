@@ -3,7 +3,7 @@ use bytes::Bytes;
 use once_cell::sync::OnceCell;
 use parking_lot::Mutex;
 use quinn::VarInt;
-use socket2::Socket;
+use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use socks5_proto::{Address, Reply};
 use socks5_server::{
     auth::{NoAuth, Password},
@@ -30,7 +30,6 @@ static SERVER: OnceCell<Server> = OnceCell::new();
 
 pub struct Server {
     inner: Socks5Server,
-    addr: SocketAddr,
     dual_stack: Option<bool>,
     max_pkt_size: usize,
     next_assoc_id: AtomicU16,
@@ -40,22 +39,38 @@ pub struct Server {
 impl Server {
     pub async fn set_config(cfg: Local) -> Result<(), Error> {
         let socket = {
-            let socket = Socket::from(TcpListener::bind(&cfg.server).await?.into_std()?);
+            let domain = match cfg.server {
+                SocketAddr::V4(_) => Domain::IPV4,
+                SocketAddr::V6(_) => Domain::IPV6,
+            };
+
+            let socket = Socket::new(domain, Type::STREAM, Some(Protocol::TCP))
+                .map_err(|err| Error::Socket("failed to create socks5 server socket", err))?;
 
             if let Some(dual_stack) = cfg.dual_stack {
-                if cfg.server.is_ipv4() && dual_stack {
-                    return Err(Error::from(IoError::new(
-                        ErrorKind::Unsupported,
-                        "IPv4 socket cannot be dual stack",
-                    )));
-                }
-
-                socket.set_only_v6(!dual_stack)?;
+                socket.set_only_v6(!dual_stack).map_err(|err| {
+                    Error::Socket("socks5 server dual-stack socket setting error", err)
+                })?;
             }
 
-            socket.set_reuse_address(true)?;
+            socket.set_reuse_address(true).map_err(|err| {
+                Error::Socket("failed to set socks5 server socket to reuse_address", err)
+            })?;
 
-            TcpListener::from_std(StdTcpListener::from(socket))?
+            socket.set_nonblocking(true).map_err(|err| {
+                Error::Socket("failed setting socks5 server socket as non-blocking", err)
+            })?;
+
+            socket
+                .bind(&SockAddr::from(cfg.server))
+                .map_err(|err| Error::Socket("failed to bind socks5 server socket", err))?;
+
+            socket
+                .listen(i32::MAX)
+                .map_err(|err| Error::Socket("failed to listen on socks5 server socket", err))?;
+
+            TcpListener::from_std(StdTcpListener::from(socket))
+                .map_err(|err| Error::Socket("failed to create socks5 server socket", err))?
         };
 
         let auth: Arc<dyn Auth + Send + Sync> = match (cfg.username, cfg.password) {
@@ -68,7 +83,6 @@ impl Server {
 
         let server = Self {
             inner: Socks5Server::new(socket, auth),
-            addr: cfg.server,
             dual_stack: cfg.dual_stack,
             max_pkt_size: cfg.max_packet_size,
             next_assoc_id: AtomicU16::new(0),
@@ -84,11 +98,10 @@ impl Server {
     }
 
     pub async fn start() {
-        let server = SERVER.get().unwrap();
-        log::warn!("[socks5] server started, listening on {}", server.addr);
+        log::warn!("[socks5] server started, listening on {}", Self::addr());
 
         loop {
-            match server.inner.accept().await {
+            match SERVER.get().unwrap().inner.accept().await {
                 Ok((conn, addr)) => {
                     log::debug!("[socks5] [{addr}] connection established");
                     tokio::spawn(async move {
@@ -118,33 +131,55 @@ impl Server {
         assoc: Associate<associate::NeedReply>,
         _addr: Address,
     ) -> Result<(), Error> {
-        async fn get_assoc_socket() -> Result<Arc<AssociatedUdpSocket>, IoError> {
-            let socket = Socket::from(
-                UdpSocket::bind(SERVER.get().unwrap().addr)
-                    .await?
-                    .into_std()?,
-            );
+        async fn get_assoc_socket() -> Result<Arc<AssociatedUdpSocket>, Error> {
+            let domain = match Server::addr() {
+                SocketAddr::V4(_) => Domain::IPV4,
+                SocketAddr::V6(_) => Domain::IPV6,
+            };
 
-            if let Some(dual_stack) = SERVER.get().unwrap().dual_stack {
-                // We already checked that the server address is IPv6
-                socket.set_only_v6(!dual_stack)?;
+            let socket = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP)).map_err(|err| {
+                Error::Socket("failed to create socks5 server UDP associate socket", err)
+            })?;
+
+            if let Some(dual_stack) = Server::dual_stack() {
+                socket.set_only_v6(!dual_stack).map_err(|err| {
+                    Error::Socket(
+                        "socks5 server UDP associate dual-stack socket setting error",
+                        err,
+                    )
+                })?;
             }
 
-            let socket = AssociatedUdpSocket::from((
-                UdpSocket::from_std(StdUdpSocket::from(socket))?,
-                SERVER.get().unwrap().max_pkt_size,
-            ));
+            socket.set_nonblocking(true).map_err(|err| {
+                Error::Socket(
+                    "failed setting socks5 server UDP associate socket as non-blocking",
+                    err,
+                )
+            })?;
 
-            Ok(Arc::new(socket))
+            socket
+                .bind(&SockAddr::from(Server::addr()))
+                .map_err(|err| {
+                    Error::Socket("failed to bind socks5 server UDP associate socket", err)
+                })?;
+
+            let socket = UdpSocket::from_std(StdUdpSocket::from(socket)).map_err(|err| {
+                Error::Socket("failed to create socks5 server UDP associate socket", err)
+            })?;
+
+            Ok(Arc::new(AssociatedUdpSocket::from((
+                socket,
+                Server::max_pkt_size(),
+            ))))
         }
 
-        match get_assoc_socket()
-            .await
-            .and_then(|socket| socket.local_addr().map(|addr| (socket, addr)))
-        {
-            Ok((assoc_socket, assoc_addr)) => {
+        match get_assoc_socket().await {
+            Ok(assoc_socket) => {
                 let assoc = assoc
-                    .reply(Reply::Succeeded, Address::SocketAddress(assoc_addr))
+                    .reply(
+                        Reply::Succeeded,
+                        Address::SocketAddress(assoc_socket.local_addr().unwrap()),
+                    )
                     .await?;
                 Self::send_pkt(assoc, assoc_socket).await
             }
@@ -307,5 +342,17 @@ impl Server {
             Ok(_) => {}
             Err(err) => log::error!("[socks5] [send] {err}"),
         }
+    }
+
+    fn addr() -> SocketAddr {
+        SERVER.get().unwrap().inner.local_addr().unwrap()
+    }
+
+    fn dual_stack() -> Option<bool> {
+        SERVER.get().unwrap().dual_stack
+    }
+
+    fn max_pkt_size() -> usize {
+        SERVER.get().unwrap().max_pkt_size
     }
 }

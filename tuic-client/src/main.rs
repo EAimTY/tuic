@@ -68,6 +68,8 @@ pub enum Error {
     LoadNativeCerts(IoError),
     #[error(transparent)]
     Rustls(#[from] RustlsError),
+    #[error("{0}: {1}")]
+    Socket(&'static str, IoError),
     #[error("timeout establishing connection")]
     Timeout,
     #[error("cannot resolve the server name")]

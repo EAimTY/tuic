@@ -88,13 +88,20 @@ impl Endpoint {
 
         config.transport_config(Arc::new(tp_cfg));
 
-        let socket = UdpSocket::bind(SocketAddr::from(([0, 0, 0, 0], 0)))?;
+        // Try to create an IPv4 socket as the placeholder first, if it fails, try IPv6.
+        let socket = UdpSocket::bind(SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0)))
+            .or_else(|err| {
+                UdpSocket::bind(SocketAddr::from((Ipv6Addr::UNSPECIFIED, 0))).map_err(|_| err)
+            })
+            .map_err(|err| Error::Socket("failed to create endpoint UDP socket", err))?;
+
         let mut ep = QuinnEndpoint::new(
             EndpointConfig::default(),
             None,
             socket,
             Arc::new(TokioRuntime),
         )?;
+
         ep.set_default_client_config(config);
 
         let ep = Self {
@@ -139,7 +146,12 @@ impl Endpoint {
                     SocketAddr::from((Ipv6Addr::UNSPECIFIED, 0))
                 };
 
-                ep.rebind(UdpSocket::bind(bind_addr)?)?;
+                ep.rebind(
+                    UdpSocket::bind(bind_addr).map_err(|err| {
+                        Error::Socket("failed to create endpoint UDP socket", err)
+                    })?,
+                )
+                .map_err(|err| Error::Socket("failed to rebind endpoint UDP socket", err))?;
             }
 
             let conn = ep.connect(addr, server_name)?;
