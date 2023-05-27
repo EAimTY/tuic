@@ -1,7 +1,7 @@
 #![doc = include_str!("../README.md")]
 
 use self::side::Side;
-use bytes::{BufMut, Bytes};
+use bytes::{BufMut, Bytes, BytesMut};
 use futures_util::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use quinn::{
     Connection as QuinnConnection, ConnectionError, RecvStream, SendDatagramError, SendStream,
@@ -67,7 +67,7 @@ impl<Side> Connection<Side> {
         let model = self.model.send_packet(assoc_id, addr, max_pkt_size);
 
         for (header, frag) in model.into_fragments(pkt) {
-            let mut buf = vec![0; header.len() + frag.len()];
+            let mut buf = BytesMut::with_capacity(header.len() + frag.len());
             header.write(&mut buf);
             buf.put_slice(frag);
             self.conn.send_datagram(Bytes::from(buf))?;
