@@ -70,6 +70,12 @@ pub struct Config {
     #[serde(default = "default::max_external_packet_size")]
     pub max_external_packet_size: usize,
 
+    #[serde(default = "default::send_window")]
+    pub send_window: u64,
+
+    #[serde(default = "default::receive_window")]
+    pub receive_window: u32,
+
     #[serde(
         default = "default::gc_interval",
         deserialize_with = "deserialize_duration"
@@ -152,6 +158,14 @@ mod default {
 
     pub fn max_external_packet_size() -> usize {
         1500
+    }
+
+    pub fn send_window() -> u64 {
+        2u64.pow(24) * 2
+    }
+
+    pub fn receive_window() -> u32 {
+        2u32.pow(24)
     }
 
     pub fn gc_interval() -> Duration {

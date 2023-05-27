@@ -87,6 +87,16 @@ tuic-client -c PATH/TO/CONFIG
         // Default: false
         "disable_native_certs": false,
 
+        // Optional. Maximum number of bytes to transmit to a peer without acknowledgment
+        // Should be set to at least the expected connection latency multiplied by the maximum desired throughput
+        // Default: 16MiB * 2
+        "send_window": 33554432,
+
+        // Optional. Maximum number of bytes the peer may transmit without acknowledgement on any one stream before becoming blocked
+        // Should be set to at least the expected connection latency multiplied by the maximum desired throughput
+        // Default: 16MiB
+        "receive_window": 16777216,
+
         // Optional. Interval between UDP packet fragment garbage collection
         // Default: 3s
         "gc_interval": "3s",

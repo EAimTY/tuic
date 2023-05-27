@@ -88,6 +88,12 @@ pub struct Relay {
     #[serde(default = "default::relay::disable_native_certs")]
     pub disable_native_certs: bool,
 
+    #[serde(default = "default::relay::send_window")]
+    pub send_window: u64,
+
+    #[serde(default = "default::relay::receive_window")]
+    pub receive_window: u32,
+
     #[serde(
         default = "default::relay::gc_interval",
         deserialize_with = "deserialize_duration"
@@ -188,6 +194,14 @@ mod default {
 
         pub fn disable_native_certs() -> bool {
             false
+        }
+
+        pub fn send_window() -> u64 {
+            2u64.pow(24) * 2
+        }
+
+        pub fn receive_window() -> u32 {
+            2u32.pow(24)
         }
 
         pub fn gc_interval() -> Duration {

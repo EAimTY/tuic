@@ -54,7 +54,7 @@ tuic-server -c PATH/TO/CONFIG
     "udp_relay_ipv6": true,
 
     // Optional. Enable 0-RTT QUIC connection handshake on the server side
-        // This is not impacting much on the performance, as the protocol is fully multiplexed
+    // This is not impacting much on the performance, as the protocol is fully multiplexed
     // WARNING: Disabling this is highly recommended, as it is vulnerable to replay attacks. See https://blog.cloudflare.com/even-faster-connection-establishment-with-quic-0-rtt-resumption/#attack-of-the-clones
     // Default: false
     "zero_rtt_handshake": false,
@@ -78,6 +78,16 @@ tuic-server -c PATH/TO/CONFIG
     // Optional. Maximum packet size the server can receive from outbound UDP sockets, in bytes
     // Default: 1500
     "max_external_packet_size": 1500,
+
+    // Optional. Maximum number of bytes to transmit to a peer without acknowledgment
+    // Should be set to at least the expected connection latency multiplied by the maximum desired throughput
+    // Default: 16MiB * 2
+    "send_window": 33554432,
+
+    // Optional. Maximum number of bytes the peer may transmit without acknowledgement on any one stream before becoming blocked
+    // Should be set to at least the expected connection latency multiplied by the maximum desired throughput
+    // Default: 16MiB
+    "receive_window": 16777216,
 
     // Optional. Interval between UDP packet fragment garbage collection
     // Default: 3s

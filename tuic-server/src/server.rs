@@ -78,6 +78,8 @@ impl Server {
         tp_cfg
             .max_concurrent_bidi_streams(VarInt::from(DEFAULT_CONCURRENT_STREAMS as u32))
             .max_concurrent_uni_streams(VarInt::from(DEFAULT_CONCURRENT_STREAMS as u32))
+            .send_window(cfg.send_window)
+            .stream_receive_window(VarInt::from_u32(cfg.receive_window))
             .max_idle_timeout(Some(
                 IdleTimeout::try_from(cfg.max_idle_time).map_err(|_| Error::InvalidMaxIdleTime)?,
             ));
