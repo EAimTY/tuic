@@ -56,6 +56,12 @@ pub struct Config {
     pub auth_timeout: Duration,
 
     #[serde(
+        default = "default::task_negotiation_timeout",
+        deserialize_with = "deserialize_duration"
+    )]
+    pub task_negotiation_timeout: Duration,
+
+    #[serde(
         default = "default::max_idle_time",
         deserialize_with = "deserialize_duration"
     )]
@@ -133,6 +139,10 @@ mod default {
     }
 
     pub fn auth_timeout() -> Duration {
+        Duration::from_secs(3)
+    }
+
+    pub fn task_negotiation_timeout() -> Duration {
         Duration::from_secs(3)
     }
 

@@ -67,6 +67,10 @@ tuic-server -c PATH/TO/CONFIG
     // Default: 3s
     "auth_timeout": "3s",
 
+    // Optional. Maximum duration server expects for task negotiation
+    // Default: 3s
+    "task_negotiation_timeout": "3s",
+
     // Optional. How long the server should wait before closing an idle connection
     // Default: 10s
     "max_idle_time": "10s",

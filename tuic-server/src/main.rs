@@ -66,6 +66,8 @@ pub enum Error {
     UnexpectedPacketSource,
     #[error("{0}: {1}")]
     Socket(&'static str, IoError),
+    #[error("task negotiation timed out")]
+    TaskNegotiationTimeout,
     #[error("{0} resolved to {1} but IPv6 UDP relaying is disabled")]
     UdpRelayIpv6Disabled(Address, SocketAddr),
 }
