@@ -161,11 +161,11 @@ mod default {
     }
 
     pub fn send_window() -> u64 {
-        2u64.pow(24) * 2
+        8 * 1024 * 1024 * 2
     }
 
     pub fn receive_window() -> u32 {
-        2u32.pow(24)
+        8 * 1024 * 1024
     }
 
     pub fn gc_interval() -> Duration {

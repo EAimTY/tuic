@@ -81,13 +81,13 @@ tuic-server -c PATH/TO/CONFIG
 
     // Optional. Maximum number of bytes to transmit to a peer without acknowledgment
     // Should be set to at least the expected connection latency multiplied by the maximum desired throughput
-    // Default: 16MiB * 2
-    "send_window": 33554432,
+    // Default: 8MiB * 2
+    "send_window": 16777216,
 
     // Optional. Maximum number of bytes the peer may transmit without acknowledgement on any one stream before becoming blocked
     // Should be set to at least the expected connection latency multiplied by the maximum desired throughput
-    // Default: 16MiB
-    "receive_window": 16777216,
+    // Default: 8MiB
+    "receive_window": 8388608,
 
     // Optional. Interval between UDP packet fragment garbage collection
     // Default: 3s
