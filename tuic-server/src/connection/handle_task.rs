@@ -17,7 +17,7 @@ use tuic_quinn::{Authenticate, Connect, Packet};
 impl Connection {
     pub(super) async fn handle_authenticate(&self, auth: Authenticate) {
         log::info!(
-            "[{id:#016x}] [{addr}] [{user}] [authenticate] {auth_uuid}",
+            "[{id:#08x}] [{addr}] [{user}] [authenticate] {auth_uuid}",
             id = self.id(),
             addr = self.inner.remote_address(),
             user = self.auth,
@@ -29,7 +29,7 @@ impl Connection {
         let target_addr = conn.addr().to_string();
 
         log::info!(
-            "[{id:#016x}] [{addr}] [{user}] [connect] {target_addr}",
+            "[{id:#08x}] [{addr}] [{user}] [connect] {target_addr}",
             id = self.id(),
             addr = self.inner.remote_address(),
             user = self.auth,
@@ -71,7 +71,7 @@ impl Connection {
         match process.await {
             Ok(()) => {}
             Err(err) => log::warn!(
-                "[{id:#016x}] [{addr}] [{user}] [connect] {target_addr}: {err}",
+                "[{id:#08x}] [{addr}] [{user}] [connect] {target_addr}: {err}",
                 id = self.id(),
                 addr = self.inner.remote_address(),
                 user = self.auth,
@@ -86,7 +86,7 @@ impl Connection {
         let frag_total = pkt.frag_total();
 
         log::info!(
-            "[{id:#016x}] [{addr}] [{user}] [packet] [{assoc_id:#06x}] [from-{mode}] [{pkt_id:#06x}] {frag_id}/{frag_total}",
+            "[{id:#08x}] [{addr}] [{user}] [packet] [{assoc_id:#06x}] [from-{mode}] [{pkt_id:#06x}] {frag_id}/{frag_total}",
             id = self.id(),
             addr = self.inner.remote_address(),
             user = self.auth,
@@ -99,7 +99,7 @@ impl Connection {
             Ok(Some(res)) => res,
             Err(err) => {
                 log::warn!(
-                    "[{id:#016x}] [{addr}] [{user}] [packet] [{assoc_id:#06x}] [from-{mode}] [{pkt_id:#06x}] {frag_id}/{frag_total}: {err}",
+                    "[{id:#08x}] [{addr}] [{user}] [packet] [{assoc_id:#06x}] [from-{mode}] [{pkt_id:#06x}] {frag_id}/{frag_total}: {err}",
                     id = self.id(),
                     addr = self.inner.remote_address(),
                     user = self.auth,
@@ -110,7 +110,7 @@ impl Connection {
 
         let process = async {
             log::info!(
-                "[{id:#016x}] [{addr}] [{user}] [packet] [{assoc_id:#06x}] [from-{mode}] [{pkt_id:#06x}] {src_addr}",
+                "[{id:#08x}] [{addr}] [{user}] [packet] [{assoc_id:#06x}] [from-{mode}] [{pkt_id:#06x}] {src_addr}",
                 id = self.id(),
                 addr = self.inner.remote_address(),
                 user = self.auth,
@@ -140,7 +140,7 @@ impl Connection {
 
         if let Err(err) = process.await {
             log::warn!(
-                "[{id:#016x}] [{addr}] [{user}] [packet] [{assoc_id:#06x}] [from-{mode}] [{pkt_id:#06x}] {src_addr}: {err}",
+                "[{id:#08x}] [{addr}] [{user}] [packet] [{assoc_id:#06x}] [from-{mode}] [{pkt_id:#06x}] {src_addr}: {err}",
                 id = self.id(),
                 addr = self.inner.remote_address(),
                 user = self.auth,
@@ -151,7 +151,7 @@ impl Connection {
 
     pub(super) async fn handle_dissociate(&self, assoc_id: u16) {
         log::info!(
-            "[{id:#016x}] [{addr}] [{user}] [dissociate] [{assoc_id:#06x}]",
+            "[{id:#08x}] [{addr}] [{user}] [dissociate] [{assoc_id:#06x}]",
             id = self.id(),
             addr = self.inner.remote_address(),
             user = self.auth,
@@ -164,7 +164,7 @@ impl Connection {
 
     pub(super) async fn handle_heartbeat(&self) {
         log::info!(
-            "[{id:#016x}] [{addr}] [{user}] [heartbeat]",
+            "[{id:#08x}] [{addr}] [{user}] [heartbeat]",
             id = self.id(),
             addr = self.inner.remote_address(),
             user = self.auth,
@@ -175,7 +175,7 @@ impl Connection {
         let addr_display = addr.to_string();
 
         log::info!(
-            "[{id:#016x}] [{addr}] [{user}] [packet] [{assoc_id:#06x}] [to-{mode}] {target_addr}",
+            "[{id:#08x}] [{addr}] [{user}] [packet] [{assoc_id:#06x}] [to-{mode}] {target_addr}",
             id = self.id(),
             addr = self.inner.remote_address(),
             user = self.auth,
@@ -190,7 +190,7 @@ impl Connection {
 
         if let Err(err) = res {
             log::warn!(
-                "[{id:#016x}] [{addr}] [{user}] [packet] [{assoc_id:#06x}] [to-{mode}] {target_addr}: {err}",
+                "[{id:#08x}] [{addr}] [{user}] [packet] [{assoc_id:#06x}] [to-{mode}] {target_addr}: {err}",
                 id = self.id(),
                 addr = self.inner.remote_address(),
                 user = self.auth,
