@@ -1,6 +1,7 @@
 use crossbeam_utils::atomic::AtomicCell;
 use parking_lot::Mutex;
 use std::{
+    fmt::{Display, Formatter, Result as FmtResult},
     future::Future,
     pin::Pin,
     sync::Arc,
@@ -46,6 +47,16 @@ impl Future for Authenticated {
         } else {
             self.0.broadcast.lock().push(cx.waker().clone());
             Poll::Pending
+        }
+    }
+}
+
+impl Display for Authenticated {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        if let Some(uuid) = self.get() {
+            write!(f, "{uuid}")
+        } else {
+            write!(f, "unauthenticated")
         }
     }
 }

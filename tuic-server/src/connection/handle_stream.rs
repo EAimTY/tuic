@@ -9,8 +9,12 @@ use tuic_quinn::Task;
 
 impl Connection {
     pub(crate) async fn handle_uni_stream(self, recv: RecvStream, _reg: Register) {
-        let addr = self.inner.remote_address();
-        log::debug!("[{addr}] incoming unidirectional stream");
+        log::debug!(
+            "[{id:#016x}] [{addr}] [{user}] incoming unidirectional stream",
+            id = self.id(),
+            addr = self.inner.remote_address(),
+            user = self.auth,
+        );
 
         let max = self.max_concurrent_uni_streams.load(Ordering::Relaxed);
 
@@ -54,7 +58,12 @@ impl Connection {
             Ok(Task::Dissociate(assoc_id)) => self.handle_dissociate(assoc_id).await,
             Ok(_) => unreachable!(), // already filtered in `tuic_quinn`
             Err(err) => {
-                log::warn!("[{addr}] handle unidirection stream error: {err}");
+                log::warn!(
+                    "[{id:#016x}] [{addr}] [{user}] handling incoming unidirectional stream error: {err}",
+                    id = self.id(),
+                    addr = self.inner.remote_address(),
+                    user = self.auth,
+                );
                 self.close();
             }
         }
@@ -65,8 +74,12 @@ impl Connection {
         (send, recv): (SendStream, RecvStream),
         _reg: Register,
     ) {
-        let addr = self.inner.remote_address();
-        log::debug!("[{addr}] incoming bidirectional stream");
+        log::debug!(
+            "[{id:#016x}] [{addr}] [{user}] incoming bidirectional stream",
+            id = self.id(),
+            addr = self.inner.remote_address(),
+            user = self.auth,
+        );
 
         let max = self.max_concurrent_bi_streams.load(Ordering::Relaxed);
 
@@ -98,15 +111,24 @@ impl Connection {
             Ok(Task::Connect(conn)) => self.handle_connect(conn).await,
             Ok(_) => unreachable!(), // already filtered in `tuic_quinn`
             Err(err) => {
-                log::warn!("[{addr}] handle bidirection stream error: {err}");
+                log::warn!(
+                    "[{id:#016x}] [{addr}] [{user}] handling incoming bidirectional stream error: {err}",
+                    id = self.id(),
+                    addr = self.inner.remote_address(),
+                    user = self.auth,
+                );
                 self.close();
             }
         }
     }
 
     pub(crate) async fn handle_datagram(self, dg: Bytes) {
-        let addr = self.inner.remote_address();
-        log::debug!("[{addr}] incoming datagram");
+        log::debug!(
+            "[{id:#016x}] [{addr}] [{user}] incoming datagram",
+            id = self.id(),
+            addr = self.inner.remote_address(),
+            user = self.auth,
+        );
 
         let pre_process = async {
             let task = self.model.accept_datagram(dg)?;
@@ -130,7 +152,12 @@ impl Connection {
             Ok(Task::Heartbeat) => self.handle_heartbeat().await,
             Ok(_) => unreachable!(),
             Err(err) => {
-                log::warn!("[{addr}] handle datagram error: {err}");
+                log::warn!(
+                    "[{id:#016x}] [{addr}] [{user}] handling incoming datagram error: {err}",
+                    id = self.id(),
+                    addr = self.inner.remote_address(),
+                    user = self.auth,
+                );
                 self.close();
             }
         }

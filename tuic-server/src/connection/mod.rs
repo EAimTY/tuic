@@ -74,7 +74,11 @@ impl Connection {
 
         match init.await {
             Ok(conn) => {
-                log::info!("[{addr}] connection established");
+                log::info!(
+                    "[{id:#016x}] [{addr}] [{user}] connection established",
+                    id = conn.id(),
+                    user = conn.auth,
+                );
 
                 tokio::spawn(conn.clone().timeout_authenticate(auth_timeout));
                 tokio::spawn(conn.clone().collect_garbage(gc_interval, gc_lifetime));
@@ -101,14 +105,27 @@ impl Connection {
                         Ok(()) => {}
                         Err(err) if err.is_locally_closed() => {}
                         Err(err) if err.is_timeout_closed() => {
-                            log::debug!("[{addr}] connection timeout")
+                            log::debug!(
+                                "[{id:#016x}] [{addr}] [{user}] connection timeout",
+                                id = conn.id(),
+                                user = conn.auth,
+                            );
                         }
-                        Err(err) => log::warn!("[{addr}] connection error: {err}"),
+                        Err(err) => log::warn!(
+                            "[{id:#016x}] [{addr}] [{user}] connection error: {err}",
+                            id = conn.id(),
+                            user = conn.auth,
+                        ),
                     }
                 }
             }
             Err(err) if err.is_locally_closed() || err.is_timeout_closed() => unreachable!(),
-            Err(err) => log::warn!("[{addr}] connection establishing error: {err}"),
+            Err(err) => {
+                log::warn!(
+                    "[{id:#016x}] [{addr}] [unauthenticated] connection establishing error: {err}",
+                    id = usize::MAX,
+                )
+            }
         }
     }
 
@@ -155,8 +172,11 @@ impl Connection {
         time::sleep(timeout).await;
 
         if self.auth.get().is_none() {
-            let addr = self.inner.remote_address();
-            log::warn!("[{addr}] [authenticate] timeout");
+            log::warn!(
+                "[{id:#016x}] [{addr}] [unauthenticated] [authenticate] timeout",
+                id = self.id(),
+                addr = self.inner.remote_address(),
+            );
             self.close();
         }
     }
@@ -169,8 +189,18 @@ impl Connection {
                 break;
             }
 
+            log::debug!(
+                "[{id:#016x}] [{addr}] [{user}] packet fragment garbage collecting event",
+                id = self.id(),
+                addr = self.inner.remote_address(),
+                user = self.auth,
+            );
             self.model.collect_garbage(gc_lifetime);
         }
+    }
+
+    fn id(&self) -> usize {
+        self.inner.stable_id()
     }
 
     fn is_closed(&self) -> bool {

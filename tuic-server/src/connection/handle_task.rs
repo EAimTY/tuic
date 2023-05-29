@@ -17,9 +17,10 @@ use tuic_quinn::{Authenticate, Connect, Packet};
 impl Connection {
     pub(super) async fn handle_authenticate(&self, auth: Authenticate) {
         log::info!(
-            "[{addr}] [{uuid}] [authenticate] authenticated as {auth_uuid}",
+            "[{id:#016x}] [{addr}] [{user}] [authenticate] {auth_uuid}",
+            id = self.id(),
             addr = self.inner.remote_address(),
-            uuid = self.auth.get().unwrap(),
+            user = self.auth,
             auth_uuid = auth.uuid(),
         );
     }
@@ -28,9 +29,10 @@ impl Connection {
         let target_addr = conn.addr().to_string();
 
         log::info!(
-            "[{addr}] [{uuid}] [connect] {target_addr}",
+            "[{id:#016x}] [{addr}] [{user}] [connect] {target_addr}",
+            id = self.id(),
             addr = self.inner.remote_address(),
-            uuid = self.auth.get().unwrap(),
+            user = self.auth,
         );
 
         let process = async {
@@ -69,9 +71,10 @@ impl Connection {
         match process.await {
             Ok(()) => {}
             Err(err) => log::warn!(
-                "[{addr}] [{uuid}] [connect] relaying connection to {target_addr} error: {err}",
+                "[{id:#016x}] [{addr}] [{user}] [connect] {target_addr}: {err}",
+                id = self.id(),
                 addr = self.inner.remote_address(),
-                uuid = self.auth.get().unwrap(),
+                user = self.auth,
             ),
         }
     }
@@ -83,17 +86,36 @@ impl Connection {
         let frag_total = pkt.frag_total();
 
         log::info!(
-            "[{addr}] [{uuid}] [packet] [{assoc_id:#06x}] [from-{mode}] [{pkt_id:#06x}] {frag_id}/{frag_total}",
+            "[{id:#016x}] [{addr}] [{user}] [packet] [{assoc_id:#06x}] [from-{mode}] [{pkt_id:#06x}] {frag_id}/{frag_total}",
+            id = self.id(),
             addr = self.inner.remote_address(),
-            uuid = self.auth.get().unwrap(),
+            user = self.auth,
         );
 
         self.udp_relay_mode.store(Some(mode));
 
+        let (pkt, addr, assoc_id) = match pkt.accept().await {
+            Ok(None) => return,
+            Ok(Some(res)) => res,
+            Err(err) => {
+                log::warn!(
+                    "[{id:#016x}] [{addr}] [{user}] [packet] [{assoc_id:#06x}] [from-{mode}] [{pkt_id:#06x}] {frag_id}/{frag_total}: {err}",
+                    id = self.id(),
+                    addr = self.inner.remote_address(),
+                    user = self.auth,
+                );
+                return;
+            }
+        };
+
         let process = async {
-            let Some((pkt, addr, assoc_id)) = pkt.accept().await? else {
-                return Ok(());
-            };
+            log::info!(
+                "[{id:#016x}] [{addr}] [{user}] [packet] [{assoc_id:#06x}] [from-{mode}] [{pkt_id:#06x}] {src_addr}",
+                id = self.id(),
+                addr = self.inner.remote_address(),
+                user = self.auth,
+                src_addr = addr,
+            );
 
             let session = match self.udp_sessions.lock().entry(assoc_id) {
                 Entry::Occupied(entry) => entry.get().clone(),
@@ -116,21 +138,23 @@ impl Connection {
             session.send(pkt, socket_addr).await
         };
 
-        match process.await {
-            Ok(()) => {}
-            Err(err) => log::warn!(
-                "[{addr}] [{uuid}] [packet] [{assoc_id:#06x}] [from-{mode}] [{pkt_id:#06x}] error handling fragment {frag_id}/{frag_total}: {err}",
+        if let Err(err) = process.await {
+            log::warn!(
+                "[{id:#016x}] [{addr}] [{user}] [packet] [{assoc_id:#06x}] [from-{mode}] [{pkt_id:#06x}] {src_addr}: {err}",
+                id = self.id(),
                 addr = self.inner.remote_address(),
-                uuid = self.auth.get().unwrap(),
-            ),
+                user = self.auth,
+                src_addr = addr,
+            );
         }
     }
 
     pub(super) async fn handle_dissociate(&self, assoc_id: u16) {
         log::info!(
-            "[{addr}] [{uuid}] [dissociate] [{assoc_id:#06x}]",
+            "[{id:#016x}] [{addr}] [{user}] [dissociate] [{assoc_id:#06x}]",
+            id = self.id(),
             addr = self.inner.remote_address(),
-            uuid = self.auth.get().unwrap(),
+            user = self.auth,
         );
 
         if let Some(session) = self.udp_sessions.lock().remove(&assoc_id) {
@@ -140,39 +164,37 @@ impl Connection {
 
     pub(super) async fn handle_heartbeat(&self) {
         log::info!(
-            "[{addr}] [{uuid}] [heartbeat]",
+            "[{id:#016x}] [{addr}] [{user}] [heartbeat]",
+            id = self.id(),
             addr = self.inner.remote_address(),
-            uuid = self.auth.get().unwrap(),
+            user = self.auth,
         );
     }
 
-    pub(super) async fn send_packet(self, pkt: Bytes, addr: Address, assoc_id: u16) {
+    pub(super) async fn relay_packet(self, pkt: Bytes, addr: Address, assoc_id: u16) {
         let addr_display = addr.to_string();
 
-        let res = match self.udp_relay_mode.load() {
-            Some(UdpRelayMode::Native) => {
-                log::info!(
-                    "[{addr}] [packet-to-native] [{assoc_id}] [{target_addr}]",
-                    addr = self.inner.remote_address(),
-                    target_addr = addr_display,
-                );
-                self.model.packet_native(pkt, addr, assoc_id)
-            }
-            Some(UdpRelayMode::Quic) => {
-                log::info!(
-                    "[{addr}] [packet-to-quic] [{assoc_id}] [{target_addr}]",
-                    addr = self.inner.remote_address(),
-                    target_addr = addr_display,
-                );
-                self.model.packet_quic(pkt, addr, assoc_id).await
-            }
-            None => unreachable!(),
+        log::info!(
+            "[{id:#016x}] [{addr}] [{user}] [packet] [{assoc_id:#06x}] [to-{mode}] {target_addr}",
+            id = self.id(),
+            addr = self.inner.remote_address(),
+            user = self.auth,
+            mode = self.udp_relay_mode.load().unwrap(),
+            target_addr = addr_display,
+        );
+
+        let res = match self.udp_relay_mode.load().unwrap() {
+            UdpRelayMode::Native => self.model.packet_native(pkt, addr, assoc_id),
+            UdpRelayMode::Quic => self.model.packet_quic(pkt, addr, assoc_id).await,
         };
 
         if let Err(err) = res {
             log::warn!(
-                "[{addr}] [packet-to-native] [{assoc_id}] [{target_addr}] {err}",
+                "[{id:#016x}] [{addr}] [{user}] [packet] [{assoc_id:#06x}] [to-{mode}] {target_addr}: {err}",
+                id = self.id(),
                 addr = self.inner.remote_address(),
+                user = self.auth,
+                mode = self.udp_relay_mode.load().unwrap(),
                 target_addr = addr_display,
             );
         }
