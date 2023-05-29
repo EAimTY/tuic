@@ -1,6 +1,6 @@
 use crate::{
     config::Relay,
-    socks5::Server as Socks5Server,
+    socks5::UDP_SESSIONS as SOCKS5_UDP_SESSIONS,
     utils::{self, CongestionControl, ServerAddr, UdpRelayMode},
     Error,
 };
@@ -29,7 +29,7 @@ use tokio::{
     time,
 };
 use tuic::Address;
-use tuic_quinn::{side, Connect, Connection as Model, Task};
+use tuic_quinn::{side, Connect, Connection as Model, Packet, Task};
 use uuid::Uuid;
 
 static ENDPOINT: OnceCell<Mutex<Endpoint>> = OnceCell::new();
@@ -158,12 +158,7 @@ impl Endpoint {
             let conn = if zero_rtt_handshake {
                 match conn.into_0rtt() {
                     Ok((conn, _)) => conn,
-                    Err(conn) => {
-                        log::info!(
-                            "[connection] 0-RTT handshake failed, fallback to 1-RTT handshake"
-                        );
-                        conn.await?
-                    }
+                    Err(conn) => conn.await?,
                 }
             } else {
                 conn.await?
@@ -185,8 +180,6 @@ impl Endpoint {
 
             match res {
                 Ok(conn) => {
-                    log::info!("[connection] connection established");
-
                     return Ok(Connection::new(
                         conn,
                         self.udp_relay_mode,
@@ -279,6 +272,8 @@ impl Connection {
     }
 
     async fn init(self, heartbeat: Duration, gc_interval: Duration, gc_lifetime: Duration) {
+        log::info!("[relay] connection established");
+
         tokio::spawn(self.clone().authenticate());
         tokio::spawn(self.clone().heartbeat(heartbeat));
         tokio::spawn(self.clone().collect_garbage(gc_interval, gc_lifetime));
@@ -300,7 +295,7 @@ impl Connection {
             };
         };
 
-        log::error!("[connection] {err}");
+        log::warn!("[relay] connection error: {err}");
     }
 
     pub async fn connect(&self, addr: Address) -> Result<Connect, Error> {
@@ -362,88 +357,85 @@ impl Connection {
     }
 
     async fn handle_uni_stream(self, recv: RecvStream, _reg: Register) {
-        log::debug!("[connection] incoming unidirectional stream");
+        log::debug!("[relay] incoming unidirectional stream");
+
         let res = match self.model.accept_uni_stream(recv).await {
-            Err(err) => Err(Error::from(err)),
+            Err(err) => Err(Error::Model(err)),
             Ok(Task::Packet(pkt)) => match self.udp_relay_mode {
-                UdpRelayMode::Quic => match pkt.accept().await {
-                    Ok(Some((pkt, addr, assoc_id))) => {
-                        let addr = match addr {
-                            Address::None => unreachable!(),
-                            Address::DomainAddress(domain, port) => {
-                                Socks5Address::DomainAddress(domain, port)
-                            }
-                            Address::SocketAddress(addr) => Socks5Address::SocketAddress(addr),
-                        };
-                        Socks5Server::recv_pkt(pkt, addr, assoc_id).await;
-                        Ok(())
-                    }
-                    Ok(None) => Ok(()),
-                    Err(err) => Err(Error::from(err)),
-                },
+                UdpRelayMode::Quic => {
+                    log::debug!(
+                        "[relay] [packet] [{assoc_id:#06x}] [from-quic] [{pkt_id:#06x}] {frag_id}/{frag_total}",
+                        assoc_id = pkt.assoc_id(),
+                        pkt_id = pkt.pkt_id(),
+                        frag_id = pkt.frag_id(),
+                        frag_total = pkt.frag_total(),
+                    );
+                    Self::handle_packet(pkt).await;
+                    Ok(())
+                }
                 UdpRelayMode::Native => Err(Error::WrongPacketSource),
             },
-            _ => unreachable!(),
+            _ => unreachable!(), // already filtered in `tuic_quinn`
         };
 
         match res {
             Ok(()) => {}
-            Err(err) => log::error!("[connection] {err}"),
+            Err(err) => log::warn!("[relay] incoming unidirectional stream error: {err}"),
         }
     }
 
     async fn handle_bi_stream(self, send: SendStream, recv: RecvStream, _reg: Register) {
-        log::debug!("[connection] incoming bidirectional stream");
+        log::debug!("[relay] incoming bidirectional stream");
+
         let res = match self.model.accept_bi_stream(send, recv).await {
-            Err(err) => Err(Error::from(err)),
-            _ => unreachable!(),
+            Err(err) => Err(Error::Model(err)),
+            _ => unreachable!(), // already filtered in `tuic_quinn`
         };
 
         match res {
             Ok(()) => {}
-            Err(err) => log::error!("[connection] {err}"),
+            Err(err) => log::warn!("[relay] incoming bidirectional stream error: {err}"),
         }
     }
 
     async fn handle_datagram(self, dg: Bytes) {
-        log::debug!("[connection] incoming datagram");
+        log::debug!("[relay] incoming datagram");
+
         let res = match self.model.accept_datagram(dg) {
-            Err(err) => Err(Error::from(err)),
+            Err(err) => Err(Error::Model(err)),
             Ok(Task::Packet(pkt)) => match self.udp_relay_mode {
-                UdpRelayMode::Native => match pkt.accept().await {
-                    Ok(Some((pkt, addr, assoc_id))) => {
-                        let addr = match addr {
-                            Address::None => unreachable!(),
-                            Address::DomainAddress(domain, port) => {
-                                Socks5Address::DomainAddress(domain, port)
-                            }
-                            Address::SocketAddress(addr) => Socks5Address::SocketAddress(addr),
-                        };
-                        Socks5Server::recv_pkt(pkt, addr, assoc_id).await;
-                        Ok(())
-                    }
-                    Ok(None) => Ok(()),
-                    Err(err) => Err(Error::from(err)),
-                },
+                UdpRelayMode::Native => {
+                    log::debug!(
+                        "[relay] [packet] [{assoc_id:#06x}] [from-native] [{pkt_id:#06x}] {frag_id}/{frag_total}",
+                        assoc_id = pkt.assoc_id(),
+                        pkt_id = pkt.pkt_id(),
+                        frag_id = pkt.frag_id(),
+                        frag_total = pkt.frag_total(),
+                    );
+                    Self::handle_packet(pkt).await;
+                    Ok(())
+                }
                 UdpRelayMode::Quic => Err(Error::WrongPacketSource),
             },
-            _ => unreachable!(),
+            _ => unreachable!(), // already filtered in `tuic_quinn`
         };
 
         match res {
             Ok(()) => {}
-            Err(err) => log::error!("[connection] {err}"),
+            Err(err) => log::warn!("[relay] incoming datagram error: {err}"),
         }
     }
 
     async fn authenticate(self) {
+        log::debug!("[relay] [authenticate] sending authentication");
+
         match self
             .model
             .authenticate(self.uuid, self.password.clone())
             .await
         {
-            Ok(()) => log::info!("[connection] authentication sent"),
-            Err(err) => log::warn!("[connection] authentication failed: {err}"),
+            Ok(()) => log::info!("[relay] [authenticate] {uuid}", uuid = self.uuid),
+            Err(err) => log::warn!("[relay] [authenticate] authentication sending error: {err}"),
         }
     }
 
@@ -460,9 +452,48 @@ impl Connection {
             }
 
             match self.model.heartbeat().await {
-                Ok(()) => log::info!("[connection] heartbeat"),
-                Err(err) => log::warn!("[connection] heartbeat error: {err}"),
+                Ok(()) => log::debug!("[relay] [heartbeat]"),
+                Err(err) => log::warn!("[relay] [heartbeat] heartbeat sending error: {err}"),
             }
+        }
+    }
+
+    async fn handle_packet(pkt: Packet) {
+        let assoc_id = pkt.assoc_id();
+        let pkt_id = pkt.pkt_id();
+
+        match pkt.accept().await {
+            Ok(Some((pkt, addr, _))) => {
+                log::info!(
+                    "[relay] [packet] [{assoc_id:#06x}] [from-native] [{pkt_id:#06x}] {addr}",
+                );
+
+                let addr = match addr {
+                    Address::None => unreachable!(),
+                    Address::DomainAddress(domain, port) => {
+                        Socks5Address::DomainAddress(domain, port)
+                    }
+                    Address::SocketAddress(addr) => Socks5Address::SocketAddress(addr),
+                };
+
+                if let Some(session) = SOCKS5_UDP_SESSIONS
+                    .get()
+                    .unwrap()
+                    .lock()
+                    .get(&assoc_id)
+                    .cloned()
+                {
+                    if let Err(err) = session.send(pkt, addr).await {
+                        log::warn!(
+                            "[relay] [packet] [{assoc_id:#06x}] [from-native] [{pkt_id:#06x}] failed sending packet to socks5 client: {err}",
+                        );
+                    }
+                } else {
+                    log::warn!("[relay] [packet] [{assoc_id:#06x}] [from-native] [{pkt_id:#06x}] unable to find socks5 associate session");
+                }
+            }
+            Ok(None) => {}
+            Err(err) => log::warn!("[relay] [packet] [{assoc_id:#06x}] [from-native] [{pkt_id:#06x}] packet receiving error: {err}"),
         }
     }
 
@@ -474,7 +505,7 @@ impl Connection {
                 break;
             }
 
-            log::debug!("[connection] packet garbage collection");
+            log::debug!("[relay] packet fragment garbage collecting event");
             self.model.collect_garbage(gc_lifetime);
         }
     }
