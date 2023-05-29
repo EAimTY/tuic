@@ -508,13 +508,14 @@ impl Connection {
                     Address::SocketAddress(addr) => Socks5Address::SocketAddress(addr),
                 };
 
-                if let Some(session) = SOCKS5_UDP_SESSIONS
+                let session = SOCKS5_UDP_SESSIONS
                     .get()
                     .unwrap()
                     .lock()
                     .get(&assoc_id)
-                    .cloned()
-                {
+                    .cloned();
+
+                if let Some(session) = session {
                     if let Err(err) = session.send(pkt, addr).await {
                         log::warn!(
                             "[relay] [packet] [{assoc_id:#06x}] [from-native] [{pkt_id:#06x}] failed sending packet to socks5 client: {err}",

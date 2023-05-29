@@ -147,7 +147,7 @@ impl Server {
                                 Self::handle_bind(bind).await;
                             }
                             Ok(Connection::Connect(connect, target_addr)) => {
-                                log::info!("[socks5] [{addr}] [connect] [{target_addr}]");
+                                log::info!("[socks5] [{addr}] [connect] {target_addr}");
                                 Self::handle_connect(connect, target_addr).await;
                             }
                             Err(err) => log::warn!("[socks5] [{addr}] handshake error: {err}"),
