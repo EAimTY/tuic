@@ -1,19 +1,6 @@
-use self::{
-    config::{Config, ConfigError},
-    connection::Endpoint,
-    socks5::Server as Socks5Server,
-};
 use env_logger::Builder as LoggerBuilder;
-use quinn::{ConnectError, ConnectionError};
-use rustls::Error as RustlsError;
-use std::{env, io::Error as IoError, process};
-use thiserror::Error;
-use tuic_quinn::Error as ModelError;
-
-mod config;
-mod connection;
-mod socks5;
-mod utils;
+use std::{env, process};
+use tuic_client::{Config, ConfigError, Connection, Socks5Server};
 
 #[tokio::main]
 async fn main() {
@@ -35,7 +22,7 @@ async fn main() {
         .format_target(false)
         .init();
 
-    match Endpoint::set_config(cfg.relay) {
+    match Connection::set_config(cfg.relay) {
         Ok(()) => {}
         Err(err) => {
             eprintln!("{err}");
@@ -52,30 +39,4 @@ async fn main() {
     }
 
     Socks5Server::start().await;
-}
-
-#[derive(Debug, Error)]
-pub enum Error {
-    #[error(transparent)]
-    Io(#[from] IoError),
-    #[error(transparent)]
-    Connect(#[from] ConnectError),
-    #[error(transparent)]
-    Connection(#[from] ConnectionError),
-    #[error(transparent)]
-    Model(#[from] ModelError),
-    #[error("load native certificates error: {0}")]
-    LoadNativeCerts(IoError),
-    #[error(transparent)]
-    Rustls(#[from] RustlsError),
-    #[error("{0}: {1}")]
-    Socket(&'static str, IoError),
-    #[error("timeout establishing connection")]
-    Timeout,
-    #[error("cannot resolve the server name")]
-    DnsResolve,
-    #[error("received packet from an unexpected source")]
-    WrongPacketSource,
-    #[error("invalid socks5 authentication")]
-    InvalidSocks5Auth,
 }

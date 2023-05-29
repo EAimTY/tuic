@@ -10,7 +10,10 @@ use std::{
 };
 use tokio::net;
 
-pub fn load_certs(paths: Vec<PathBuf>, disable_native: bool) -> Result<RootCertStore, Error> {
+pub(crate) fn load_certs(
+    paths: Vec<PathBuf>,
+    disable_native: bool,
+) -> Result<RootCertStore, Error> {
     let mut certs = RootCertStore::empty();
 
     for path in &paths {
