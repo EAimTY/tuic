@@ -130,56 +130,45 @@ impl Endpoint {
     }
 
     async fn connect(&mut self) -> Result<Connection, Error> {
-        async fn connect_to(
-            ep: &mut QuinnEndpoint,
-            addr: SocketAddr,
-            server_name: &str,
-            zero_rtt_handshake: bool,
-        ) -> Result<QuinnConnection, Error> {
-            let match_ipv4 = addr.is_ipv4() && ep.local_addr().map_or(false, |addr| addr.is_ipv4());
-            let match_ipv6 = addr.is_ipv6() && ep.local_addr().map_or(false, |addr| addr.is_ipv6());
-
-            if !match_ipv4 && !match_ipv6 {
-                let bind_addr = if addr.is_ipv4() {
-                    SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0))
-                } else {
-                    SocketAddr::from((Ipv6Addr::UNSPECIFIED, 0))
-                };
-
-                ep.rebind(
-                    UdpSocket::bind(bind_addr).map_err(|err| {
-                        Error::Socket("failed to create endpoint UDP socket", err)
-                    })?,
-                )
-                .map_err(|err| Error::Socket("failed to rebind endpoint UDP socket", err))?;
-            }
-
-            let conn = ep.connect(addr, server_name)?;
-
-            let conn = if zero_rtt_handshake {
-                match conn.into_0rtt() {
-                    Ok((conn, _)) => conn,
-                    Err(conn) => conn.await?,
-                }
-            } else {
-                conn.await?
-            };
-
-            Ok(conn)
-        }
-
         let mut last_err = None;
 
         for addr in self.server.resolve().await? {
-            let res = connect_to(
-                &mut self.ep,
-                addr,
-                self.server.server_name(),
-                self.zero_rtt_handshake,
-            )
-            .await;
+            let connect_to = async {
+                let match_ipv4 =
+                    addr.is_ipv4() && self.ep.local_addr().map_or(false, |addr| addr.is_ipv4());
+                let match_ipv6 =
+                    addr.is_ipv6() && self.ep.local_addr().map_or(false, |addr| addr.is_ipv6());
 
-            match res {
+                if !match_ipv4 && !match_ipv6 {
+                    let bind_addr = if addr.is_ipv4() {
+                        SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0))
+                    } else {
+                        SocketAddr::from((Ipv6Addr::UNSPECIFIED, 0))
+                    };
+
+                    self.ep
+                        .rebind(UdpSocket::bind(bind_addr).map_err(|err| {
+                            Error::Socket("failed to create endpoint UDP socket", err)
+                        })?)
+                        .map_err(|err| {
+                            Error::Socket("failed to rebind endpoint UDP socket", err)
+                        })?;
+                }
+
+                let conn = self.ep.connect(addr, self.server.server_name())?;
+                let conn = if self.zero_rtt_handshake {
+                    match conn.into_0rtt() {
+                        Ok((conn, _)) => conn,
+                        Err(conn) => conn.await?,
+                    }
+                } else {
+                    conn.await?
+                };
+
+                Ok(conn)
+            };
+
+            match connect_to.await {
                 Ok(conn) => {
                     return Ok(Connection::new(
                         conn,
