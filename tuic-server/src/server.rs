@@ -21,7 +21,7 @@ use std::{
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket as StdUdpSocket},
     pin::Pin,
     sync::{
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicU32, Ordering},
         Arc,
     },
     task::{Context, Poll, Waker},
@@ -42,7 +42,7 @@ use tuic_quinn::{side, Authenticate, Connect, Connection as Model, Packet, Task}
 use uuid::Uuid;
 
 const ERROR_CODE: VarInt = VarInt::from_u32(0);
-const DEFAULT_CONCURRENT_STREAMS: usize = 32;
+const DEFAULT_CONCURRENT_STREAMS: u32 = 32;
 
 pub struct Server {
     ep: Endpoint,
@@ -186,8 +186,8 @@ struct Connection {
     max_external_pkt_size: usize,
     remote_uni_stream_cnt: Counter,
     remote_bi_stream_cnt: Counter,
-    max_concurrent_uni_streams: Arc<AtomicUsize>,
-    max_concurrent_bi_streams: Arc<AtomicUsize>,
+    max_concurrent_uni_streams: Arc<AtomicU32>,
+    max_concurrent_bi_streams: Arc<AtomicU32>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -283,8 +283,8 @@ impl Connection {
             max_external_pkt_size,
             remote_uni_stream_cnt: Counter::new(),
             remote_bi_stream_cnt: Counter::new(),
-            max_concurrent_uni_streams: Arc::new(AtomicUsize::new(DEFAULT_CONCURRENT_STREAMS)),
-            max_concurrent_bi_streams: Arc::new(AtomicUsize::new(DEFAULT_CONCURRENT_STREAMS)),
+            max_concurrent_uni_streams: Arc::new(AtomicU32::new(DEFAULT_CONCURRENT_STREAMS)),
+            max_concurrent_bi_streams: Arc::new(AtomicU32::new(DEFAULT_CONCURRENT_STREAMS)),
         }
     }
 
@@ -319,12 +319,12 @@ impl Connection {
 
         let max = self.max_concurrent_uni_streams.load(Ordering::Relaxed);
 
-        if self.remote_uni_stream_cnt.count() == max {
+        if self.remote_uni_stream_cnt.count() as u32 == max {
             self.max_concurrent_uni_streams
                 .store(max * 2, Ordering::Relaxed);
 
             self.inner
-                .set_max_concurrent_uni_streams(VarInt::from((max * 2) as u32));
+                .set_max_concurrent_uni_streams(VarInt::from(max * 2));
         }
 
         let pre_process = async {
@@ -371,12 +371,12 @@ impl Connection {
 
         let max = self.max_concurrent_bi_streams.load(Ordering::Relaxed);
 
-        if self.remote_bi_stream_cnt.count() == max {
+        if self.remote_bi_stream_cnt.count() as u32 == max {
             self.max_concurrent_bi_streams
                 .store(max * 2, Ordering::Relaxed);
 
             self.inner
-                .set_max_concurrent_bi_streams(VarInt::from((max * 2) as u32));
+                .set_max_concurrent_bi_streams(VarInt::from(max * 2));
         }
 
         let pre_process = async {

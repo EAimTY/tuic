@@ -1,6 +1,6 @@
 use crate::{
     config::Local,
-    connection::{Connection as TuicConnection, CONNECTION_CLOSE_ERROR_CODE},
+    connection::{Connection as TuicConnection, ERROR_CODE},
     Error,
 };
 use bytes::Bytes;
@@ -314,7 +314,7 @@ impl Server {
                         Ok(_) => {}
                         Err(err) => {
                             let _ = conn.shutdown().await;
-                            let _ = relay.get_mut().reset(CONNECTION_CLOSE_ERROR_CODE);
+                            let _ = relay.get_mut().reset(ERROR_CODE);
                             log::warn!("[socks5] [{peer_addr}] [connect] [{target_addr}] TCP stream relaying error: {err}");
                         }
                     },

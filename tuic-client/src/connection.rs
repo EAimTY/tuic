@@ -19,7 +19,7 @@ use socks5_proto::Address as Socks5Address;
 use std::{
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket},
     sync::{
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicU32, Ordering},
         Arc,
     },
     time::Duration,
@@ -36,8 +36,8 @@ static ENDPOINT: OnceCell<Mutex<Endpoint>> = OnceCell::new();
 static CONNECTION: AsyncOnceCell<AsyncMutex<Connection>> = AsyncOnceCell::const_new();
 static TIMEOUT: AtomicCell<Duration> = AtomicCell::new(Duration::from_secs(0));
 
-pub const CONNECTION_CLOSE_ERROR_CODE: VarInt = VarInt::from_u32(0);
-const DEFAULT_CONCURRENT_STREAMS: usize = 32;
+pub const ERROR_CODE: VarInt = VarInt::from_u32(0);
+const DEFAULT_CONCURRENT_STREAMS: u32 = 32;
 
 pub struct Endpoint {
     ep: QuinnEndpoint,
@@ -197,8 +197,8 @@ pub struct Connection {
     udp_relay_mode: UdpRelayMode,
     remote_uni_stream_cnt: Counter,
     remote_bi_stream_cnt: Counter,
-    max_concurrent_uni_streams: Arc<AtomicUsize>,
-    max_concurrent_bi_streams: Arc<AtomicUsize>,
+    max_concurrent_uni_streams: Arc<AtomicU32>,
+    max_concurrent_bi_streams: Arc<AtomicU32>,
 }
 
 impl Connection {
@@ -252,8 +252,8 @@ impl Connection {
             udp_relay_mode,
             remote_uni_stream_cnt: Counter::new(),
             remote_bi_stream_cnt: Counter::new(),
-            max_concurrent_uni_streams: Arc::new(AtomicUsize::new(DEFAULT_CONCURRENT_STREAMS)),
-            max_concurrent_bi_streams: Arc::new(AtomicUsize::new(DEFAULT_CONCURRENT_STREAMS)),
+            max_concurrent_uni_streams: Arc::new(AtomicU32::new(DEFAULT_CONCURRENT_STREAMS)),
+            max_concurrent_bi_streams: Arc::new(AtomicU32::new(DEFAULT_CONCURRENT_STREAMS)),
         };
 
         tokio::spawn(conn.clone().init(heartbeat, gc_interval, gc_lifetime));
@@ -346,12 +346,12 @@ impl Connection {
     async fn accept_uni_stream(&self) -> Result<(RecvStream, Register), Error> {
         let max = self.max_concurrent_uni_streams.load(Ordering::Relaxed);
 
-        if self.remote_uni_stream_cnt.count() == max {
+        if self.remote_uni_stream_cnt.count() as u32 == max {
             self.max_concurrent_uni_streams
                 .store(max * 2, Ordering::Relaxed);
 
             self.conn
-                .set_max_concurrent_uni_streams(VarInt::from((max * 2) as u32));
+                .set_max_concurrent_uni_streams(VarInt::from(max * 2));
         }
 
         let recv = self.conn.accept_uni().await?;
@@ -362,12 +362,12 @@ impl Connection {
     async fn accept_bi_stream(&self) -> Result<(SendStream, RecvStream, Register), Error> {
         let max = self.max_concurrent_bi_streams.load(Ordering::Relaxed);
 
-        if self.remote_bi_stream_cnt.count() == max {
+        if self.remote_bi_stream_cnt.count() as u32 == max {
             self.max_concurrent_bi_streams
                 .store(max * 2, Ordering::Relaxed);
 
             self.conn
-                .set_max_concurrent_bi_streams(VarInt::from((max * 2) as u32));
+                .set_max_concurrent_bi_streams(VarInt::from(max * 2));
         }
 
         let (send, recv) = self.conn.accept_bi().await?;
@@ -386,7 +386,7 @@ impl Connection {
             Err(err) => Err(Error::Model(err)),
             Ok(Task::Packet(pkt)) => match self.udp_relay_mode {
                 UdpRelayMode::Quic => {
-                    log::debug!(
+                    log::info!(
                         "[relay] [packet] [{assoc_id:#06x}] [from-quic] [{pkt_id:#06x}] {frag_id}/{frag_total}",
                         assoc_id = pkt.assoc_id(),
                         pkt_id = pkt.pkt_id(),
@@ -428,7 +428,7 @@ impl Connection {
             Err(err) => Err(Error::Model(err)),
             Ok(Task::Packet(pkt)) => match self.udp_relay_mode {
                 UdpRelayMode::Native => {
-                    log::debug!(
+                    log::info!(
                         "[relay] [packet] [{assoc_id:#06x}] [from-native] [{pkt_id:#06x}] {frag_id}/{frag_total}",
                         assoc_id = pkt.assoc_id(),
                         pkt_id = pkt.pkt_id(),
