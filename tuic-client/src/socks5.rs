@@ -1,8 +1,11 @@
-use crate::{config::Local, connection::Connection as TuicConnection, Error};
+use crate::{
+    config::Local,
+    connection::{Connection as TuicConnection, CONNECTION_CLOSE_ERROR_CODE},
+    Error,
+};
 use bytes::Bytes;
 use once_cell::sync::OnceCell;
 use parking_lot::Mutex;
-use quinn::VarInt;
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use socks5_proto::{Address, Reply};
 use socks5_server::{
@@ -311,7 +314,7 @@ impl Server {
                         Ok(_) => {}
                         Err(err) => {
                             let _ = conn.shutdown().await;
-                            let _ = relay.get_mut().reset(VarInt::from_u32(0));
+                            let _ = relay.get_mut().reset(CONNECTION_CLOSE_ERROR_CODE);
                             log::warn!("[socks5] [{peer_addr}] [connect] [{target_addr}] TCP stream relaying error: {err}");
                         }
                     },

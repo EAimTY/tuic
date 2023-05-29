@@ -36,6 +36,7 @@ static ENDPOINT: OnceCell<Mutex<Endpoint>> = OnceCell::new();
 static CONNECTION: AsyncOnceCell<AsyncMutex<Connection>> = AsyncOnceCell::const_new();
 static TIMEOUT: AtomicCell<Duration> = AtomicCell::new(Duration::from_secs(0));
 
+pub const CONNECTION_CLOSE_ERROR_CODE: VarInt = VarInt::from_u32(0);
 const DEFAULT_CONCURRENT_STREAMS: usize = 32;
 
 pub struct Endpoint {
@@ -299,21 +300,54 @@ impl Connection {
     }
 
     pub async fn connect(&self, addr: Address) -> Result<Connect, Error> {
-        Ok(self.model.connect(addr).await?)
+        let addr_display = addr.to_string();
+        log::info!("[relay] [connect] {addr_display}");
+
+        match self.model.connect(addr).await {
+            Ok(conn) => Ok(conn),
+            Err(err) => {
+                log::warn!("[relay] [connect] failed initializing relay to {addr_display}: {err}");
+                Err(Error::Model(err))
+            }
+        }
     }
 
     pub async fn packet(&self, pkt: Bytes, addr: Address, assoc_id: u16) -> Result<(), Error> {
-        match self.udp_relay_mode {
-            UdpRelayMode::Native => self.model.packet_native(pkt, addr, assoc_id)?,
-            UdpRelayMode::Quic => self.model.packet_quic(pkt, addr, assoc_id).await?,
-        }
+        let addr_display = addr.to_string();
 
-        Ok(())
+        match self.udp_relay_mode {
+            UdpRelayMode::Native => {
+                log::info!("[relay] [packet] [{assoc_id:#06x}] [to-native] {addr_display}");
+                match self.model.packet_native(pkt, addr, assoc_id) {
+                    Ok(()) => Ok(()),
+                    Err(err) => {
+                        log::warn!("[relay] [packet] [{assoc_id:#06x}] [to-native] failed relaying packet to {addr_display}: {err}");
+                        Err(Error::Model(err))
+                    }
+                }
+            }
+            UdpRelayMode::Quic => {
+                log::info!("[relay] [packet] [{assoc_id:#06x}] [to-quic] {addr_display}");
+                match self.model.packet_quic(pkt, addr, assoc_id).await {
+                    Ok(()) => Ok(()),
+                    Err(err) => {
+                        log::warn!("[relay] [packet] [{assoc_id:#06x}] [to-quic] failed relaying packet to {addr_display}: {err}");
+                        Err(Error::Model(err))
+                    }
+                }
+            }
+        }
     }
 
     pub async fn dissociate(&self, assoc_id: u16) -> Result<(), Error> {
-        self.model.dissociate(assoc_id).await?;
-        Ok(())
+        log::info!("[relay] [dissociate] [{assoc_id:#06x}]");
+        match self.model.dissociate(assoc_id).await {
+            Ok(()) => Ok(()),
+            Err(err) => {
+                log::warn!("[relay] [dissociate] [{assoc_id:#06x}] failed dissociating: {err}");
+                Err(Error::Model(err))
+            }
+        }
     }
 
     fn is_closed(&self) -> bool {
@@ -464,9 +498,7 @@ impl Connection {
 
         match pkt.accept().await {
             Ok(Some((pkt, addr, _))) => {
-                log::info!(
-                    "[relay] [packet] [{assoc_id:#06x}] [from-native] [{pkt_id:#06x}] {addr}",
-                );
+                log::info!("[relay] [packet] [{assoc_id:#06x}] [from-native] [{pkt_id:#06x}] {addr}");
 
                 let addr = match addr {
                     Address::None => unreachable!(),
