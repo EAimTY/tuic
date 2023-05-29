@@ -1,9 +1,8 @@
-pub(crate) mod config;
-pub(crate) mod error;
-pub(crate) mod server;
-pub(crate) mod utils;
-
-pub mod connection;
+mod config;
+mod connection;
+mod error;
+mod server;
+mod utils;
 
 pub use crate::{
     config::{Config, ConfigError},
