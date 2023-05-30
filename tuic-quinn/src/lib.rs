@@ -505,6 +505,16 @@ impl Packet {
         self.model.frag_total()
     }
 
+    /// Whether the packet is from UDP relay mode `quic`
+    pub fn is_from_quic(&self) -> bool {
+        matches!(self.src, PacketSource::Quic(_))
+    }
+
+    /// Whether the packet is from UDP relay mode `native`
+    pub fn is_from_native(&self) -> bool {
+        matches!(self.src, PacketSource::Native(_))
+    }
+
     /// Accepts the packet payload. If the packet is fragmented and not yet fully assembled, `Ok(None)` is returned.
     pub async fn accept(self) -> Result<Option<(Bytes, Address, u16)>, Error> {
         let pkt = match self.src {
