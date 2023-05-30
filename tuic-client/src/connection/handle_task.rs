@@ -95,9 +95,17 @@ impl Connection {
         let assoc_id = pkt.assoc_id();
         let pkt_id = pkt.pkt_id();
 
+        let mode = if pkt.is_from_native() {
+            "native"
+        } else if pkt.is_from_quic() {
+            "quic"
+        } else {
+            unreachable!()
+        };
+
         match pkt.accept().await {
             Ok(Some((pkt, addr, _))) => {
-                log::info!("[relay] [packet] [{assoc_id:#06x}] [from-native] [{pkt_id:#06x}] {addr}");
+                log::info!("[relay] [packet] [{assoc_id:#06x}] [from-{mode}] [{pkt_id:#06x}] {addr}");
 
                 let addr = match addr {
                     Address::None => unreachable!(),
