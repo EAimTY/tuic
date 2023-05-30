@@ -233,7 +233,7 @@ impl Connection<side::Client> {
                 if let Some(pkt) = self.model.recv_packet(pkt) {
                     let pos = dg.position() as usize;
                     let mut buf = dg.into_inner();
-                    if (pos + pkt.size() as usize) < buf.len() {
+                    if (pos + pkt.size() as usize) <= buf.len() {
                         buf = buf.slice(pos..pos + pkt.size() as usize);
                         Ok(Task::Packet(Packet::new(pkt, PacketSource::Native(buf))))
                     } else {
