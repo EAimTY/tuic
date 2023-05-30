@@ -87,12 +87,7 @@ impl Packet {
     /// Returns the serialized length of the command
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
-        Self::len_without_addr() + self.addr.len()
-    }
-
-    /// Returns the serialized length of the command without the address
-    pub const fn len_without_addr() -> usize {
-        2 + 2 + 1 + 1 + 2
+        2 + 2 + 1 + 1 + 2 + self.addr.len()
     }
 }
 
