@@ -75,7 +75,7 @@ impl Connection {
         match init.await {
             Ok(conn) => {
                 log::info!(
-                    "[{id:#08x}] [{addr}] [{user}] connection established",
+                    "[{id:#010x}] [{addr}] [{user}] connection established",
                     id = conn.id(),
                     user = conn.auth,
                 );
@@ -106,13 +106,13 @@ impl Connection {
                         Err(err) if err.is_locally_closed() => {}
                         Err(err) if err.is_timeout_closed() => {
                             log::debug!(
-                                "[{id:#08x}] [{addr}] [{user}] connection timeout",
+                                "[{id:#010x}] [{addr}] [{user}] connection timeout",
                                 id = conn.id(),
                                 user = conn.auth,
                             );
                         }
                         Err(err) => log::warn!(
-                            "[{id:#08x}] [{addr}] [{user}] connection error: {err}",
+                            "[{id:#010x}] [{addr}] [{user}] connection error: {err}",
                             id = conn.id(),
                             user = conn.auth,
                         ),
@@ -122,7 +122,7 @@ impl Connection {
             Err(err) if err.is_locally_closed() || err.is_timeout_closed() => unreachable!(),
             Err(err) => {
                 log::warn!(
-                    "[{id:#08x}] [{addr}] [unauthenticated] connection establishing error: {err}",
+                    "[{id:#010x}] [{addr}] [unauthenticated] connection establishing error: {err}",
                     id = usize::MAX,
                 )
             }
@@ -173,7 +173,7 @@ impl Connection {
 
         if self.auth.get().is_none() {
             log::warn!(
-                "[{id:#08x}] [{addr}] [unauthenticated] [authenticate] timeout",
+                "[{id:#010x}] [{addr}] [unauthenticated] [authenticate] timeout",
                 id = self.id(),
                 addr = self.inner.remote_address(),
             );
@@ -190,7 +190,7 @@ impl Connection {
             }
 
             log::debug!(
-                "[{id:#08x}] [{addr}] [{user}] packet fragment garbage collecting event",
+                "[{id:#010x}] [{addr}] [{user}] packet fragment garbage collecting event",
                 id = self.id(),
                 addr = self.inner.remote_address(),
                 user = self.auth,

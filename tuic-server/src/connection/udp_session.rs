@@ -98,7 +98,7 @@ impl UdpSession {
                     Ok(res) => res,
                     Err(err) => {
                         log::warn!(
-                            "[{id:#08x}] [{addr}] [{user}] [packet] [{assoc_id:#06x}] outbound listening error: {err}",
+                            "[{id:#010x}] [{addr}] [{user}] [packet] [{assoc_id:#06x}] outbound listening error: {err}",
                             id = session_listening.0.conn.id(),
                             addr = session_listening.0.conn.inner.remote_address(),
                             user = session_listening.0.conn.auth,

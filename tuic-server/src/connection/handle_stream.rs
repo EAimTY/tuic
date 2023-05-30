@@ -10,7 +10,7 @@ use tuic_quinn::Task;
 impl Connection {
     pub(crate) async fn handle_uni_stream(self, recv: RecvStream, _reg: Register) {
         log::debug!(
-            "[{id:#08x}] [{addr}] [{user}] incoming unidirectional stream",
+            "[{id:#010x}] [{addr}] [{user}] incoming unidirectional stream",
             id = self.id(),
             addr = self.inner.remote_address(),
             user = self.auth,
@@ -59,7 +59,7 @@ impl Connection {
             Ok(_) => unreachable!(), // already filtered in `tuic_quinn`
             Err(err) => {
                 log::warn!(
-                    "[{id:#08x}] [{addr}] [{user}] handling incoming unidirectional stream error: {err}",
+                    "[{id:#010x}] [{addr}] [{user}] handling incoming unidirectional stream error: {err}",
                     id = self.id(),
                     addr = self.inner.remote_address(),
                     user = self.auth,
@@ -75,7 +75,7 @@ impl Connection {
         _reg: Register,
     ) {
         log::debug!(
-            "[{id:#08x}] [{addr}] [{user}] incoming bidirectional stream",
+            "[{id:#010x}] [{addr}] [{user}] incoming bidirectional stream",
             id = self.id(),
             addr = self.inner.remote_address(),
             user = self.auth,
@@ -112,7 +112,7 @@ impl Connection {
             Ok(_) => unreachable!(), // already filtered in `tuic_quinn`
             Err(err) => {
                 log::warn!(
-                    "[{id:#08x}] [{addr}] [{user}] handling incoming bidirectional stream error: {err}",
+                    "[{id:#010x}] [{addr}] [{user}] handling incoming bidirectional stream error: {err}",
                     id = self.id(),
                     addr = self.inner.remote_address(),
                     user = self.auth,
@@ -124,7 +124,7 @@ impl Connection {
 
     pub(crate) async fn handle_datagram(self, dg: Bytes) {
         log::debug!(
-            "[{id:#08x}] [{addr}] [{user}] incoming datagram",
+            "[{id:#010x}] [{addr}] [{user}] incoming datagram",
             id = self.id(),
             addr = self.inner.remote_address(),
             user = self.auth,
@@ -153,7 +153,7 @@ impl Connection {
             Ok(_) => unreachable!(),
             Err(err) => {
                 log::warn!(
-                    "[{id:#08x}] [{addr}] [{user}] handling incoming datagram error: {err}",
+                    "[{id:#010x}] [{addr}] [{user}] handling incoming datagram error: {err}",
                     id = self.id(),
                     addr = self.inner.remote_address(),
                     user = self.auth,
