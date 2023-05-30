@@ -199,9 +199,14 @@ where
     P: AsRef<[u8]> + 'a,
 {
     fn new(assoc_id: u16, pkt_id: u16, addr: Address, max_pkt_size: usize, payload: P) -> Self {
-        let first_frag_size = max_pkt_size - PacketHeader::len_without_addr() - addr.len();
-        let frag_size_addr_none =
-            max_pkt_size - PacketHeader::len_without_addr() - Address::None.len();
+        let header_addr_ref = Header::Packet(PacketHeader::new(0, 0, 0, 0, 0, addr));
+        let header_addr_none_ref = Header::Packet(PacketHeader::new(0, 0, 0, 0, 0, Address::None));
+
+        let first_frag_size = max_pkt_size - header_addr_ref.len();
+        let frag_size_addr_none = max_pkt_size - header_addr_none_ref.len();
+
+        let Header::Packet(pkt) = header_addr_ref else { unreachable!() };
+        let (_, _, _, _, _, addr) = pkt.into();
 
         let frag_total = if first_frag_size < payload.as_ref().len() {
             (1 + (payload.as_ref().len() - first_frag_size) / frag_size_addr_none + 1) as u8
@@ -231,10 +236,14 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.next_frag_id < self.frag_total {
-            let payload_size =
-                self.max_pkt_size - PacketHeader::len_without_addr() - self.addr.len();
+            let header_ref = Header::Packet(PacketHeader::new(0, 0, 0, 0, 0, self.addr.take()));
+
+            let payload_size = self.max_pkt_size - header_ref.len();
             let next_frag_end =
                 (self.next_frag_start + payload_size).min(self.payload.as_ref().len());
+
+            let Header::Packet(pkt) = header_ref else { unreachable!() };
+            let (_, _, _, _, _, addr) = pkt.into();
 
             let header = Header::Packet(PacketHeader::new(
                 self.assoc_id,
@@ -242,7 +251,7 @@ where
                 self.frag_total,
                 self.next_frag_id,
                 (next_frag_end - self.next_frag_start) as u16,
-                self.addr.take(),
+                addr,
             ));
 
             let payload_ptr = &(self.payload.as_ref()[self.next_frag_start]) as *const u8;
