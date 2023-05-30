@@ -86,7 +86,7 @@ impl Connection {
         let frag_total = pkt.frag_total();
 
         log::info!(
-            "[{id:#010x}] [{addr}] [{user}] [packet] [{assoc_id:#06x}] [from-{mode}] [{pkt_id:#06x}] {frag_id}/{frag_total}",
+            "[{id:#010x}] [{addr}] [{user}] [packet] [{assoc_id:#06x}] [from-{mode}] [{pkt_id:#06x}] fragment {frag_id}/{frag_total}",
             id = self.id(),
             addr = self.inner.remote_address(),
             user = self.auth,
@@ -99,7 +99,7 @@ impl Connection {
             Ok(Some(res)) => res,
             Err(err) => {
                 log::warn!(
-                    "[{id:#010x}] [{addr}] [{user}] [packet] [{assoc_id:#06x}] [from-{mode}] [{pkt_id:#06x}] {frag_id}/{frag_total}: {err}",
+                    "[{id:#010x}] [{addr}] [{user}] [packet] [{assoc_id:#06x}] [from-{mode}] [{pkt_id:#06x}] fragment {frag_id}/{frag_total}: {err}",
                     id = self.id(),
                     addr = self.inner.remote_address(),
                     user = self.auth,
@@ -110,7 +110,7 @@ impl Connection {
 
         let process = async {
             log::info!(
-                "[{id:#010x}] [{addr}] [{user}] [packet] [{assoc_id:#06x}] [from-{mode}] [{pkt_id:#06x}] {src_addr}",
+                "[{id:#010x}] [{addr}] [{user}] [packet] [{assoc_id:#06x}] [from-{mode}] [{pkt_id:#06x}] to {src_addr}",
                 id = self.id(),
                 addr = self.inner.remote_address(),
                 user = self.auth,
@@ -140,7 +140,7 @@ impl Connection {
 
         if let Err(err) = process.await {
             log::warn!(
-                "[{id:#010x}] [{addr}] [{user}] [packet] [{assoc_id:#06x}] [from-{mode}] [{pkt_id:#06x}] {src_addr}: {err}",
+                "[{id:#010x}] [{addr}] [{user}] [packet] [{assoc_id:#06x}] [from-{mode}] [{pkt_id:#06x}] to {src_addr}: {err}",
                 id = self.id(),
                 addr = self.inner.remote_address(),
                 user = self.auth,
@@ -175,12 +175,12 @@ impl Connection {
         let addr_display = addr.to_string();
 
         log::info!(
-            "[{id:#010x}] [{addr}] [{user}] [packet] [{assoc_id:#06x}] [to-{mode}] {target_addr}",
+            "[{id:#010x}] [{addr}] [{user}] [packet] [{assoc_id:#06x}] [to-{mode}] from {src_addr}",
             id = self.id(),
             addr = self.inner.remote_address(),
             user = self.auth,
             mode = self.udp_relay_mode.load().unwrap(),
-            target_addr = addr_display,
+            src_addr = addr_display,
         );
 
         let res = match self.udp_relay_mode.load().unwrap() {
@@ -190,12 +190,12 @@ impl Connection {
 
         if let Err(err) = res {
             log::warn!(
-                "[{id:#010x}] [{addr}] [{user}] [packet] [{assoc_id:#06x}] [to-{mode}] {target_addr}: {err}",
+                "[{id:#010x}] [{addr}] [{user}] [packet] [{assoc_id:#06x}] [to-{mode}] from {src_addr}: {err}",
                 id = self.id(),
                 addr = self.inner.remote_address(),
                 user = self.auth,
                 mode = self.udp_relay_mode.load().unwrap(),
-                target_addr = addr_display,
+                src_addr = addr_display,
             );
         }
     }

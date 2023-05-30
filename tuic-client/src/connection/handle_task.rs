@@ -39,11 +39,11 @@ impl Connection {
 
         match self.udp_relay_mode {
             UdpRelayMode::Native => {
-                log::info!("[relay] [packet] [{assoc_id:#06x}] [to-native] {addr_display}");
+                log::info!("[relay] [packet] [{assoc_id:#06x}] [to-native] to {addr_display}");
                 match self.model.packet_native(pkt, addr, assoc_id) {
                     Ok(()) => Ok(()),
                     Err(err) => {
-                        log::warn!("[relay] [packet] [{assoc_id:#06x}] [to-native] failed relaying packet to {addr_display}: {err}");
+                        log::warn!("[relay] [packet] [{assoc_id:#06x}] [to-native] to {addr_display}: {err}");
                         Err(Error::Model(err))
                     }
                 }
@@ -53,7 +53,9 @@ impl Connection {
                 match self.model.packet_quic(pkt, addr, assoc_id).await {
                     Ok(()) => Ok(()),
                     Err(err) => {
-                        log::warn!("[relay] [packet] [{assoc_id:#06x}] [to-quic] failed relaying packet to {addr_display}: {err}");
+                        log::warn!(
+                            "[relay] [packet] [{assoc_id:#06x}] [to-quic] to {addr_display}: {err}"
+                        );
                         Err(Error::Model(err))
                     }
                 }
@@ -66,7 +68,7 @@ impl Connection {
         match self.model.dissociate(assoc_id).await {
             Ok(()) => Ok(()),
             Err(err) => {
-                log::warn!("[relay] [dissociate] [{assoc_id:#06x}] failed dissociating: {err}");
+                log::warn!("[relay] [dissociate] [{assoc_id:#06x}] {err}");
                 Err(Error::Model(err))
             }
         }
@@ -86,7 +88,7 @@ impl Connection {
 
             match self.model.heartbeat().await {
                 Ok(()) => log::debug!("[relay] [heartbeat]"),
-                Err(err) => log::warn!("[relay] [heartbeat] heartbeat sending error: {err}"),
+                Err(err) => log::warn!("[relay] [heartbeat] {err}"),
             }
         }
     }
@@ -105,7 +107,7 @@ impl Connection {
 
         match pkt.accept().await {
             Ok(Some((pkt, addr, _))) => {
-                log::info!("[relay] [packet] [{assoc_id:#06x}] [from-{mode}] [{pkt_id:#06x}] {addr}");
+                log::info!("[relay] [packet] [{assoc_id:#06x}] [from-{mode}] [{pkt_id:#06x}] from {addr}");
 
                 let addr = match addr {
                     Address::None => unreachable!(),
