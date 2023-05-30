@@ -1,6 +1,6 @@
 [package]
 name = "tuic-quinn"
-version = "0.1.0-alpha0"
+version = "0.1.0-alpha1"
 authors = ["EAimTY <ea.imty@gmail.com>"]
 description = "A thin layer on top of quinn to provide functions for TUIC"
 categories = ["network-programming"]
