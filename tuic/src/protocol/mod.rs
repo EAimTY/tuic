@@ -142,10 +142,8 @@ impl Address {
         1 + match self {
             Address::None => 0,
             Address::DomainAddress(addr, _) => 1 + addr.len() + 2,
-            Address::SocketAddress(addr) => match addr {
-                SocketAddr::V4(_) => 4 + 2,
-                SocketAddr::V6(_) => 2 * 8 + 2,
-            },
+            Address::SocketAddress(SocketAddr::V4(_)) => 4 + 2,
+            Address::SocketAddress(SocketAddr::V6(_)) => 16 + 2,
         }
     }
 
