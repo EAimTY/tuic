@@ -20,7 +20,7 @@ use uuid::Uuid;
 
 pub struct Server {
     ep: Endpoint,
-    users: Arc<HashMap<Uuid, Vec<u8>>>,
+    users: Arc<HashMap<Uuid, Box<[u8]>>>,
     udp_relay_ipv6: bool,
     zero_rtt_handshake: bool,
     auth_timeout: Duration,
@@ -43,7 +43,7 @@ impl Server {
             .with_no_client_auth()
             .with_single_cert(certs, priv_key)?;
 
-        crypto.alpn_protocols = cfg.alpn.into_iter().map(|alpn| alpn.into_bytes()).collect();
+        crypto.alpn_protocols = cfg.alpn;
         crypto.max_early_data_size = u32::MAX;
         crypto.send_half_rtt_data = cfg.zero_rtt_handshake;
 
@@ -102,15 +102,9 @@ impl Server {
             Arc::new(TokioRuntime),
         )?;
 
-        let users = cfg
-            .users
-            .into_iter()
-            .map(|(uuid, password)| (uuid, password.into_bytes()))
-            .collect();
-
         Ok(Self {
             ep,
-            users: Arc::new(users),
+            users: Arc::new(cfg.users),
             udp_relay_ipv6: cfg.udp_relay_ipv6,
             zero_rtt_handshake: cfg.zero_rtt_handshake,
             auth_timeout: cfg.auth_timeout,

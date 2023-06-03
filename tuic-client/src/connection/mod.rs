@@ -60,7 +60,7 @@ impl Connection {
             .with_root_certificates(certs)
             .with_no_client_auth();
 
-        crypto.alpn_protocols = cfg.alpn.into_iter().map(|alpn| alpn.into_bytes()).collect();
+        crypto.alpn_protocols = cfg.alpn;
         crypto.enable_early_data = true;
         crypto.enable_sni = !cfg.disable_sni;
 
@@ -108,7 +108,7 @@ impl Connection {
             ep,
             server: ServerAddr::new(cfg.server.0, cfg.server.1, cfg.ip),
             uuid: cfg.uuid,
-            password: Arc::from(cfg.password.into_bytes().into_boxed_slice()),
+            password: cfg.password,
             udp_relay_mode: cfg.udp_relay_mode,
             zero_rtt_handshake: cfg.zero_rtt_handshake,
             heartbeat: cfg.heartbeat,

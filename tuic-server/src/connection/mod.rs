@@ -25,7 +25,7 @@ pub const DEFAULT_CONCURRENT_STREAMS: u32 = 32;
 pub struct Connection {
     inner: QuinnConnection,
     model: Model<side::Server>,
-    users: Arc<HashMap<Uuid, Vec<u8>>>,
+    users: Arc<HashMap<Uuid, Box<[u8]>>>,
     udp_relay_ipv6: bool,
     auth: Authenticated,
     task_negotiation_timeout: Duration,
@@ -42,7 +42,7 @@ pub struct Connection {
 impl Connection {
     pub async fn handle(
         conn: Connecting,
-        users: Arc<HashMap<Uuid, Vec<u8>>>,
+        users: Arc<HashMap<Uuid, Box<[u8]>>>,
         udp_relay_ipv6: bool,
         zero_rtt_handshake: bool,
         auth_timeout: Duration,
@@ -135,7 +135,7 @@ impl Connection {
 
     fn new(
         conn: QuinnConnection,
-        users: Arc<HashMap<Uuid, Vec<u8>>>,
+        users: Arc<HashMap<Uuid, Box<[u8]>>>,
         udp_relay_ipv6: bool,
         task_negotiation_timeout: Duration,
         max_external_pkt_size: usize,

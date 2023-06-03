@@ -12,6 +12,7 @@ use std::{
     net::{IpAddr, SocketAddr},
     path::PathBuf,
     str::FromStr,
+    sync::Arc,
     time::Duration,
 };
 use thiserror::Error;
@@ -45,7 +46,8 @@ pub struct Relay {
 
     pub uuid: Uuid,
 
-    pub password: String,
+    #[serde(deserialize_with = "deserialize_password")]
+    pub password: Arc<[u8]>,
 
     pub ip: Option<IpAddr>,
 
@@ -64,8 +66,11 @@ pub struct Relay {
     )]
     pub congestion_control: CongestionControl,
 
-    #[serde(default = "default::relay::alpn")]
-    pub alpn: Vec<String>,
+    #[serde(
+        default = "default::relay::alpn",
+        deserialize_with = "deserialize_alpn"
+    )]
+    pub alpn: Vec<Vec<u8>>,
 
     #[serde(default = "default::relay::zero_rtt_handshake")]
     pub zero_rtt_handshake: bool,
@@ -112,9 +117,11 @@ pub struct Relay {
 pub struct Local {
     pub server: SocketAddr,
 
-    pub username: Option<String>,
+    #[serde(deserialize_with = "deserialize_optional_bytes")]
+    pub username: Option<Vec<u8>>,
 
-    pub password: Option<String>,
+    #[serde(deserialize_with = "deserialize_optional_bytes")]
+    pub password: Option<Vec<u8>>,
 
     pub dual_stack: Option<bool>,
 
@@ -172,7 +179,7 @@ mod default {
             CongestionControl::Cubic
         }
 
-        pub fn alpn() -> Vec<String> {
+        pub fn alpn() -> Vec<Vec<u8>> {
             Vec::new()
         }
 
@@ -248,6 +255,30 @@ where
         ),
         _ => Err(DeError::custom("invalid server address")),
     }
+}
+
+pub fn deserialize_password<'de, D>(deserializer: D) -> Result<Arc<[u8]>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    Ok(Arc::from(s.into_bytes().into_boxed_slice()))
+}
+
+pub fn deserialize_alpn<'de, D>(deserializer: D) -> Result<Vec<Vec<u8>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = Vec::<String>::deserialize(deserializer)?;
+    Ok(s.into_iter().map(|alpn| alpn.into_bytes()).collect())
+}
+
+pub fn deserialize_optional_bytes<'de, D>(deserializer: D) -> Result<Option<Vec<u8>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = Option::<String>::deserialize(deserializer)?;
+    Ok(s.map(|s| s.into_bytes()))
 }
 
 pub fn deserialize_duration<'de, D>(deserializer: D) -> Result<Duration, D::Error>

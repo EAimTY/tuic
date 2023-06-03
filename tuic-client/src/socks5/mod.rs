@@ -37,8 +37,8 @@ impl Server {
                 cfg.server,
                 cfg.dual_stack,
                 cfg.max_packet_size,
-                cfg.username.map(|s| s.into_bytes()),
-                cfg.password.map(|s| s.into_bytes()),
+                cfg.username,
+                cfg.password,
             )?)
             .map_err(|_| "failed initializing socks5 server")
             .unwrap();
