@@ -90,6 +90,7 @@ impl Connection {
             id = self.id(),
             addr = self.inner.remote_address(),
             user = self.auth,
+            frag_id = frag_id + 1,
         );
 
         self.udp_relay_mode.store(Some(mode));
@@ -103,6 +104,7 @@ impl Connection {
                     id = self.id(),
                     addr = self.inner.remote_address(),
                     user = self.auth,
+                    frag_id = frag_id + 1,
                 );
                 return;
             }

@@ -52,13 +52,6 @@ impl Connection {
             Err(err) => Err(Error::Model(err)),
             Ok(Task::Packet(pkt)) => match self.udp_relay_mode {
                 UdpRelayMode::Quic => {
-                    log::info!(
-                        "[relay] [packet] [{assoc_id:#06x}] [from-quic] [{pkt_id:#06x}] {frag_id}/{frag_total}",
-                        assoc_id = pkt.assoc_id(),
-                        pkt_id = pkt.pkt_id(),
-                        frag_id = pkt.frag_id(),
-                        frag_total = pkt.frag_total(),
-                    );
                     Self::handle_packet(pkt).await;
                     Ok(())
                 }
@@ -92,13 +85,6 @@ impl Connection {
             Err(err) => Err(Error::Model(err)),
             Ok(Task::Packet(pkt)) => match self.udp_relay_mode {
                 UdpRelayMode::Native => {
-                    log::info!(
-                        "[relay] [packet] [{assoc_id:#06x}] [from-native] [{pkt_id:#06x}] {frag_id}/{frag_total}",
-                        assoc_id = pkt.assoc_id(),
-                        pkt_id = pkt.pkt_id(),
-                        frag_id = pkt.frag_id(),
-                        frag_total = pkt.frag_total(),
-                    );
                     Self::handle_packet(pkt).await;
                     Ok(())
                 }

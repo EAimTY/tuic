@@ -105,6 +105,12 @@ impl Connection {
             unreachable!()
         };
 
+        log::info!(
+            "[relay] [packet] [{assoc_id:#06x}] [from-{mode}] [{pkt_id:#06x}] fragment {frag_id}/{frag_total}",
+            frag_id = pkt.frag_id() + 1,
+            frag_total = pkt.frag_total(),
+        );
+
         match pkt.accept().await {
             Ok(Some((pkt, addr, _))) => {
                 log::info!("[relay] [packet] [{assoc_id:#06x}] [from-{mode}] [{pkt_id:#06x}] from {addr}");
