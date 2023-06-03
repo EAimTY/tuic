@@ -117,10 +117,10 @@ pub struct Relay {
 pub struct Local {
     pub server: SocketAddr,
 
-    #[serde(deserialize_with = "deserialize_optional_bytes")]
+    #[serde(deserialize_with = "deserialize_optional_bytes", default)]
     pub username: Option<Vec<u8>>,
 
-    #[serde(deserialize_with = "deserialize_optional_bytes")]
+    #[serde(deserialize_with = "deserialize_optional_bytes", default)]
     pub password: Option<Vec<u8>>,
 
     pub dual_stack: Option<bool>,
