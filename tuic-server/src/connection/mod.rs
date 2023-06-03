@@ -103,7 +103,7 @@ impl Connection {
 
                     match handle_incoming.await {
                         Ok(()) => {}
-                        Err(err) if err.is_locally_closed() || err.is_timeout_closed() => {
+                        Err(err) if err.is_trivial() => {
                             log::debug!(
                                 "[{id:#010x}] [{addr}] [{user}] {err}",
                                 id = conn.id(),
@@ -118,13 +118,16 @@ impl Connection {
                     }
                 }
             }
-            Err(err) if err.is_locally_closed() || err.is_timeout_closed() => {
-                log::debug!("[{id:#010x}] [{addr}] [unauthenticated] {err}", id = 0);
+            Err(err) if err.is_trivial() => {
+                log::debug!(
+                    "[{id:#010x}] [{addr}] [unauthenticated] {err}",
+                    id = u32::MAX,
+                );
             }
             Err(err) => {
                 log::warn!(
-                    "[{id:#010x}] [{addr}] [unauthenticated] connection establishing error: {err}",
-                    id = usize::MAX,
+                    "[{id:#010x}] [{addr}] [unauthenticated] {err}",
+                    id = u32::MAX,
                 )
             }
         }

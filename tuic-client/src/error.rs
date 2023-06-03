@@ -11,8 +11,6 @@ pub enum Error {
     #[error(transparent)]
     Connect(#[from] ConnectError),
     #[error(transparent)]
-    Connection(#[from] ConnectionError),
-    #[error(transparent)]
     Model(#[from] ModelError),
     #[error("load native certificates error: {0}")]
     LoadNativeCerts(IoError),
@@ -28,4 +26,10 @@ pub enum Error {
     WrongPacketSource,
     #[error("invalid socks5 authentication")]
     InvalidSocks5Auth,
+}
+
+impl From<ConnectionError> for Error {
+    fn from(err: ConnectionError) -> Self {
+        Self::Io(IoError::from(err))
+    }
 }

@@ -40,7 +40,7 @@ impl Connection {
 
             tokio::select! {
                 () = self.auth.clone() => {}
-                err = self.inner.closed() => return Err(Error::Connection(err)),
+                err = self.inner.closed() => return Err(Error::from(err)),
             };
 
             let same_pkt_src = matches!(task, Task::Packet(_))
@@ -101,7 +101,7 @@ impl Connection {
 
             tokio::select! {
                 () = self.auth.clone() => {}
-                err = self.inner.closed() => return Err(Error::Connection(err)),
+                err = self.inner.closed() => return Err(Error::from(err)),
             };
 
             Ok(task)
@@ -135,7 +135,7 @@ impl Connection {
 
             tokio::select! {
                 () = self.auth.clone() => {}
-                err = self.inner.closed() => return Err(Error::Connection(err)),
+                err = self.inner.closed() => return Err(Error::from(err)),
             };
 
             let same_pkt_src = matches!(task, Task::Packet(_))

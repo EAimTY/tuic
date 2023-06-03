@@ -13,8 +13,10 @@ pub enum Error {
     Rustls(#[from] RustlsError),
     #[error("invalid max idle time")]
     InvalidMaxIdleTime,
-    #[error(transparent)]
-    Connection(#[from] ConnectionError),
+    #[error("connection timed out")]
+    TimedOut,
+    #[error("connection locally closed")]
+    LocallyClosed,
     #[error(transparent)]
     Model(#[from] ModelError),
     #[error("duplicated authentication")]
@@ -34,11 +36,17 @@ pub enum Error {
 }
 
 impl Error {
-    pub fn is_locally_closed(&self) -> bool {
-        matches!(self, Self::Connection(ConnectionError::LocallyClosed))
+    pub fn is_trivial(&self) -> bool {
+        matches!(self, Self::TimedOut | Self::LocallyClosed)
     }
+}
 
-    pub fn is_timeout_closed(&self) -> bool {
-        matches!(self, Self::Connection(ConnectionError::TimedOut))
+impl From<ConnectionError> for Error {
+    fn from(err: ConnectionError) -> Self {
+        match err {
+            ConnectionError::TimedOut => Self::TimedOut,
+            ConnectionError::LocallyClosed => Self::LocallyClosed,
+            _ => Self::Io(IoError::from(err)),
+        }
     }
 }
