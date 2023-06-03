@@ -245,16 +245,16 @@ pub fn deserialize_server<'de, D>(deserializer: D) -> Result<(String, u16), D::E
 where
     D: Deserializer<'de>,
 {
-    let s = String::deserialize(deserializer)?;
-    let mut parts = s.split(':');
+    let mut s = String::deserialize(deserializer)?;
 
-    match (parts.next(), parts.next(), parts.next()) {
-        (Some(domain), Some(port), None) => port.parse().map_or_else(
-            |e| Err(DeError::custom(e)),
-            |port| Ok((domain.to_owned(), port)),
-        ),
-        _ => Err(DeError::custom("invalid server address")),
-    }
+    let (domain, port) = s
+        .rsplit_once(':')
+        .ok_or(DeError::custom("invalid server address"))?;
+
+    let port = port.parse().map_err(DeError::custom)?;
+    s.truncate(domain.len());
+
+    Ok((s, port))
 }
 
 pub fn deserialize_password<'de, D>(deserializer: D) -> Result<Arc<[u8]>, D::Error>
