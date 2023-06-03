@@ -8,7 +8,7 @@ use std::{
     str::FromStr,
 };
 
-pub(crate) fn load_certs(path: PathBuf) -> Result<Vec<Certificate>, IoError> {
+pub fn load_certs(path: PathBuf) -> Result<Vec<Certificate>, IoError> {
     let mut file = BufReader::new(File::open(&path)?);
     let mut certs = Vec::new();
 
@@ -25,7 +25,7 @@ pub(crate) fn load_certs(path: PathBuf) -> Result<Vec<Certificate>, IoError> {
     Ok(certs)
 }
 
-pub(crate) fn load_priv_key(path: PathBuf) -> Result<PrivateKey, IoError> {
+pub fn load_priv_key(path: PathBuf) -> Result<PrivateKey, IoError> {
     let mut file = BufReader::new(File::open(&path)?);
     let mut priv_key = None;
 

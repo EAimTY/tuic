@@ -1,5 +1,5 @@
 use super::Connection;
-use crate::{Error, UdpRelayMode};
+use crate::{error::Error, utils::UdpRelayMode};
 use bytes::Bytes;
 use quinn::{RecvStream, SendStream, VarInt};
 use register_count::Register;
@@ -8,7 +8,7 @@ use tokio::time;
 use tuic_quinn::Task;
 
 impl Connection {
-    pub(crate) async fn handle_uni_stream(self, recv: RecvStream, _reg: Register) {
+    pub async fn handle_uni_stream(self, recv: RecvStream, _reg: Register) {
         log::debug!(
             "[{id:#010x}] [{addr}] [{user}] incoming unidirectional stream",
             id = self.id(),
@@ -69,11 +69,7 @@ impl Connection {
         }
     }
 
-    pub(crate) async fn handle_bi_stream(
-        self,
-        (send, recv): (SendStream, RecvStream),
-        _reg: Register,
-    ) {
+    pub async fn handle_bi_stream(self, (send, recv): (SendStream, RecvStream), _reg: Register) {
         log::debug!(
             "[{id:#010x}] [{addr}] [{user}] incoming bidirectional stream",
             id = self.id(),
@@ -122,7 +118,7 @@ impl Connection {
         }
     }
 
-    pub(crate) async fn handle_datagram(self, dg: Bytes) {
+    pub async fn handle_datagram(self, dg: Bytes) {
         log::debug!(
             "[{id:#010x}] [{addr}] [{user}] incoming datagram",
             id = self.id(),

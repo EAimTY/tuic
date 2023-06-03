@@ -10,7 +10,7 @@ use tokio_util::compat::FuturesAsyncReadCompatExt;
 use tuic::Address as TuicAddress;
 
 impl Server {
-    pub(super) async fn handle_associate(
+    pub async fn handle_associate(
         assoc: Associate<associate::NeedReply>,
         assoc_id: u16,
         dual_stack: Option<bool>,
@@ -127,7 +127,7 @@ impl Server {
         }
     }
 
-    pub(super) async fn handle_bind(bind: Bind<bind::NeedFirstReply>) {
+    pub async fn handle_bind(bind: Bind<bind::NeedFirstReply>) {
         let peer_addr = bind.peer_addr().unwrap();
         log::warn!("[socks5] [{peer_addr}] [bind] command not supported");
 
@@ -142,7 +142,7 @@ impl Server {
         }
     }
 
-    pub(super) async fn handle_connect(conn: Connect<connect::NeedReply>, addr: Address) {
+    pub async fn handle_connect(conn: Connect<connect::NeedReply>, addr: Address) {
         let peer_addr = conn.peer_addr().unwrap();
         let target_addr = match addr {
             Address::DomainAddress(domain, port) => TuicAddress::DomainAddress(domain, port),

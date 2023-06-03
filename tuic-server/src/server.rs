@@ -1,6 +1,8 @@
 use crate::{
-    config::Config, connection::DEFAULT_CONCURRENT_STREAMS, utils, CongestionControl, Connection,
-    Error,
+    config::Config,
+    connection::{Connection, DEFAULT_CONCURRENT_STREAMS},
+    error::Error,
+    utils::{self, CongestionControl},
 };
 use quinn::{
     congestion::{BbrConfig, CubicConfig, NewRenoConfig},

@@ -1,7 +1,7 @@
 use crate::{
     config::Relay,
+    error::Error,
     utils::{self, CongestionControl, ServerAddr, UdpRelayMode},
-    Error,
 };
 use crossbeam_utils::atomic::AtomicCell;
 use once_cell::sync::OnceCell;
@@ -32,7 +32,7 @@ static ENDPOINT: OnceCell<Mutex<Endpoint>> = OnceCell::new();
 static CONNECTION: AsyncOnceCell<AsyncMutex<Connection>> = AsyncOnceCell::const_new();
 static TIMEOUT: AtomicCell<Duration> = AtomicCell::new(Duration::from_secs(0));
 
-pub(crate) const ERROR_CODE: VarInt = VarInt::from_u32(0);
+pub const ERROR_CODE: VarInt = VarInt::from_u32(0);
 const DEFAULT_CONCURRENT_STREAMS: u32 = 32;
 
 #[derive(Clone)]

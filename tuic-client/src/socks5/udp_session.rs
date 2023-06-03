@@ -1,4 +1,4 @@
-use crate::Error;
+use crate::error::Error;
 use bytes::Bytes;
 use once_cell::sync::OnceCell;
 use parking_lot::Mutex;
@@ -13,17 +13,17 @@ use std::{
 };
 use tokio::net::UdpSocket;
 
-pub(crate) static UDP_SESSIONS: OnceCell<Mutex<HashMap<u16, UdpSession>>> = OnceCell::new();
+pub static UDP_SESSIONS: OnceCell<Mutex<HashMap<u16, UdpSession>>> = OnceCell::new();
 
 #[derive(Clone)]
-pub(crate) struct UdpSession {
+pub struct UdpSession {
     socket: Arc<AssociatedUdpSocket>,
     assoc_id: u16,
     ctrl_addr: SocketAddr,
 }
 
 impl UdpSession {
-    pub(super) fn new(
+    pub fn new(
         assoc_id: u16,
         ctrl_addr: SocketAddr,
         local_ip: IpAddr,
@@ -72,7 +72,7 @@ impl UdpSession {
         })
     }
 
-    pub(crate) async fn send(&self, pkt: Bytes, src_addr: Address) -> Result<(), Error> {
+    pub async fn send(&self, pkt: Bytes, src_addr: Address) -> Result<(), Error> {
         let src_addr_display = src_addr.to_string();
 
         log::debug!(
@@ -96,7 +96,7 @@ impl UdpSession {
         Ok(())
     }
 
-    pub(crate) async fn recv(&self) -> Result<(Bytes, Address), Error> {
+    pub async fn recv(&self) -> Result<(Bytes, Address), Error> {
         let (pkt, frag, dst_addr, src_addr) = self.socket.recv_from().await?;
 
         if let Ok(connected_addr) = self.socket.peer_addr() {
@@ -126,7 +126,7 @@ impl UdpSession {
         Ok((pkt, dst_addr))
     }
 
-    pub(super) fn local_addr(&self) -> Result<SocketAddr, IoError> {
+    pub fn local_addr(&self) -> Result<SocketAddr, IoError> {
         self.socket.local_addr()
     }
 }

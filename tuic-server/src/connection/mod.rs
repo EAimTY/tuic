@@ -1,5 +1,5 @@
 use self::{authenticated::Authenticated, udp_session::UdpSession};
-use crate::{Error, UdpRelayMode};
+use crate::{error::Error, utils::UdpRelayMode};
 use crossbeam_utils::atomic::AtomicCell;
 use parking_lot::Mutex;
 use quinn::{Connecting, Connection as QuinnConnection, VarInt};
@@ -18,8 +18,8 @@ mod handle_stream;
 mod handle_task;
 mod udp_session;
 
-pub(crate) const ERROR_CODE: VarInt = VarInt::from_u32(0);
-pub(crate) const DEFAULT_CONCURRENT_STREAMS: u32 = 32;
+pub const ERROR_CODE: VarInt = VarInt::from_u32(0);
+pub const DEFAULT_CONCURRENT_STREAMS: u32 = 32;
 
 #[derive(Clone)]
 pub struct Connection {

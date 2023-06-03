@@ -1,5 +1,5 @@
-use super::{UdpSession, ERROR_CODE};
-use crate::{Connection, Error, UdpRelayMode};
+use super::{Connection, UdpSession, ERROR_CODE};
+use crate::{error::Error, utils::UdpRelayMode};
 use bytes::Bytes;
 use std::{
     collections::hash_map::Entry,
@@ -15,7 +15,7 @@ use tuic::Address;
 use tuic_quinn::{Authenticate, Connect, Packet};
 
 impl Connection {
-    pub(super) async fn handle_authenticate(&self, auth: Authenticate) {
+    pub async fn handle_authenticate(&self, auth: Authenticate) {
         log::info!(
             "[{id:#010x}] [{addr}] [{user}] [authenticate] {auth_uuid}",
             id = self.id(),
@@ -25,7 +25,7 @@ impl Connection {
         );
     }
 
-    pub(super) async fn handle_connect(&self, conn: Connect) {
+    pub async fn handle_connect(&self, conn: Connect) {
         let target_addr = conn.addr().to_string();
 
         log::info!(
@@ -79,7 +79,7 @@ impl Connection {
         }
     }
 
-    pub(super) async fn handle_packet(&self, pkt: Packet, mode: UdpRelayMode) {
+    pub async fn handle_packet(&self, pkt: Packet, mode: UdpRelayMode) {
         let assoc_id = pkt.assoc_id();
         let pkt_id = pkt.pkt_id();
         let frag_id = pkt.frag_id();
@@ -151,7 +151,7 @@ impl Connection {
         }
     }
 
-    pub(super) async fn handle_dissociate(&self, assoc_id: u16) {
+    pub async fn handle_dissociate(&self, assoc_id: u16) {
         log::info!(
             "[{id:#010x}] [{addr}] [{user}] [dissociate] [{assoc_id:#06x}]",
             id = self.id(),
@@ -164,7 +164,7 @@ impl Connection {
         }
     }
 
-    pub(super) async fn handle_heartbeat(&self) {
+    pub async fn handle_heartbeat(&self) {
         log::info!(
             "[{id:#010x}] [{addr}] [{user}] [heartbeat]",
             id = self.id(),
@@ -173,7 +173,7 @@ impl Connection {
         );
     }
 
-    pub(super) async fn relay_packet(self, pkt: Bytes, addr: Address, assoc_id: u16) {
+    pub async fn relay_packet(self, pkt: Bytes, addr: Address, assoc_id: u16) {
         let addr_display = addr.to_string();
 
         log::info!(

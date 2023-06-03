@@ -10,7 +10,7 @@ use std::{
 use uuid::Uuid;
 
 #[derive(Clone)]
-pub(super) struct Authenticated(Arc<AuthenticatedInner>);
+pub struct Authenticated(Arc<AuthenticatedInner>);
 
 struct AuthenticatedInner {
     uuid: AtomicCell<Option<Uuid>>,
@@ -18,14 +18,14 @@ struct AuthenticatedInner {
 }
 
 impl Authenticated {
-    pub(super) fn new() -> Self {
+    pub fn new() -> Self {
         Self(Arc::new(AuthenticatedInner {
             uuid: AtomicCell::new(None),
             broadcast: Mutex::new(Vec::new()),
         }))
     }
 
-    pub(super) fn set(&self, uuid: Uuid) {
+    pub fn set(&self, uuid: Uuid) {
         self.0.uuid.store(Some(uuid));
 
         for waker in self.0.broadcast.lock().drain(..) {
@@ -33,7 +33,7 @@ impl Authenticated {
         }
     }
 
-    pub(super) fn get(&self) -> Option<Uuid> {
+    pub fn get(&self) -> Option<Uuid> {
         self.0.uuid.load()
     }
 }

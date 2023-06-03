@@ -1,4 +1,5 @@
-use crate::{Connection, Error};
+use super::Connection;
+use crate::error::Error;
 use bytes::Bytes;
 use parking_lot::Mutex;
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
@@ -14,7 +15,7 @@ use tokio::{
 use tuic::Address;
 
 #[derive(Clone)]
-pub(super) struct UdpSession(Arc<UdpSessionInner>);
+pub struct UdpSession(Arc<UdpSessionInner>);
 
 struct UdpSessionInner {
     assoc_id: u16,
@@ -26,7 +27,7 @@ struct UdpSessionInner {
 }
 
 impl UdpSession {
-    pub(super) fn new(
+    pub fn new(
         conn: Connection,
         assoc_id: u16,
         udp_relay_ipv6: bool,
@@ -125,7 +126,7 @@ impl UdpSession {
         Ok(session)
     }
 
-    pub(super) async fn send(&self, pkt: Bytes, addr: SocketAddr) -> Result<(), Error> {
+    pub async fn send(&self, pkt: Bytes, addr: SocketAddr) -> Result<(), Error> {
         let socket = match addr {
             SocketAddr::V4(_) => &self.0.socket_v4,
             SocketAddr::V6(_) => self
@@ -160,7 +161,7 @@ impl UdpSession {
         }
     }
 
-    pub(super) fn close(&self) {
+    pub fn close(&self) {
         let _ = self.0.close.lock().take().unwrap().send(());
     }
 }

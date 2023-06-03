@@ -21,8 +21,6 @@ pub enum Error {
     Model(#[from] ModelError),
     #[error("duplicated authentication")]
     DuplicatedAuth,
-    #[error("token length too short")]
-    ExportKeyingMaterial,
     #[error("authentication failed: {0}")]
     AuthFailed(Uuid),
     #[error("received packet from unexpected source")]

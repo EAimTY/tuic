@@ -1,5 +1,5 @@
 use super::Connection;
-use crate::{socks5::UDP_SESSIONS as SOCKS5_UDP_SESSIONS, utils::UdpRelayMode, Error};
+use crate::{error::Error, socks5::UDP_SESSIONS as SOCKS5_UDP_SESSIONS, utils::UdpRelayMode};
 use bytes::Bytes;
 use socks5_proto::Address as Socks5Address;
 use std::time::Duration;
@@ -8,7 +8,7 @@ use tuic::Address;
 use tuic_quinn::{Connect, Packet};
 
 impl Connection {
-    pub(super) async fn authenticate(self) {
+    pub async fn authenticate(self) {
         log::debug!("[relay] [authenticate] sending authentication");
 
         match self
@@ -74,7 +74,7 @@ impl Connection {
         }
     }
 
-    pub(super) async fn heartbeat(self, heartbeat: Duration) {
+    pub async fn heartbeat(self, heartbeat: Duration) {
         loop {
             time::sleep(heartbeat).await;
 
@@ -93,7 +93,7 @@ impl Connection {
         }
     }
 
-    pub(super) async fn handle_packet(pkt: Packet) {
+    pub async fn handle_packet(pkt: Packet) {
         let assoc_id = pkt.assoc_id();
         let pkt_id = pkt.pkt_id();
 

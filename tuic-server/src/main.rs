@@ -1,6 +1,15 @@
+use crate::{
+    config::{Config, ConfigError},
+    server::Server,
+};
 use env_logger::Builder as LoggerBuilder;
 use std::{env, process};
-use tuic_server::{Config, ConfigError, Server};
+
+mod config;
+mod connection;
+mod error;
+mod server;
+mod utils;
 
 #[tokio::main]
 async fn main() {

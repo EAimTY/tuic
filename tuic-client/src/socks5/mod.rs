@@ -1,4 +1,4 @@
-use crate::{config::Local, Error};
+use crate::{config::Local, error::Error};
 use once_cell::sync::OnceCell;
 use parking_lot::Mutex;
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
@@ -19,7 +19,7 @@ use tokio::net::TcpListener;
 mod handle_task;
 mod udp_session;
 
-pub(crate) use self::udp_session::UDP_SESSIONS;
+pub use self::udp_session::UDP_SESSIONS;
 
 static SERVER: OnceCell<Server> = OnceCell::new();
 

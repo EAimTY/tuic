@@ -1,4 +1,4 @@
-use crate::Error;
+use crate::error::Error;
 use rustls::{Certificate, RootCertStore};
 use rustls_pemfile::Item;
 use std::{
@@ -10,10 +10,7 @@ use std::{
 };
 use tokio::net;
 
-pub(crate) fn load_certs(
-    paths: Vec<PathBuf>,
-    disable_native: bool,
-) -> Result<RootCertStore, Error> {
+pub fn load_certs(paths: Vec<PathBuf>, disable_native: bool) -> Result<RootCertStore, Error> {
     let mut certs = RootCertStore::empty();
 
     for path in &paths {

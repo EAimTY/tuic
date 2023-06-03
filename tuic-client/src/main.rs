@@ -1,6 +1,16 @@
+use crate::{
+    config::{Config, ConfigError},
+    connection::Connection,
+    socks5::Server as Socks5Server,
+};
 use env_logger::Builder as LoggerBuilder;
 use std::{env, process};
-use tuic_client::{Config, ConfigError, Connection, Socks5Server};
+
+mod config;
+mod connection;
+mod error;
+mod socks5;
+mod utils;
 
 #[tokio::main]
 async fn main() {
