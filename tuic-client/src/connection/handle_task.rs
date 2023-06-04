@@ -1,6 +1,7 @@
 use super::Connection;
 use crate::{error::Error, socks5::UDP_SESSIONS as SOCKS5_UDP_SESSIONS, utils::UdpRelayMode};
 use bytes::Bytes;
+use quinn::ZeroRttAccepted;
 use socks5_proto::Address as Socks5Address;
 use std::time::Duration;
 use tokio::time;
@@ -8,7 +9,12 @@ use tuic::Address;
 use tuic_quinn::{Connect, Packet};
 
 impl Connection {
-    pub async fn authenticate(self) {
+    pub async fn authenticate(self, zero_rtt_accepted: Option<ZeroRttAccepted>) {
+        if let Some(zero_rtt_accepted) = zero_rtt_accepted {
+            log::debug!("[relay] [authenticate] waiting for connection to be fully established");
+            zero_rtt_accepted.await;
+        }
+
         log::debug!("[relay] [authenticate] sending authentication");
 
         match self
