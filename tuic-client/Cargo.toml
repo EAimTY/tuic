@@ -1,6 +1,6 @@
 [package]
 name = "tuic-client"
-version = "1.0.0-beta0"
+version = "1.0.0-rc0"
 authors = ["EAimTY <ea.imty@gmail.com>"]
 description = "Minimalistic TUIC client implementation as a reference"
 categories = ["network-programming"]
@@ -17,8 +17,8 @@ crossbeam-utils = { version = "0.8.15", default-features = false, features = ["s
 env_logger = { version = "0.10.0", default-features = false, features = ["humantime"] }
 humantime = { version = "2.1.0", default-features = false }
 lexopt = { version = "0.3.0", default-features = false }
-log = { version = "0.4.17", default-features = false, features = ["serde", "std"] }
-once_cell = { version = "1.17.1", default-features = false, features = ["parking_lot", "std"] }
+log = { version = "0.4.18", default-features = false, features = ["serde", "std"] }
+once_cell = { version = "1.17.2", default-features = false, features = ["parking_lot", "std"] }
 parking_lot = { version = "0.12.1", default-features = false, features = ["send_guard"] }
 quinn = { version = "0.10.1", default-features = false, features = ["futures-io", "runtime-tokio", "tls-rustls"] }
 register-count = { version = "0.1.0", default-features = false, features = ["std"] }
@@ -31,7 +31,7 @@ socket2 = { version = "0.5.3", default-features = false }
 socks5-proto = { version = "0.3.3", default-features = false }
 socks5-server = { version = "0.8.3", default-features = false }
 thiserror = { version = "1.0.40", default-features = false }
-tokio = { version = "1.28.1", default-features = false, features = ["io-util", "macros", "net", "parking_lot", "rt-multi-thread", "time"] }
+tokio = { version = "1.28.2", default-features = false, features = ["io-util", "macros", "net", "parking_lot", "rt-multi-thread", "time"] }
 tokio-util = { version = "0.7.8", default-features = false, features = ["compat"] }
 tuic = { path = "../tuic", default-features = false }
 tuic-quinn = { path = "../tuic-quinn", default-features = false }
