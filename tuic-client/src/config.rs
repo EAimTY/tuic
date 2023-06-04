@@ -277,8 +277,8 @@ pub fn deserialize_optional_bytes<'de, D>(deserializer: D) -> Result<Option<Vec<
 where
     D: Deserializer<'de>,
 {
-    let s = Option::<String>::deserialize(deserializer)?;
-    Ok(s.map(|s| s.into_bytes()))
+    let s = String::deserialize(deserializer)?;
+    Ok(Some(s.into_bytes()))
 }
 
 pub fn deserialize_duration<'de, D>(deserializer: D) -> Result<Duration, D::Error>
