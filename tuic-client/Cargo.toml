@@ -1,6 +1,6 @@
 [package]
 name = "tuic-client"
-version = "1.0.0-rc0"
+version = "1.0.0"
 authors = ["EAimTY <ea.imty@gmail.com>"]
 description = "Minimalistic TUIC client implementation as a reference"
 categories = ["network-programming"]
@@ -18,14 +18,14 @@ env_logger = { version = "0.10.0", default-features = false, features = ["humant
 humantime = { version = "2.1.0", default-features = false }
 lexopt = { version = "0.3.0", default-features = false }
 log = { version = "0.4.18", default-features = false, features = ["serde", "std"] }
-once_cell = { version = "1.17.2", default-features = false, features = ["parking_lot", "std"] }
+once_cell = { version = "1.18.0", default-features = false, features = ["parking_lot", "std"] }
 parking_lot = { version = "0.12.1", default-features = false, features = ["send_guard"] }
 quinn = { version = "0.10.1", default-features = false, features = ["futures-io", "runtime-tokio", "tls-rustls"] }
 register-count = { version = "0.1.0", default-features = false, features = ["std"] }
 rustls = { version = "0.21.1", default-features = false, features = ["quic"] }
 rustls-native-certs = { version = "0.6.2", default-features = false }
 rustls-pemfile = { version = "1.0.2", default-features = false }
-serde = { version = "1.0.163", default-features = false, features = ["derive", "std"] }
+serde = { version = "1.0.164", default-features = false, features = ["derive", "std"] }
 serde_json = { version = "1.0.96", default-features = false, features = ["std"] }
 socket2 = { version = "0.5.3", default-features = false }
 socks5-proto = { version = "0.3.3", default-features = false }
