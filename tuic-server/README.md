@@ -5,6 +5,12 @@ Minimalistic TUIC server implementation as a reference
 [![Version](https://img.shields.io/crates/v/tuic-server.svg?style=flat)](https://crates.io/crates/tuic-server)
 [![License](https://img.shields.io/crates/l/tuic-server.svg?style=flat)](https://github.com/EAimTY/tuic/blob/dev/LICENSE)
 
+# Overview
+
+The main goal of this TUIC server implementation is not to provide a full-featured, production-ready TUIC server, but to provide a minimal reference for the TUIC protocol server implementation.
+
+This implementation only contains the most basic requirements of a functional TUIC protocol server. If you are looking for features like outbound-control, DNS-caching, etc., try other implementations, or implement them yourself.
+
 ## Usage
 
 Download the latest binary from [releases](https://github.com/EAimTY/tuic/releases).
@@ -102,12 +108,6 @@ tuic-server -c PATH/TO/CONFIG
     "log_level": "warn"
 }
 ```
-
-## Opinions on Advanced Features
-
-This TUIC server implementation is intended to be minimalistic. It is mainly used as a reference and verification of the TUIC protocol specification.
-
-This implementation only contains the most basic requirements of a functional TUIC protocol server. It does not includes any advanced features, such as outbound control, obfuscation, etc. If you want them, try other implementations, or implement them yourself.
 
 ## License
 

@@ -10,7 +10,7 @@ A thin layer on top of [quinn](https://github.com/quinn-rs/quinn) to provide fun
 
 This crate provides a wrapper [`Connection`](https://docs.rs/tuic-quinn/latest/tuic_quinn/struct.Connection.html) around [`quinn::Connection`](https://docs.rs/quinn/latest/quinn/struct.Connection.html). It can be used to perform TUIC operations.
 
-Note that there is no TUIC protocol flow state machine abstraction in this crate. You need to implement it yourself.
+Note that there is no state machine abstraction for the TUIC protocol flow in this crate. You need to implement it yourself.
 
 ## License
 

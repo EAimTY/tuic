@@ -6,7 +6,7 @@ Delicately-TUICed 0-RTT proxy protocol
 
 ## Introduction
 
-TUIC is a proxy protocol focusing on the simplicity. It aims to minimize the additional handshake latency caused by relaying as much as possible
+TUIC is a proxy protocol focusing on minimize the additional handshake latency caused by relaying as much as possible, as well as keeping the protocol itself being simple and easy to implement
 
 TUIC is originally designed to be used on top of the [QUIC](https://en.wikipedia.org/wiki/QUIC) protocol, but you can use it with any other protocol, e.g. TCP, in theory
 
@@ -19,10 +19,12 @@ When paired with QUIC, TUIC can achieve:
     - `native`: Having characteristics of native UDP mechanism
     - `quic`: Transferring UDP packets losslessly using QUIC streams
 - Fully multiplexed
-- All the advantages of QUIC:
+- All the advantages of QUIC, including but not limited to:
     - Bidirectional user-space congestion control
-    - Connection migration
     - Optional 0-RTT connection handshake
+    - Connection migration
+
+Fully-detailed TUIC protocol specification can be found in [SPEC.md](https://github.com/EAimTY/tuic/blob/dev/SPEC.md)
 
 ## Overview
 
@@ -35,4 +37,6 @@ There are 4 crates provided in this repository:
 
 ## License
 
-GNU General Public License v3.0
+Code in this repository is licensed under [GNU General Public License v3.0](https://github.com/EAimTY/tuic/blob/dev/LICENSE)
+
+However, the concept of the TUIC protocol is license-free. You can implement, modify, and redistribute the protocol without any restrictions, even for commercial use

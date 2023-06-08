@@ -8,22 +8,22 @@ Delicately-TUICed 0-RTT proxy protocol
 
 ## Overview
 
-The TUIC protocol specification can be found in [SPEC.md](https://github.com/EAimTY/tuic/blob/dev/tuic/SPEC.md). This crate provides the low-level abstract of the TUIC protocol in Rust.
+The TUIC protocol specification can be found in [SPEC.md](https://github.com/EAimTY/tuic/blob/dev/SPEC.md). This crate provides the low-level abstract of the TUIC protocol in Rust.
 
 Some optional features that can be enabled:
 
-- `model` - Provides a model of the TUIC protocol, with packet fragmentation and task counter built-in. No I/O operation is involved.
+- `model` - Provides a connection model abstraction of the TUIC protocol, with packet fragmentation and task counter built-in. No I/O operation is involved.
 - `marshal` - Provides methods for (un)marsalling the protocol in sync flavor.
 - `async_marshal` - Provides methods for (un)marsalling the protocol in async flavor.
 
 The root of the protocol abstraction is the [`Header`](https://docs.rs/tuic/latest/tuic/enum.Header.html).
 
-## Semantic Versioning Syntax
+## Versioning Syntax
 
 ```
 5.0.0-rc0
 ^ ^ ^  ^
-| | |  |- Pre-release version
+| | |  |- Pre-release version, considered to be unstable
 | | |---- Patch version, no breaking changes
 | |------ Major version of a specific TUIC protocol version, may have breaking changes
 |-------- TUIC protocol version
@@ -37,4 +37,6 @@ tuic = "5.0.*"
 
 ## License
 
-GNU General Public License v3.0
+This library is licensed under [GNU General Public License v3.0](https://github.com/EAimTY/tuic/blob/dev/LICENSE)
+
+However, the concept of the TUIC protocol is license-free. You can implement, modify, and redistribute the protocol without any restrictions, even for commercial use
