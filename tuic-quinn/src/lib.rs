@@ -177,9 +177,10 @@ impl Connection<side::Client> {
             Header::Connect(_) => Err(Error::BadCommandUniStream("connect", recv)),
             Header::Packet(pkt) => {
                 let assoc_id = pkt.assoc_id();
+                let pkt_id = pkt.pkt_id();
                 self.model
                     .recv_packet(pkt)
-                    .map_or(Err(Error::InvalidUdpSession(assoc_id)), |pkt| {
+                    .map_or(Err(Error::InvalidUdpSession(assoc_id, pkt_id)), |pkt| {
                         Ok(Task::Packet(Packet::new(pkt, PacketSource::Quic(recv))))
                     })
             }
@@ -230,6 +231,7 @@ impl Connection<side::Client> {
             Header::Connect(_) => Err(Error::BadCommandDatagram("connect", dg.into_inner())),
             Header::Packet(pkt) => {
                 let assoc_id = pkt.assoc_id();
+                let pkt_id = pkt.pkt_id();
                 if let Some(pkt) = self.model.recv_packet(pkt) {
                     let pos = dg.position() as usize;
                     let mut buf = dg.into_inner();
@@ -240,7 +242,7 @@ impl Connection<side::Client> {
                         Err(Error::PayloadLength(pkt.size() as usize, buf.len() - pos))
                     }
                 } else {
-                    Err(Error::InvalidUdpSession(assoc_id))
+                    Err(Error::InvalidUdpSession(assoc_id, pkt_id))
                 }
             }
             Header::Dissociate(_) => Err(Error::BadCommandDatagram("dissociate", dg.into_inner())),
@@ -571,8 +573,8 @@ pub enum Error {
     SendDatagram(#[from] SendDatagramError),
     #[error("expecting payload length {0} but got {1}")]
     PayloadLength(usize, usize),
-    #[error("invalid udp session {0}")]
-    InvalidUdpSession(u16),
+    #[error("packet {1:#06x} on invalid udp session {0:#06x}")]
+    InvalidUdpSession(u16, u16),
     #[error(transparent)]
     Assemble(#[from] AssembleError),
     #[error("error unmarshaling uni_stream: {0}")]
