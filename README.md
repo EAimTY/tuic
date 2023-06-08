@@ -2,7 +2,7 @@
 
 Delicately-TUICed 0-RTT proxy protocol
 
-**Warning: TUIC's [dev](https://github.com/EAimTY/tuic/tree/dev) branch is under heavy development. For end-user, please check out the latest released branch**
+**Warning: TUIC's [dev](https://github.com/EAimTY/tuic/tree/dev) branch is under heavy development. For end-user, please check out the latest released tag**
 
 ## Introduction
 
