@@ -136,9 +136,8 @@ jobs:
       - name: Get package version on Windows
         if: runner.os == 'Windows'
         run: |
-          chcp 65001
-          echo "version=$(sed -rn 's/^version = \"(.*)\"/\1/p' ${{ inputs.PACKAGE_NAME }}/Cargo.toml)" >> $env:GITHUB_ENV
-          echo "prerelease=$((sed -rn 's/^version = \"(.*)\"/\1/p' ${{ inputs.PACKAGE_NAME }}/Cargo.toml | grep -qF '-') && echo "true" || echo "false")" >> $env:GITHUB_ENV
+          echo "version=$(Get-Content ${{ inputs.PACKAGE_NAME }}/Cargo.toml | Select-String -Pattern '^version = \"(.*)\"' | ForEach-Object { $_.Matches.Groups[1].Value })" >> $env:GITHUB_ENV
+          echo "prerelease=$((Get-Content ${{ inputs.PACKAGE_NAME }}/Cargo.toml | Select-String -Pattern '^version = \"(.*)\"' | ForEach-Object { $_.Matches.Groups[1].Value } | Select-String -Quiet '-') && echo "false" || echo "true")" >> $env:GITHUB_ENV
 
       - name: Build
         uses: actions-rs/cargo@v1
