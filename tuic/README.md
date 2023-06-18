@@ -20,7 +20,7 @@ The root of the protocol abstraction is the [`Header`](https://docs.rs/tuic/late
 
 ## Versioning Syntax
 
-```
+```text
 5.0.0-rc0
 ^ ^ ^  ^
 | | |  |- Pre-release version, considered to be unstable
