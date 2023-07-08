@@ -106,7 +106,7 @@ impl Server {
 
                 match res {
                     Ok(()) => {}
-                    Err(err) => log::warn!("[socks5] [{peer_addr}] [associate] [{assoc_id:#06x}] failed stoping UDP relaying session: {err}"),
+                    Err(err) => log::warn!("[socks5] [{peer_addr}] [associate] [{assoc_id:#06x}] failed stopping UDP relaying session: {err}"),
                 }
             }
             Err(err) => {
