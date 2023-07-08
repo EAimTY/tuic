@@ -577,11 +577,11 @@ pub enum Error {
     InvalidUdpSession(u16, u16),
     #[error(transparent)]
     Assemble(#[from] AssembleError),
-    #[error("error unmarshaling uni_stream: {0}")]
+    #[error("error unmarshalling uni_stream: {0}")]
     UnmarshalUniStream(UnmarshalError, RecvStream),
-    #[error("error unmarshaling bi_stream: {0}")]
+    #[error("error unmarshalling bi_stream: {0}")]
     UnmarshalBiStream(UnmarshalError, SendStream, RecvStream),
-    #[error("error unmarshaling datagram: {0}")]
+    #[error("error unmarshalling datagram: {0}")]
     UnmarshalDatagram(UnmarshalError, Bytes),
     #[error("bad command `{0}` from uni_stream")]
     BadCommandUniStream(&'static str, RecvStream),
