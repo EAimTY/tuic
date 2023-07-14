@@ -22,7 +22,7 @@ once_cell = { version = "1.18.0", default-features = false, features = ["parking
 parking_lot = { version = "0.12.1", default-features = false, features = ["send_guard"] }
 quinn = { version = "0.10.1", default-features = false, features = ["futures-io", "runtime-tokio", "tls-rustls"] }
 register-count = { version = "0.1.0", default-features = false, features = ["std"] }
-rustls = { version = "0.21.1", default-features = false, features = ["quic"] }
+rustls = { version = "0.21.1", default-features = false, features = ["quic", "dangerous_configuration"] }
 rustls-native-certs = { version = "0.6.2", default-features = false }
 rustls-pemfile = { version = "1.0.2", default-features = false }
 serde = { version = "1.0.164", default-features = false, features = ["derive", "std"] }

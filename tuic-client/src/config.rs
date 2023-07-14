@@ -54,6 +54,9 @@ pub struct Relay {
     #[serde(default = "default::relay::certificates")]
     pub certificates: Vec<PathBuf>,
 
+    #[serde(default)]
+    pub certificate_pinned: PathBuf,
+
     #[serde(
         default = "default::relay::udp_relay_mode",
         deserialize_with = "deserialize_from_str"

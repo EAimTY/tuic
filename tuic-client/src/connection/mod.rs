@@ -12,7 +12,7 @@ use quinn::{
     TokioRuntime, TransportConfig, VarInt, ZeroRttAccepted,
 };
 use register_count::Counter;
-use rustls::{version, ClientConfig as RustlsClientConfig};
+use rustls::{client::ServerCertVerifier, version, ClientConfig as RustlsClientConfig};
 use std::{
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket},
     sync::{atomic::AtomicU32, Arc},
@@ -48,6 +48,33 @@ pub struct Connection {
     max_concurrent_bi_streams: Arc<AtomicU32>,
 }
 
+struct CertVerifier {
+    cert: rustls::Certificate,
+}
+
+impl ServerCertVerifier for CertVerifier {
+    fn verify_server_cert(
+        &self,
+        end_entity: &rustls::Certificate,
+        _: &[rustls::Certificate],
+        _: &rustls::ServerName,
+        _: &mut dyn Iterator<Item = &[u8]>,
+        _: &[u8],
+        _: std::time::SystemTime,
+    ) -> Result<rustls::client::ServerCertVerified, rustls::Error> {
+        if &self.cert == end_entity {
+            Ok(rustls::client::ServerCertVerified::assertion())
+        } else {
+            Err(rustls::Error::InvalidCertificate(
+                rustls::CertificateError::Other(Arc::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "Certificate's digest doesn't match with pre-set one",
+                ))),
+            ))
+        }
+    }
+}
+
 impl Connection {
     pub fn set_config(cfg: Relay) -> Result<(), Error> {
         let certs = utils::load_certs(cfg.certificates, cfg.disable_native_certs)?;
@@ -59,6 +86,21 @@ impl Connection {
             .unwrap()
             .with_root_certificates(certs)
             .with_no_client_auth();
+
+        if !(cfg.certificate_pinned.as_os_str().is_empty()) {
+            let mut crypto_dangerous = crypto.dangerous();
+
+            let mut reader = std::io::BufReader::new(std::fs::File::open(cfg.certificate_pinned)?);
+            if let Some(rustls_pemfile::Item::X509Certificate(cert)) =
+                rustls_pemfile::read_one(&mut reader)?
+            {
+                crypto_dangerous.set_certificate_verifier(Arc::new(CertVerifier {
+                    cert: rustls::Certificate(cert),
+                }));
+            }
+
+            crypto = crypto_dangerous.cfg.to_owned();
+        }
 
         crypto.alpn_protocols = cfg.alpn;
         crypto.enable_early_data = true;
