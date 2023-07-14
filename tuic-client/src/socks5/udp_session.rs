@@ -100,6 +100,26 @@ impl UdpSession {
         let (pkt, frag, dst_addr, src_addr) = self.socket.recv_from().await?;
 
         if let Ok(connected_addr) = self.socket.peer_addr() {
+            let connected_addr = match connected_addr {
+                SocketAddr::V4(addr) => {
+                    if let SocketAddr::V6(_) = src_addr {
+                        SocketAddr::new(addr.ip().to_ipv6_mapped().into(), addr.port())
+                    } else {
+                        connected_addr
+                    }
+                }
+                SocketAddr::V6(addr) => {
+                    if let SocketAddr::V4(_) = src_addr {
+                        if let Some(ip) = addr.ip().to_ipv4_mapped() {
+                            SocketAddr::new(IpAddr::V4(ip), addr.port())
+                        } else {
+                            connected_addr
+                        }
+                    } else {
+                        connected_addr
+                    }
+                }
+            };
             if src_addr != connected_addr {
                 Err(IoError::new(
                     ErrorKind::Other,
