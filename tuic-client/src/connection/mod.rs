@@ -62,14 +62,11 @@ impl ServerCertVerifier for CertVerifier {
         _: &[u8],
         _: std::time::SystemTime,
     ) -> Result<rustls::client::ServerCertVerified, rustls::Error> {
-        if &self.cert == end_entity {
+        if constant_time_eq::constant_time_eq(&self.cert.0, &end_entity.0) {
             Ok(rustls::client::ServerCertVerified::assertion())
         } else {
             Err(rustls::Error::InvalidCertificate(
-                rustls::CertificateError::Other(Arc::new(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    "Certificate's digest doesn't match with pre-set one",
-                ))),
+                rustls::CertificateError::UnknownIssuer,
             ))
         }
     }
@@ -98,8 +95,6 @@ impl Connection {
                     cert: rustls::Certificate(cert),
                 }));
             }
-
-            crypto = crypto_dangerous.cfg.to_owned();
         }
 
         crypto.alpn_protocols = cfg.alpn;
