@@ -264,11 +264,14 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.next_frag_id < self.frag_total {
-            let pkt = PacketHeader::new(0, 0, 0, 0, 0, self.addr.take());
-
-            let payload_size = self.max_pkt_size - pkt.len();
+            let header_ref = Header::Packet(PacketHeader::new(0, 0, 0, 0, 0, self.addr.take()));
+            let payload_size = self.max_pkt_size - header_ref.len();
             let next_frag_end =
                 (self.next_frag_start + payload_size).min(self.payload.as_ref().len());
+
+            let Header::Packet(pkt) = header_ref else {
+                unreachable!()
+            };
 
             let (_, _, _, _, _, addr) = pkt.into();
 
@@ -277,16 +280,22 @@ where
                 self.pkt_id,
                 self.frag_total,
                 self.next_frag_id,
-                (next_frag_end - self.next_frag_start) as u16,
+                // (next_frag_end - self.next_frag_start) as u16,
+                next_frag_end.saturating_sub(self.next_frag_start) as u16,
                 addr,
             ));
 
-            let payload = if self.next_frag_start != 0 {
-                let payload_ptr = &(self.payload.as_ref()[self.next_frag_start]) as *const u8;
-                unsafe { slice::from_raw_parts(payload_ptr, next_frag_end - self.next_frag_start) }
-            } else {
-                &[][..]
+            let payload_ref = self.payload.as_ref();
+
+            let payload = match (self.next_frag_start, next_frag_end) {
+                // SAFETY: Both offset and length should be within the payload_ref.len(),
+                (offset, len) if offset < payload_ref.len() && len <= payload_ref.len() => {
+                    let ptr = &payload_ref[offset] as *const u8;
+                    unsafe { slice::from_raw_parts(ptr, len.saturating_sub(offset)) }
+                }
+                _ => &[][..],
             };
+
             self.next_frag_id += 1;
             self.next_frag_start = next_frag_end;
 
