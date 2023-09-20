@@ -12,6 +12,10 @@ use quinn::{
     TokioRuntime, TransportConfig, VarInt, ZeroRttAccepted,
 };
 use register_count::Counter;
+use ring::{
+    constant_time::verify_slices_are_equal,
+    digest::{digest, SHA256},
+};
 use rustls::{client::ServerCertVerifier, version, ClientConfig as RustlsClientConfig};
 use std::{
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket},
@@ -49,7 +53,7 @@ pub struct Connection {
 }
 
 struct CertVerifier {
-    cert: rustls::Certificate,
+    hash: Vec<u8>,
 }
 
 impl ServerCertVerifier for CertVerifier {
@@ -62,7 +66,7 @@ impl ServerCertVerifier for CertVerifier {
         _: &[u8],
         _: std::time::SystemTime,
     ) -> Result<rustls::client::ServerCertVerified, rustls::Error> {
-        if constant_time_eq::constant_time_eq(&self.cert.0, &end_entity.0) {
+        if Ok(()) == verify_slices_are_equal(digest(&SHA256, &end_entity.0).as_ref(), &self.hash) {
             Ok(rustls::client::ServerCertVerified::assertion())
         } else {
             Err(rustls::Error::InvalidCertificate(
@@ -84,16 +88,11 @@ impl Connection {
             .with_root_certificates(certs)
             .with_no_client_auth();
 
-        if !(cfg.certificate_pinned.as_os_str().is_empty()) {
+        if !(cfg.certificate_hash.is_empty()) {
             let mut crypto_dangerous = crypto.dangerous();
 
-            let mut reader = std::io::BufReader::new(std::fs::File::open(cfg.certificate_pinned)?);
-            if let Some(rustls_pemfile::Item::X509Certificate(cert)) =
-                rustls_pemfile::read_one(&mut reader)?
-            {
-                crypto_dangerous.set_certificate_verifier(Arc::new(CertVerifier {
-                    cert: rustls::Certificate(cert),
-                }));
+            if let Ok(hash) = hex::decode(cfg.certificate_hash) {
+                crypto_dangerous.set_certificate_verifier(Arc::new(CertVerifier { hash }));
             }
         }
 

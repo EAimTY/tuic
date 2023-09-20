@@ -55,7 +55,7 @@ pub struct Relay {
     pub certificates: Vec<PathBuf>,
 
     #[serde(default)]
-    pub certificate_pinned: PathBuf,
+    pub certificate_hash: String,
 
     #[serde(
         default = "default::relay::udp_relay_mode",

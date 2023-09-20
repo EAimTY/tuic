@@ -2,11 +2,19 @@ use crate::utils::CongestionControl;
 use humantime::Duration as HumanDuration;
 use lexopt::{Arg, Error as ArgumentError, Parser};
 use log::LevelFilter;
+use ring::digest::{digest, SHA256};
 use serde::{de::Error as DeError, Deserialize, Deserializer};
 use serde_json::Error as SerdeError;
 use std::{
-    collections::HashMap, env::ArgsOs, fmt::Display, fs::File, io::Error as IoError,
-    net::SocketAddr, path::PathBuf, str::FromStr, time::Duration,
+    collections::HashMap,
+    env::ArgsOs,
+    fmt::Display,
+    fs::File,
+    io::{BufReader, Error as IoError},
+    net::SocketAddr,
+    path::PathBuf,
+    str::FromStr,
+    time::Duration,
 };
 use thiserror::Error;
 use uuid::Uuid;
@@ -110,6 +118,17 @@ impl Config {
                     return Err(ConfigError::Version(env!("CARGO_PKG_VERSION")))
                 }
                 Arg::Short('h') | Arg::Long("help") => return Err(ConfigError::Help(HELP_MSG)),
+                Arg::Long("hash") => {
+                    let mut reader = BufReader::new(File::open(parser.value()?)?);
+
+                    if let Some(rustls_pemfile::Item::X509Certificate(cert)) =
+                        rustls_pemfile::read_one(&mut reader)?
+                    {
+                        return Err(ConfigError::CertHash(
+                            hex::encode(digest(&SHA256, &cert)).to_string(),
+                        ));
+                    }
+                }
                 _ => return Err(ConfigError::Argument(arg.unexpected())),
             }
         }
@@ -240,4 +259,6 @@ pub enum ConfigError {
     Io(#[from] IoError),
     #[error(transparent)]
     Serde(#[from] SerdeError),
+    #[error("{0}")]
+    CertHash(String),
 }

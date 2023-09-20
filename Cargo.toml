@@ -1,5 +1,6 @@
 [workspace]
 members = ["tuic", "tuic-quinn", "tuic-server", "tuic-client"]
+resolver = "2"
 
 [profile.release]
 lto = true
