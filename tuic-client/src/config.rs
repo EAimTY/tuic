@@ -78,6 +78,9 @@ pub struct Relay {
     #[serde(default = "default::relay::disable_sni")]
     pub disable_sni: bool,
 
+    #[serde(default)] //false
+    pub skip_cert_verify: bool,
+
     #[serde(
         default = "default::relay::timeout",
         deserialize_with = "deserialize_duration"

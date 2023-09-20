@@ -12,7 +12,7 @@ use quinn::{
     TokioRuntime, TransportConfig, VarInt, ZeroRttAccepted,
 };
 use register_count::Counter;
-use rustls::{version, ClientConfig as RustlsClientConfig};
+use rustls::{client::ServerCertVerifier, version, ClientConfig as RustlsClientConfig};
 use std::{
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket},
     sync::{atomic::AtomicU32, Arc},
@@ -48,6 +48,21 @@ pub struct Connection {
     max_concurrent_bi_streams: Arc<AtomicU32>,
 }
 
+struct SkipVerify;
+impl ServerCertVerifier for SkipVerify {
+    fn verify_server_cert(
+        &self,
+        _end_entity: &rustls::Certificate,
+        _intermediates: &[rustls::Certificate],
+        _server_name: &rustls::ServerName,
+        _scts: &mut dyn Iterator<Item = &[u8]>,
+        _ocsp_response: &[u8],
+        _now: std::time::SystemTime,
+    ) -> Result<rustls::client::ServerCertVerified, rustls::Error> {
+        Ok(rustls::client::ServerCertVerified::assertion())
+    }
+}
+
 impl Connection {
     pub fn set_config(cfg: Relay) -> Result<(), Error> {
         let certs = utils::load_certs(cfg.certificates, cfg.disable_native_certs)?;
@@ -59,6 +74,11 @@ impl Connection {
             .unwrap()
             .with_root_certificates(certs)
             .with_no_client_auth();
+        if cfg.skip_cert_verify {
+            crypto
+                .dangerous()
+                .set_certificate_verifier(Arc::new(SkipVerify));
+        }
 
         crypto.alpn_protocols = cfg.alpn;
         crypto.enable_early_data = true;
