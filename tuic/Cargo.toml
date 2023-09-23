@@ -17,7 +17,7 @@ marshal = ["bytes", "thiserror"]
 model = ["parking_lot", "register-count", "thiserror"]
 
 [dependencies]
-bytes = { version = "1.4", default-features = false, features = ["std"], optional = true }
+bytes = { version = "1.5", default-features = false, features = ["std"], optional = true }
 futures-util = { version = "0.3", default-features = false, features = ["io", "std"], optional = true }
 parking_lot = { version = "0.12", default-features = false, optional = true }
 register-count = { version = "0.1", default-features = false, features = ["std"], optional = true }
