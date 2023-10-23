@@ -27,6 +27,18 @@ Run the TUIC server with configuration file:
 tuic-server -c PATH/TO/CONFIG
 ```
 
+Or with Docker
+
+```bash
+docker run --name tuic-server \
+  --restart always \
+  —-network host \
+  -v /PATH/TO/CONFIG:/etc/tuic/config.json \
+  -v /PATH/TO/CERTIFICATE:PATH/TO/CERTIFICATE \
+  -v /PATH/TO/PRIVATE_KEY:PATH/TO/PRIVATE_KEY \
+  -dit ghcr.io/eaimty/tuic-server:dev
+```
+
 ## Configuration
 
 ```json5
